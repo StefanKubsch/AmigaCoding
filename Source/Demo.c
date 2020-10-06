@@ -3,8 +3,11 @@
 //*                                                      *
 //* (C) 2020 by Stefan Kubsch                            *
 //* Project for vbcc 0.9g                                *
+//*                                                      *
 //* Compile & link with:                                 *
 //* vc -O4 Demo.c -o Demo -lmieee -lamiga                *
+//*                                                      *
+//* Quit with Ctrl-C                                     *
 //********************************************************
 
 #include <proto/exec.h>
@@ -105,16 +108,16 @@ void DoubleBuffering(void(*CallFunction)(struct RastPort*))
     if (Buffer[0] && Buffer[1] && DisplayPort && SafePort)
     {
         struct RastPort MyRasterPort = { 0 };
-        BOOL SafeToWrite = TRUE;
-        BOOL SafeToChange = TRUE;
+        InitRastPort(&MyRasterPort);
+
+        BOOL WriteOk = TRUE;
+        BOOL ChangeOK = TRUE;
         BOOL Continue = TRUE;
         int CurrentBuffer = 0;
 
-        InitRastPort(&MyRasterPort);
-
         do	
         {
-            if (!SafeToWrite)
+            if (!WriteOk)
             {
                 while (!GetMsg(SafePort))
                 {
@@ -125,7 +128,7 @@ void DoubleBuffering(void(*CallFunction)(struct RastPort*))
                     }
                 }
 
-                SafeToWrite = TRUE;
+                WriteOk = TRUE;
             }
 
             if (Continue)
@@ -142,7 +145,7 @@ void DoubleBuffering(void(*CallFunction)(struct RastPort*))
                 // Ends here ;-)                                                *
                 //***************************************************************
 
-                if (!SafeToChange)
+                if (!ChangeOK)
                 {
                     while (!GetMsg(DisplayPort))
                     {
@@ -153,7 +156,7 @@ void DoubleBuffering(void(*CallFunction)(struct RastPort*))
                         }
                     }
 
-                    SafeToChange = TRUE;
+                    ChangeOK = TRUE;
                 }
             }
 
@@ -172,8 +175,8 @@ void DoubleBuffering(void(*CallFunction)(struct RastPort*))
                     }
                 }
 
-                SafeToChange = FALSE;
-                SafeToWrite  = FALSE;
+                ChangeOK = FALSE;
+                WriteOk  = FALSE;
                 CurrentBuffer ^= 1;
 
                 if (SetSignal(0, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
@@ -183,7 +186,7 @@ void DoubleBuffering(void(*CallFunction)(struct RastPort*))
             }
         } while (Continue);
 
-        if (!SafeToWrite)
+        if (!WriteOk)
         {
             while (!GetMsg (SafePort))
             {
@@ -194,7 +197,7 @@ void DoubleBuffering(void(*CallFunction)(struct RastPort*))
             }
         }
 
-        if (!SafeToChange)
+        if (!ChangeOK)
         {
             while (!GetMsg (DisplayPort))
             {
@@ -268,7 +271,7 @@ void DrawDemo(struct RastPort* RastPort)
         const int x = WidthMid + Stars[i].x / Stars[i].z;
         const int y = HeightMid + Stars[i].y / Stars[i].z;
         
-        if (x > 0 && y > 0 && x < MyScreen->Width && y < MyScreen->Height)
+        if ((unsigned int)x < MyScreen->Width && (unsigned int)y < MyScreen->Height)
         {
             SetAPen(RastPort, Stars[i].z / 200 + 1);
             WritePixel(RastPort, x, y);
@@ -285,8 +288,8 @@ void DrawDemo(struct RastPort* RastPort)
         float y;
         float z;
     } CubeDef[8] = { { -50.0f, -50.0f, -50.0f }, { -50.0f, -50.0f, 50.0f }, { -50.0f, 50.0f, -50.0f }, { -50.0f, 50.0f, 50.0f }, { 50.0f, -50.0f, -50.0f }, { 50.0f, -50.0f, 50.0f }, { 50.0f, 50.0f, -50.0f }, { 50.0f, 50.0f, 50.0f } };
-
-    static struct IntPointStruct
+    
+    struct IntPointStruct
     {
         int x;
         int y;
