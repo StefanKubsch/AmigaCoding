@@ -110,25 +110,25 @@ void DoubleBuffering(void(*CallFunction)(struct RastPort*))
         struct RastPort MyRasterPort = { 0 };
         InitRastPort(&MyRasterPort);
 
-        BOOL WriteOk = TRUE;
+        BOOL WriteOK = TRUE;
         BOOL ChangeOK = TRUE;
         BOOL Continue = TRUE;
         int CurrentBuffer = 0;
 
-        do	
+        while (Continue)
         {
-            if (!WriteOk)
+            if (!WriteOK)
             {
                 while (!GetMsg(SafePort))
                 {
-                    if (Wait((1L << SafePort->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
+                    if (Wait((1 << SafePort->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
                     {
                         Continue = FALSE;
                         break;
                     }
                 }
 
-                WriteOk = TRUE;
+                WriteOK = TRUE;
             }
 
             if (Continue)
@@ -149,7 +149,7 @@ void DoubleBuffering(void(*CallFunction)(struct RastPort*))
                 {
                     while (!GetMsg(DisplayPort))
                     {
-                        if (Wait((1L << DisplayPort->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
+                        if (Wait((1 << DisplayPort->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
                         {
                             Continue = FALSE;
                             break;
@@ -176,7 +176,7 @@ void DoubleBuffering(void(*CallFunction)(struct RastPort*))
                 }
 
                 ChangeOK = FALSE;
-                WriteOk  = FALSE;
+                WriteOK  = FALSE;
                 CurrentBuffer ^= 1;
 
                 if (SetSignal(0, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
@@ -184,13 +184,13 @@ void DoubleBuffering(void(*CallFunction)(struct RastPort*))
                     Continue = FALSE;
                 }
             }
-        } while (Continue);
+        }
 
-        if (!WriteOk)
+        if (!WriteOK)
         {
             while (!GetMsg (SafePort))
             {
-                if (Wait ((1L << SafePort->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
+                if (Wait ((1 << SafePort->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
                 {
                     break;
                 }
@@ -201,7 +201,7 @@ void DoubleBuffering(void(*CallFunction)(struct RastPort*))
         {
             while (!GetMsg (DisplayPort))
             {
-                if (Wait ((1L << DisplayPort->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
+                if (Wait ((1 << DisplayPort->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
                 {
                     break;
                 }
