@@ -16,15 +16,18 @@
 #include <graphics/gfxmacros.h>
 #include <intuition/intuition.h>
 #include <devices/timer.h>
+#include <proto/timer.h>   
 #include <clib/exec_protos.h>
 #include <clib/graphics_protos.h>
 #include <clib/intuition_protos.h>
 #include <clib/alib_protos.h>
 #include <stdlib.h>
 #include <math.h>
+#include <stdio.h>
+#include <string.h>
 
 //
-// Generic stuff for screen, bitmap, timer and library handling
+// Generic stuff for screen, bitmap, timer, FPS counter and library handling
 //
 
 struct GfxBase* GfxBase = NULL;
@@ -37,27 +40,84 @@ struct Library* TimerBase = NULL;
 struct MsgPort* TimerPort = NULL;
 struct timerequest* TimerIO = NULL;
 
+WORD FPS = 0;
+
 // Here we define, how many bitplanes we want to use...
+// How many bitplanes are required for how many color?
+//
+//	Number of colors	|	Number of bitplanes
+//			2			|			1
+//			4			|			2
+//			8			|			3
+//			16			|			4
+//			32			|			5
+//			64			|			6
 const int NumberOfBitplanes = 3;
 
 // ...and here which colors we want to use
-struct ColorSpec ColorTable[] = { {0, 0, 0, 3}, {1, 15, 15, 15}, {2, 8, 8, 8}, {3, 4, 4, 4}, {4, 15, 0, 0}, {-1, 0, 0, 0} };
+// Array must be terminated with {-1, 0, 0, 0}
+struct ColorSpec ColorTable[] = { {0, 0, 0, 3}, {1, 15, 15, 15}, {2, 8, 8, 8}, {3, 4, 4, 4}, {4, 15, 0, 0}, {5, 0, 15, 0}, {-1, 0, 0, 0} };
 
+ULONG GetSystemTime();
+void FPSCounter();
+void DisplayFPSCounter();
 BOOL LoadLibraries();
 void CloseScreenAndLibraries();
 BOOL CreateScreen();
 void DoubleBuffering(void(*CallFunction)());
 
 //
-// demo stuff
+// Demo stuff
 //
 
 void InitDemo();
 void DrawDemo();
 
 //***************************************************************
-// Functions for screen, bitmap and library handling            *
+// Functions for screen, bitmap, FPS and library handling       *
 //***************************************************************
+
+ULONG GetSystemTime()
+{
+	static struct timeval tt;
+	struct timeval a;
+	struct timeval b;
+
+	GetSysTime(&a);
+	b = a;
+	SubTime(&b, &tt);
+	tt = a;
+
+	return b.tv_secs * 1000 + b.tv_micro / 1000;
+}
+
+void FPSCounter()
+{
+	static WORD FPSFrames = 0;
+	static ULONG FPSUpdate = 0;
+	ULONG SystemTime = GetSystemTime();
+				
+	FPSUpdate += SystemTime;
+
+	if (FPSUpdate > 1000)
+	{
+		FPS = FPSFrames;
+		FPSFrames = 0;
+		FPSUpdate = SystemTime;
+	}
+
+	++FPSFrames;
+}
+
+void DisplayFPSCounter()
+{
+	UBYTE String[16];
+	sprintf(String, "%d fps", FPS);
+								
+	SetAPen(&RenderPort, 5);
+	Move(&RenderPort, 10, 10);
+	Text(&RenderPort, String, strlen(String));
+}
 
 BOOL LoadLibraries()
 {
@@ -87,14 +147,17 @@ BOOL LoadLibraries()
 		return FALSE;
 	}
 	
-	// Since we use functions that require at least Kick 2.0, we must use "37" as least version!
-    if (!(GfxBase = (struct GfxBase*)OpenLibrary("graphics.library", 37)))
+	//
+	// Since we use functions that require at least OS 3.0, we must use "39" as minimum version!
+    //
+
+	if (!(GfxBase = (struct GfxBase*)OpenLibrary("graphics.library", 39)))
     {
    		CloseScreenAndLibraries();
 		return FALSE;
     }
 
-    if (!(IntuitionBase = (struct IntuitionBase*)OpenLibrary("intuition.library", 37)))
+    if (!(IntuitionBase = (struct IntuitionBase*)OpenLibrary("intuition.library", 39)))
     {
         CloseScreenAndLibraries();
         return FALSE;
@@ -159,14 +222,15 @@ BOOL CreateScreen()
 
 void DoubleBuffering(void(*CallFunction)())
 {
-    struct ScreenBuffer *Buffer[2] = { AllocScreenBuffer(Screen, NULL, SB_SCREEN_BITMAP), AllocScreenBuffer(Screen, NULL, SB_COPY_BITMAP) };
-    struct MsgPort *DisplayPort = CreateMsgPort();
-    struct MsgPort *SafePort = CreateMsgPort();
+    struct ScreenBuffer* Buffer[2] = { AllocScreenBuffer(Screen, NULL, SB_SCREEN_BITMAP), AllocScreenBuffer(Screen, NULL, SB_COPY_BITMAP) };
+    struct MsgPort* DisplayPort = CreateMsgPort();
+    struct MsgPort* SafePort = CreateMsgPort();
 
     if (Buffer[0] && Buffer[1] && DisplayPort && SafePort)
     {
         InitRastPort(&RenderPort);
 
+		// Start timer
 		struct timerequest TickRequest;
 
 		TickRequest = *TimerIO;
@@ -175,6 +239,10 @@ void DoubleBuffering(void(*CallFunction)())
 		TickRequest.tr_time.tv_micro = 0;
 		SendIO((struct IORequest*)&TickRequest);
 		
+		// Our timing/fps limit is targeted at 50fps
+		// If you want to use 25fps instead, calc 1000000 / 25
+		const ULONG TimeDelay = 1000000 / 50;
+	
 		BOOL TickRequestPending = TRUE;
         BOOL WriteOK = TRUE;
         BOOL ChangeOK = TRUE;
@@ -199,7 +267,7 @@ void DoubleBuffering(void(*CallFunction)())
 
             if (Continue)
             {
-                RenderPort.BitMap = Buffer[CurrentBuffer]->sb_BitMap;
+				RenderPort.BitMap = Buffer[CurrentBuffer]->sb_BitMap;
                 
                 //***************************************************************
                 // Here we call the drawing function for demo stuff!            *
@@ -223,6 +291,7 @@ void DoubleBuffering(void(*CallFunction)())
                     }
 
                     ChangeOK = TRUE;
+					FPSCounter();
                 }
             }
 
@@ -242,7 +311,7 @@ void DoubleBuffering(void(*CallFunction)())
                 }
 
                 ChangeOK = FALSE;
-                WriteOK  = FALSE;
+                WriteOK = FALSE;
                 CurrentBuffer ^= 1;
 
                 if (SetSignal(0, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
@@ -259,7 +328,7 @@ void DoubleBuffering(void(*CallFunction)())
 					if (Continue)
 					{
 						TickRequest.tr_time.tv_secs = 0;
-						TickRequest.tr_time.tv_micro = 1000000 / 25;
+						TickRequest.tr_time.tv_micro = TimeDelay;
 						SendIO((struct IORequest*)&TickRequest);
 						WriteOK = TRUE;
 					}
@@ -278,7 +347,6 @@ void DoubleBuffering(void(*CallFunction)())
 				{
 					AbortIO((struct IORequest*)&TickRequest);
 				}
-
             }
         }
 
@@ -431,6 +499,12 @@ void DrawDemo()
 	Draw(&RenderPort, Cube[3].x, Cube[3].y);
 	Draw(&RenderPort, Cube[7].x, Cube[7].y);
 	Draw(&RenderPort, Cube[6].x, Cube[6].y);
+
+	//
+	// Display FPS counter
+	//
+
+	DisplayFPSCounter();
 }
 
 int main()
