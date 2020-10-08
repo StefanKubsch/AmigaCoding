@@ -1,5 +1,9 @@
 //********************************************************
 //* Simple demo for Amiga with at least OS 3.0           *
+//*														 *
+//* This demo will run on a stock A500 in the same speed *
+//* as on a turbo-boosted A1200. It´s limited to 25fps,  *
+//* which seems to be a good tradeoff.					 *
 //*                                                      *
 //* (C) 2020 by Stefan Kubsch                            *
 //* Project for vbcc 0.9g                                *
@@ -26,10 +30,6 @@
 #include <stdio.h>
 #include <string.h>
 
-//
-// Generic stuff for screen, bitmap, timer, FPS counter and library handling
-//
-
 struct GfxBase* GfxBase = NULL;
 struct IntuitionBase* IntuitionBase = NULL;
 
@@ -40,25 +40,36 @@ struct Library* TimerBase = NULL;
 struct MsgPort* TimerPort = NULL;
 struct timerequest* TimerIO = NULL;
 
-WORD FPS = 0;
+// Our timing/fps limit is targeted at 25fps
+// If you want to use 50fps instead, calc 1000000 / 50
+// Is used in function "DoubleBuffering()"
+const ULONG FPSLimit = 1000000 / 25;
 
 // Here we define, how many bitplanes we want to use...
-// How many bitplanes are required for how many color?
-//
-//	Number of colors	|	Number of bitplanes
-//			2			|			1
-//			4			|			2
-//			8			|			3
-//			16			|			4
-//			32			|			5
-//			64			|			6
+// Colors / number of required Bitplanes
+// 2 / 1
+// 4 / 2
+// 8 / 3
+// 16 / 4
+// 32 / 5
+// 64 / 6
 const int NumberOfBitplanes = 3;
 
 // ...and here which colors we want to use
-// Array must be terminated with {-1, 0, 0, 0}
-struct ColorSpec ColorTable[] = { {0, 0, 0, 3}, {1, 15, 15, 15}, {2, 8, 8, 8}, {3, 4, 4, 4}, {4, 15, 0, 0}, {5, 0, 15, 0}, {-1, 0, 0, 0} };
+// Format: { Index, Red, Green, Blue }, Array must be terminated with {-1, 0, 0, 0}
+//
+// Our colors here are:
+// {0, 0, 0, 3}		- Dark Blue
+// {1, 15, 15, 15}	- White
+// {2, 8, 8, 8}		- Grey
+// {3, 4, 4, 4}		- Dark Grey
+// {4, 15, 0, 0}	- Red
+// {5, 0, 15, 0}	- Green
+const struct ColorSpec ColorTable[] = { {0, 0, 0, 3}, {1, 15, 15, 15}, {2, 8, 8, 8}, {3, 4, 4, 4}, {4, 15, 0, 0}, {5, 0, 15, 0}, {-1, 0, 0, 0} };
 
-ULONG GetSystemTime();
+// Global variable for FPS Counter
+WORD FPS = 0;
+
 void FPSCounter();
 void DisplayFPSCounter();
 BOOL LoadLibraries();
@@ -77,8 +88,9 @@ void DrawDemo();
 // Functions for screen, bitmap, FPS and library handling       *
 //***************************************************************
 
-ULONG GetSystemTime()
+void FPSCounter()
 {
+	// Get system time
 	static struct timeval tt;
 	struct timeval a;
 	struct timeval b;
@@ -88,18 +100,15 @@ ULONG GetSystemTime()
 	SubTime(&b, &tt);
 	tt = a;
 
-	return b.tv_secs * 1000 + b.tv_micro / 1000;
-}
-
-void FPSCounter()
-{
+	const ULONG SystemTime = b.tv_secs * 1000 + b.tv_micro / 1000;
+	
+	// Calculate fps
 	static WORD FPSFrames = 0;
 	static ULONG FPSUpdate = 0;
-	ULONG SystemTime = GetSystemTime();
-				
+
 	FPSUpdate += SystemTime;
 
-	if (FPSUpdate > 1000)
+	if (FPSUpdate >= 1000)
 	{
 		FPS = FPSFrames;
 		FPSFrames = 0;
@@ -111,7 +120,7 @@ void FPSCounter()
 
 void DisplayFPSCounter()
 {
-	UBYTE String[16];
+	UBYTE String[10];
 	sprintf(String, "%d fps", FPS);
 								
 	SetAPen(&RenderPort, 5);
@@ -148,7 +157,7 @@ BOOL LoadLibraries()
 	}
 	
 	//
-	// Since we use functions that require at least OS 3.0, we must use "39" as minimum version!
+	// Since we use functions that require at least OS 3.0, we must use "39" as minimum library version!
     //
 
 	if (!(GfxBase = (struct GfxBase*)OpenLibrary("graphics.library", 39)))
@@ -171,31 +180,37 @@ void CloseScreenAndLibraries()
     if (TimerBase)
 	{
 		CloseDevice((struct IORequest*)TimerIO);
+		TimerBase = NULL;
 	}
 
 	if (TimerIO)
 	{
 		DeleteExtIO((struct IORequest*)TimerIO);
+		TimerIO = NULL;
 	}
 
 	if (TimerPort)
 	{
 		DeletePort(TimerPort);
+		TimerPort = 0;
 	}
 
 	if (Screen)
     {
         CloseScreen(Screen);
+		Screen = NULL;
     }
 
     if (IntuitionBase)
     {
         CloseLibrary((struct Library*)IntuitionBase);
+		IntuitionBase = NULL;
     }
 	
     if (GfxBase)
     {
        CloseLibrary((struct Library*)GfxBase);
+	   GfxBase = NULL;
     }     
 }
 
@@ -238,11 +253,8 @@ void DoubleBuffering(void(*CallFunction)())
 		TickRequest.tr_time.tv_secs = 0;
 		TickRequest.tr_time.tv_micro = 0;
 		SendIO((struct IORequest*)&TickRequest);
-		
-		// Our timing/fps limit is targeted at 50fps
-		// If you want to use 25fps instead, calc 1000000 / 25
-		const ULONG TimeDelay = 1000000 / 50;
 	
+		// Loop control
 		BOOL TickRequestPending = TRUE;
         BOOL WriteOK = TRUE;
         BOOL ChangeOK = TRUE;
@@ -273,7 +285,10 @@ void DoubleBuffering(void(*CallFunction)())
                 // Here we call the drawing function for demo stuff!            *
                 //***************************************************************
 
-                (*CallFunction)(&RenderPort);
+                (*CallFunction)();
+
+				// DisplayFPSCounter() writes on the backbuffer, too - so we need to call it before blitting
+				DisplayFPSCounter();
 
                 //***************************************************************
                 // Ends here ;-)                                                *
@@ -319,7 +334,7 @@ void DoubleBuffering(void(*CallFunction)())
                     Continue = FALSE;
                 }
 
-				ULONG Signals = Wait(1 << TimerPort->mp_SigBit | SIGBREAKF_CTRL_C);
+				const ULONG Signals = Wait(1 << TimerPort->mp_SigBit | SIGBREAKF_CTRL_C);
 
 				if (Signals & (1 << TimerPort->mp_SigBit))
 				{
@@ -328,7 +343,7 @@ void DoubleBuffering(void(*CallFunction)())
 					if (Continue)
 					{
 						TickRequest.tr_time.tv_secs = 0;
-						TickRequest.tr_time.tv_micro = TimeDelay;
+						TickRequest.tr_time.tv_micro = FPSLimit;
 						SendIO((struct IORequest*)&TickRequest);
 						WriteOK = TRUE;
 					}
@@ -350,7 +365,10 @@ void DoubleBuffering(void(*CallFunction)())
             }
         }
 
-        if (!WriteOK)
+        // After breaking the loop, we have to make sure that there are no more signals to process.
+		// Without these last two checks, a crash is very possible...
+		
+		if (!WriteOK)
         {
             while (!GetMsg (SafePort))
             {
@@ -388,7 +406,7 @@ struct StarStruct
     int x;
     int y;
     int z;
-} Stars[400];
+} Stars[200];
 
 float CosA;
 float SinA;
@@ -499,12 +517,6 @@ void DrawDemo()
 	Draw(&RenderPort, Cube[3].x, Cube[3].y);
 	Draw(&RenderPort, Cube[7].x, Cube[7].y);
 	Draw(&RenderPort, Cube[6].x, Cube[6].y);
-
-	//
-	// Display FPS counter
-	//
-
-	DisplayFPSCounter();
 }
 
 int main()
