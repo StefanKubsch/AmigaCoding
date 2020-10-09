@@ -9,7 +9,7 @@
 //* Project for vbcc 0.9g                                *
 //*                                                      *
 //* Compile & link with:                                 *
-//* vc -O4 Demo1.c -o Demo1 -lmieee -lamiga              *
+//* vc -O4 Demo2.c -o Demo2 -lmieee -lamiga              *
 //*                                                      *
 //* Quit with Ctrl-C                                     *
 //********************************************************
@@ -21,6 +21,7 @@
 #include <devices/timer.h>
 #include <proto/timer.h>   
 #include <clib/exec_protos.h>
+#include <graphics/gfxmacros.h>
 #include <clib/graphics_protos.h>
 #include <clib/intuition_protos.h>
 #include <clib/alib_protos.h>
@@ -56,22 +57,16 @@ const int NumberOfBitplanes = 3;
 
 // ...and here which colors we want to use
 // Format: { Index, Red, Green, Blue }, Array must be terminated with {-1, 0, 0, 0}
-//
-// Our colors here are:
-// {0, 0, 0, 3}		- Dark Blue
-// {1, 15, 15, 15}	- White
-// {2, 8, 8, 8}		- Grey
-// {3, 4, 4, 4}		- Dark Grey
-// {4, 15, 0, 0}	- Red
-// {5, 0, 15, 0}	- Green
 const struct ColorSpec ColorTable[] = 
 { 
 	{0, 0, 0, 3}, 
-	{1, 15, 15, 15}, 
-	{2, 8, 8, 8}, 
-	{3, 4, 4, 4}, 
-	{4, 15, 0, 0}, 
-	{5, 0, 15, 0}, 
+	{1, 0, 3, 0},
+	{2, 0, 5, 0},
+	{3, 0, 7, 0},
+	{4, 0, 9, 0},
+	{5, 0, 11, 0},
+	{6, 0, 13, 0},
+	{7, 0, 15, 0},
 	{-1, 0, 0, 0} 
 };
 
@@ -131,7 +126,7 @@ void DisplayFPSCounter()
 	UBYTE String[10];
 	sprintf(String, "%d fps", FPS);
 								
-	SetAPen(&RenderPort, 5);
+	SetAPen(&RenderPort, 7);
 	Move(&RenderPort, 10, 10);
 	Text(&RenderPort, String, strlen(String));
 }
@@ -251,7 +246,28 @@ void DoubleBuffering(void(*CallFunction)())
 
     if (Buffer[0] && Buffer[1] && DisplayPort && SafePort)
     {
-        InitRastPort(&RenderPort);
+	    InitRastPort(&RenderPort);
+
+		// Prepare AREA for AreaDraw etc...
+		struct TmpRas tmpras;
+		struct AreaInfo areainfo;
+		UBYTE *TmpRasBuffer;
+		UBYTE *AreaBuffer;
+		ULONG RasSize;
+
+		RasSize = RASSIZE(Screen->Width, Screen->Height);
+
+		if (TmpRasBuffer = AllocVec(RasSize, MEMF_CHIP | MEMF_CLEAR))
+		{
+			InitTmpRas (&tmpras, TmpRasBuffer, RasSize);
+			RenderPort.TmpRas = &tmpras;
+		}
+
+		if (AreaBuffer = AllocVec(30, MEMF_CLEAR))
+		{
+			InitArea (&areainfo, AreaBuffer,5);
+			RenderPort.AreaInfo = &areainfo;
+		}
 
 		// Start timer
 		struct timerequest TickRequest;
@@ -320,7 +336,7 @@ void DoubleBuffering(void(*CallFunction)())
 
             if (Continue)
             {
-                WaitBlit();
+				WaitBlit();
                 Buffer[CurrentBuffer]->sb_DBufInfo->dbi_SafeMessage.mn_ReplyPort = SafePort;
                 Buffer[CurrentBuffer]->sb_DBufInfo->dbi_DispMessage.mn_ReplyPort = DisplayPort;
                 
@@ -397,6 +413,18 @@ void DoubleBuffering(void(*CallFunction)())
                 }
             }
         }
+
+		if (TmpRasBuffer)
+		{
+			RenderPort.TmpRas = NULL;
+			FreeVec(TmpRasBuffer);
+		}
+
+		if (AreaBuffer)
+		{
+			RenderPort.AreaInfo = NULL;
+			FreeVec(AreaBuffer);
+		}
     }
 
     FreeScreenBuffer(Screen, Buffer[0]);
@@ -409,13 +437,6 @@ void DoubleBuffering(void(*CallFunction)())
 // Demo stuff                                                   *
 //***************************************************************
 
-struct StarStruct
-{
-    int x;
-    int y;
-    int z;
-} Stars[200];
-
 float CosA;
 float SinA;
 
@@ -423,15 +444,6 @@ void InitDemo()
 {
     CosA = cos(0.03f);
     SinA = sin(0.03f);
-
-    const int NumberOfStars = sizeof(Stars) / sizeof(*Stars);
-    
-    for (int i = 0; i < NumberOfStars; ++i) 
-    {
-        Stars[i].x = rand() % 40000 - 15000;
-        Stars[i].y = rand() % 40000 - 15000;
-        Stars[i].z = rand() % 500;
-    }
 }
 
 void DrawDemo()
@@ -440,37 +452,6 @@ void DrawDemo()
 
 	const int WidthMid = Screen->Width >> 1;
 	const int HeightMid = Screen->Height >> 1;
-
-	//
-	// Starfield
-	//
-
-	static const int NumberOfStars = sizeof(Stars) / sizeof(*Stars);
-
-	for (int i = 0; i < NumberOfStars; ++i)
-	{
-		Stars[i].z -= 10;
-	
-		if (Stars[i].z <= 0) 
-		{
-			Stars[i].x = rand() % 40000 - 15000;
-			Stars[i].y = rand() % 40000 - 15000;
-			Stars[i].z = 500;
-		}
-		
-		const int x = WidthMid + Stars[i].x / Stars[i].z;
-		const int y = HeightMid + Stars[i].y / Stars[i].z;
-		
-		if ((unsigned int)x < Screen->Width && (unsigned int)y < Screen->Height)
-		{
-			SetAPen(&RenderPort, Stars[i].z / 200 + 1);
-			WritePixel(&RenderPort, x, y);
-		}
-	}
-
-	//
-	// Vector Cube
-	//
 
 	static struct VertexStruct
 	{
@@ -505,26 +486,60 @@ void DrawDemo()
 		Cube[i].y = HeightMid + (int)CubeDef[i].y;
 	}
 
-	SetAPen(&RenderPort, 4);
+	struct CubeFaceStruct
+	{
+		int p0;
+		int p1;
+		int p2;
+		int p3;
+	} CubeFaces[] = { {0,1,3,2}, {4,0,2,6}, {5,4,6,7}, {1,5,7,3}, {0,1,5,4}, {2,3,7,6} };
 
-	Move(&RenderPort, Cube[0].x, Cube[0].y);
-	Draw(&RenderPort, Cube[1].x, Cube[1].y);
-	Draw(&RenderPort, Cube[5].x, Cube[5].y);
-	Draw(&RenderPort, Cube[4].x, Cube[4].y);
-	Draw(&RenderPort, Cube[0].x, Cube[0].y);
-	Draw(&RenderPort, Cube[2].x, Cube[2].y);
-	Draw(&RenderPort, Cube[6].x, Cube[6].y);
-	Draw(&RenderPort, Cube[4].x, Cube[4].y);
-	
-	Move(&RenderPort, Cube[5].x, Cube[5].y);
-	Draw(&RenderPort, Cube[7].x, Cube[7].y);
-	Draw(&RenderPort, Cube[3].x, Cube[3].y);
-	Draw(&RenderPort, Cube[1].x, Cube[1].y);
-	
-	Move(&RenderPort, Cube[2].x, Cube[2].y);
-	Draw(&RenderPort, Cube[3].x, Cube[3].y);
-	Draw(&RenderPort, Cube[7].x, Cube[7].y);
-	Draw(&RenderPort, Cube[6].x, Cube[6].y);
+	struct OrderPair
+	{
+		int first;
+		float second;
+	} Order[6];;
+
+	// selection-sort of depth/faces
+	for (int i = 0; i < 6; ++i)
+	{
+		Order[i].second = (CubeDef[CubeFaces[i].p0].z + CubeDef[CubeFaces[i].p1].z + CubeDef[CubeFaces[i].p2].z + CubeDef[CubeFaces[i].p3].z) * 0.25f;
+		Order[i].first = i;
+	}
+
+	for (int i = 0; i <= 4; ++i)
+	{
+		int Min = i;
+
+		for (int j = i + 1; j <= 5; ++j)
+		{
+			if (Order[j].second < Order[Min].second)
+			{
+				Min = j;
+			}
+		}
+		
+		int Temp = Order[Min].first;
+		Order[Min].first = Order[i].first;
+		Order[i].first = Temp;
+
+		Temp = Order[Min].second;
+		Order[Min].second = Order[i].second;
+		Order[i].second = Temp;
+	}
+
+	const int CubeFacesColors[] ={ 1, 2, 3, 4, 5, 6 };
+
+	for (int i = 3; i < 6; ++i)
+	{
+		SetAPen(&RenderPort, CubeFacesColors[Order[i].first]);
+
+		AreaMove(&RenderPort, Cube[CubeFaces[Order[i].first].p0].x, Cube[CubeFaces[Order[i].first].p0].y);
+		AreaDraw(&RenderPort, Cube[CubeFaces[Order[i].first].p1].x, Cube[CubeFaces[Order[i].first].p1].y);
+		AreaDraw(&RenderPort, Cube[CubeFaces[Order[i].first].p2].x, Cube[CubeFaces[Order[i].first].p2].y);
+		AreaDraw(&RenderPort, Cube[CubeFaces[Order[i].first].p3].x, Cube[CubeFaces[Order[i].first].p3].y);
+		AreaEnd(&RenderPort);
+	}
 }
 
 int main()
