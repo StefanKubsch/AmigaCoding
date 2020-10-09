@@ -1,6 +1,8 @@
 //********************************************************
 //* Simple demo for Amiga with at least OS 3.0           *
 //*														 *
+//* Effects: 3D-Starfield and wireframe vector cube      *
+//*														 *
 //* This demo will run on a stock A500 in the same speed *
 //* as on a turbo-boosted A1200. It´s limited to 25fps,  *
 //* which seems to be a good tradeoff.					 *
@@ -33,7 +35,7 @@ struct GfxBase* GfxBase = NULL;
 struct IntuitionBase* IntuitionBase = NULL;
 
 struct Screen* Screen = NULL;
-struct RastPort RenderPort = NULL;
+struct RastPort RenderPort;
 
 struct Library* TimerBase = NULL;
 struct MsgPort* TimerPort = NULL;
@@ -42,7 +44,7 @@ struct timerequest* TimerIO = NULL;
 // Our timing/fps limit is targeted at 25fps
 // If you want to use 50fps instead, calc 1000000 / 50
 // Is used in function "DoubleBuffering()"
-const ULONG FPSLimit = 1000000 / 25;
+const ULONG FPSLimit = 1000000 / 50;
 
 // Here we define, how many bitplanes we want to use...
 // Colors / number of required Bitplanes
@@ -400,9 +402,13 @@ void DoubleBuffering(void(*CallFunction)())
     }
 
     FreeScreenBuffer(Screen, Buffer[0]);
+	Buffer[0] = NULL;
     FreeScreenBuffer(Screen, Buffer[1]);
+	Buffer[1] = NULL;
     DeleteMsgPort(SafePort);
+	SafePort = NULL;
     DeleteMsgPort(DisplayPort);
+	DisplayPort = NULL;
 }
 
 //***************************************************************

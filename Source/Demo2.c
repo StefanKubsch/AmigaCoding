@@ -1,6 +1,8 @@
 //********************************************************
 //* Simple demo for Amiga with at least OS 3.0           *
 //*														 *
+//* Effects: Filled vector cube						     *
+//*														 *
 //* This demo will run on a stock A500 in the same speed *
 //* as on a turbo-boosted A1200. It´s limited to 25fps,  *
 //* which seems to be a good tradeoff.					 *
@@ -72,6 +74,10 @@ const struct ColorSpec ColorTable[] =
 
 // Global variable for FPS Counter
 WORD FPS = 0;
+
+// Some needed buffers for Area operations
+UBYTE* TmpRasBuffer = NULL;
+UBYTE* AreaBuffer = NULL;
 
 //
 // Function declarations
