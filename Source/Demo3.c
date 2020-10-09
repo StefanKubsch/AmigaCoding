@@ -17,6 +17,7 @@
 #include <exec/exec.h>
 #include <dos/dos.h>
 #include <graphics/gfxbase.h>
+#include <graphics/copper.h>
 #include <intuition/intuition.h>
 #include <devices/timer.h>
 #include <proto/timer.h>   
@@ -40,10 +41,15 @@ struct Library* TimerBase = NULL;
 struct MsgPort* TimerPort = NULL;
 struct timerequest* TimerIO = NULL;
 
-// Our timing/fps limit is targeted at 25fps
+// This is needed for our Copper
+struct UCopList* CopperList = NULL;
+struct ViewPort* viewPort = NULL;
+
+// Our timing/fps limit is targeted at 20fps
 // If you want to use 50fps instead, calc 1000000 / 50
+// But take care: The Area-fill operations will not be fast enough to fill 4 planes in a frame...
 // Is used in function "DoubleBuffering()"
-const ULONG FPSLimit = 1000000 / 25;
+const ULONG FPSLimit = 1000000 / 20;
 
 // Here we define, how many bitplanes we want to use...
 // Colors / number of required Bitplanes
@@ -53,25 +59,37 @@ const ULONG FPSLimit = 1000000 / 25;
 // 16 / 4
 // 32 / 5
 // 64 / 6
-const int NumberOfBitplanes = 3;
+const int NumberOfBitplanes = 4;
 
 // ...and here which colors we want to use
 // Format: { Index, Red, Green, Blue }, Array must be terminated with {-1, 0, 0, 0}
 const struct ColorSpec ColorTable[] = 
 { 
-	{0, 0, 0, 3}, 
-	{1, 0, 3, 0},
-	{2, 0, 5, 0},
-	{3, 0, 7, 0},
-	{4, 0, 9, 0},
-	{5, 0, 11, 0},
-	{6, 0, 13, 0},
-	{7, 0, 15, 0},
+	{0, 0, 0, 0}, 
+	{1, 0, 0, 0},
+	{2, 0, 0, 0},
+	{3, 0, 0, 0},
+	{4, 0, 0, 0},
+	{5, 0, 0, 0},
+	{6, 0, 0, 0},
+	{7, 0, 0, 0},
+	{8, 0, 3, 0},
+	{9, 0, 5, 0},
+	{10, 0, 7, 0},
+	{11, 0, 9, 0},
+	{12, 0, 11, 0},
+	{13, 0, 13, 0},
+	{14, 0, 15, 0},
+	{15, 15, 15, 15},
 	{-1, 0, 0, 0} 
 };
 
 // Global variable for FPS Counter
 WORD FPS = 0;
+
+// Some needed buffers for Area operations
+UBYTE* TmpRasBuffer = NULL;
+UBYTE* AreaBuffer = NULL;
 
 //
 // Function declarations
@@ -90,6 +108,8 @@ void DoubleBuffering(void(*CallFunction)());
 // Demo stuff
 //
 
+BOOL LoadCopper();
+void CleanupCopper();
 void InitDemo();
 void DrawDemo();
 
@@ -132,7 +152,7 @@ void DisplayFPSCounter()
 	UBYTE String[10];
 	sprintf(String, "%d fps", FPS);
 								
-	SetAPen(&RenderPort, 7);
+	SetAPen(&RenderPort, 15);
 	Move(&RenderPort, 10, 10);
 	Text(&RenderPort, String, strlen(String));
 }
@@ -250,7 +270,9 @@ BOOL CreateRastPort(int NumberOfVertices)
 
 	struct TmpRas tmpras;
 	struct AreaInfo areainfo;
-	const ULONG RasSize = RASSIZE(Screen->Width, Screen->Height);
+
+	// We only allocate as much as little memory as needed to keep the impact on blitter low...
+	const ULONG RasSize = RASSIZE(130, 130);
 
 	if (TmpRasBuffer = AllocVec(RasSize, MEMF_CHIP | MEMF_CLEAR))
 	{
@@ -459,6 +481,63 @@ void DoubleBuffering(void(*CallFunction)())
 // Demo stuff                                                   *
 //***************************************************************
 
+BOOL LoadCopper()
+{
+	CopperList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_PUBLIC | MEMF_CLEAR);
+	
+	if (CopperList == NULL)
+	{
+		return FALSE;
+	}
+	
+	extern struct Custom custom;
+	const int NumberOfColors = 32;
+	const int NumberOfLines = 8;
+
+	const UWORD Colors[] =
+	{
+		0x0604, 0x0605, 0x0606, 0x0607, 0x0617, 0x0618, 0x0619,	0x0629, 
+		0x072a, 0x073b, 0x074b, 0x074c, 0x075d, 0x076e,	0x077e, 0x088f, 
+		0x07af, 0x06cf, 0x05ff, 0x04fb, 0x04f7,	0x03f3, 0x07f2, 0x0bf1, 
+		0x0ff0, 0x0fc0, 0x0ea0, 0x0e80,	0x0e60, 0x0d40, 0x0d20, 0x0d00
+	};
+
+	CINIT(CopperList, NumberOfColors);
+	
+	for (int i = 0; i < NumberOfColors; ++i)
+	{
+		CWAIT(CopperList, i * NumberOfLines, 0);
+		CMOVE(CopperList, custom.color[0], Colors[i]);
+		CMOVE(CopperList, custom.color[1], Colors[i] ^ 0x0fff);
+		CMOVE(CopperList, custom.color[2], Colors[i] ^ 0x0666);
+		CMOVE(CopperList, custom.color[3], Colors[i] ^ 0x0ccc);
+	}
+
+	CEND(CopperList);
+	
+	Forbid();
+
+	viewPort = &Screen->ViewPort;
+	viewPort->UCopIns = CopperList;
+	
+	Permit();
+	MakeScreen(Screen);
+	RethinkDisplay();
+	
+	return TRUE;
+}
+
+void CleanupCopper()
+{
+	if (CopperList)
+	{
+		FreeVPortCopLists(viewPort);
+		MakeScreen(Screen);
+		RethinkDisplay();	
+		CopperList = NULL;
+	}
+}
+
 float CosA;
 float SinA;
 
@@ -548,8 +627,8 @@ void DrawDemo()
 		Order[i] = Temp;
 	}
 
-	const int CubeFacesColors[] ={ 1, 2, 3, 4, 5, 6 };
-
+	const int CubeFacesColors[] ={ 9, 10, 11, 12, 13, 14 };
+	
 	// Since we see only the three faces on top, we only need to render these (3, 4 and 5)
 	for (int i = 3; i < 6; ++i)
 	{
@@ -582,6 +661,12 @@ int main()
 		return 20;
 	}
 
+	// Load Copper table and init viewport
+	if (!LoadCopper())
+	{
+		return 20;
+	}
+
 	// Init stuff for demo if needed
 	InitDemo();
 
@@ -590,6 +675,7 @@ int main()
 	DoubleBuffering(DrawDemo);
 
 	// Cleanup everything
+	CleanupCopper();
 	CleanupRastPort();
 	CloseScreenAndLibraries();
 	return 0;
