@@ -11,7 +11,7 @@
 //* Project for vbcc 0.9g                                			   *
 //*                                                      			   *
 //* Compile & link with:                                 			   *
-//* vc -O4 Demo3.c -o Demo4 -lmieee -lamiga              			   *
+//* vc -O4 Demo3.c -o Demo3 -lmieee -lamiga              			   *
 //*                                                      			   *
 //* Quit with Ctrl-C                                     			   *
 //**********************************************************************
@@ -46,7 +46,7 @@ struct timerequest* TimerIO = NULL;
 
 // Our timing/fps limit is targeted at 20fps
 // If you want to use 50fps instead, calc 1000000 / 50
-// But take care: The Area-fill operations will not be fast enough to fill 4 planes in a frame...
+// If you want to use 25fps instead, calc 1000000 / 25 - I guess, you got it...
 // Is used in function "DoubleBuffering()"
 const ULONG FPSLimit = 1000000 / 20;
 
@@ -57,7 +57,7 @@ const ULONG FPSLimit = 1000000 / 20;
 // 8 / 3
 // 16 / 4
 // 32 / 5
-// 64 / 6
+// 64 / 6 (Amiga Halfbrite mode)
 const int NumberOfBitplanes = 3;
 
 // ...and here which colors we want to use
@@ -65,13 +65,13 @@ const int NumberOfBitplanes = 3;
 const struct ColorSpec ColorTable[] = 
 { 
 	{0, 0, 0, 0}, 
-	{1, 10, 0, 10},
-	{2, 11, 0, 11},
-	{3, 12, 0, 12},
-	{4, 13, 0, 13},
-	{5, 14, 0, 14},
-	{6, 15, 0, 15},
-	{7, 15, 15, 15},
+	{1, 15, 15, 15},
+	{2, 10, 0, 10},
+	{3, 11, 0, 11},
+	{4, 12, 0, 12},
+	{5, 13, 0, 13},
+	{6, 14, 0, 14},
+	{7, 15, 0, 15},
 	{-1, 0, 0, 0} 
 };
 
@@ -87,12 +87,12 @@ UBYTE* AreaBuffer = NULL;
 //
 
 void FPSCounter();
-void DisplayFPSCounter();
+void DisplayFPSCounter(const int Color, const int PosX, const int PosY);
 BOOL LoadLibraries();
 void CloseLibraries();
 BOOL CreateScreen();
 void CleanupScreen();
-BOOL CreateRastPort(int NumberOfVertices);
+BOOL CreateRastPort(const int NumberOfVertices);
 void CleanupRastPort();
 void DoubleBuffering(void(*CallFunction)());
 
@@ -138,13 +138,13 @@ void FPSCounter()
 	++FPSFrames;
 }
 
-void DisplayFPSCounter()
+void DisplayFPSCounter(const int Color, const int PosX, const int PosY)
 {
 	UBYTE String[10];
 	sprintf(String, "%d fps", FPS);
 								
-	SetAPen(&RenderPort, 7);
-	Move(&RenderPort, 10, 10);
+	SetAPen(&RenderPort, Color);
+	Move(&RenderPort, PosX, PosY);
 	Text(&RenderPort, String, strlen(String));
 }
 
@@ -264,7 +264,7 @@ void CleanupScreen()
     }
 }
 
-BOOL CreateRastPort(int NumberOfVertices)
+BOOL CreateRastPort(const int NumberOfVertices)
 {
 	InitRastPort(&RenderPort);
 
@@ -371,7 +371,7 @@ void DoubleBuffering(void(*CallFunction)())
                 (*CallFunction)();
 
 				// DisplayFPSCounter() writes on the backbuffer, too - so we need to call it before blitting
-				DisplayFPSCounter();
+				DisplayFPSCounter(1, 5, 10);
 
                 //***************************************************************
                 // Ends here ;-)                                                *
@@ -496,7 +496,7 @@ BOOL LoadCopper()
         { VTAG_END_CM, 0 }
     };
 
-	struct UCopList* uCopList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_PUBLIC | MEMF_CLEAR);
+	struct UCopList* uCopList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_CHIP | MEMF_CLEAR);
 
 	if (uCopList == NULL)
 	{
@@ -504,18 +504,19 @@ BOOL LoadCopper()
 	}
 	
 	extern struct Custom custom;
-	const int NumberOfColors = 32;
 
 	const UWORD Colors[] =
 	{
 		0x0604, 0x0605, 0x0606, 0x0607, 0x0617, 0x0618, 0x0619,	0x0629, 
-		0x072a, 0x073b, 0x074b, 0x074c, 0x075d, 0x076e,	0x077e, 0x088f, 
-		0x07af, 0x06cf, 0x05ff, 0x04fb, 0x04f7,	0x03f3, 0x07f2, 0x0bf1, 
-		0x0ff0, 0x0fc0, 0x0ea0, 0x0e80,	0x0e60, 0x0d40, 0x0d20, 0x0d00
+		0x072A, 0x073B, 0x074B, 0x074C, 0x075D, 0x076E,	0x077E, 0x088F, 
+		0x07AF, 0x06CF, 0x05FF, 0x04FB, 0x04F7,	0x03F3, 0x07F2, 0x0BF1, 
+		0x0FF0, 0x0FC0, 0x0EA0, 0x0E80,	0x0E60, 0x0D40, 0x0D20, 0x0D00
 	};
 
+    const int NumberOfColors = sizeof(Colors) / sizeof(*Colors);
+
 	CINIT(uCopList, NumberOfColors);
-	
+
 	for (int i = 0; i < NumberOfColors; ++i)
 	{
 		CWAIT(uCopList, i * (Screen->Height / NumberOfColors), 0);
@@ -529,7 +530,7 @@ BOOL LoadCopper()
 	Forbid();
 	viewPort->UCopIns = uCopList;
 	Permit();
-	VideoControl( viewPort->ColorMap, uCopTags );
+	VideoControl(viewPort->ColorMap, uCopTags );
 	RethinkDisplay();
 	
 	return TRUE;
@@ -571,7 +572,18 @@ void DrawDemo()
 	// Starfield
 	//
 
-	SetAPen(&RenderPort, 7);
+	// Since we use only bitplane 0 here, we enable only bitplane 0
+	// Bitmap.Planes[0] = Bit 0
+	// Bitmap.Planes[1] = Bit 1
+	// ...
+	// To enable bitplane 0 only set the mask as following:
+	// 00000001 = Hex 0x01
+	//
+	// Another example: Enable only bitplanes 1 and 2:
+	// 11111110 = Hex 0xFE
+
+	SetWrMsk(&RenderPort, 0x01);
+	SetAPen(&RenderPort, 1);
 
 	static const int NumberOfStars = sizeof(Stars) / sizeof(*Stars);
 
@@ -594,6 +606,9 @@ void DrawDemo()
 			WritePixel(&RenderPort, x, y);
 		}
 	}
+
+	// Re-enable all bitplanes
+	SetWrMsk(&RenderPort, -1);
 
 	//
 	// Vector Cube
@@ -624,8 +639,8 @@ void DrawDemo()
 
 		// z - rotation
 		const float x = CubeDef[i].x * CosA - z * SinA;
-		CubeDef[i].x = (x * CosA - CubeDef[i].y * SinA);
-		CubeDef[i].y = (CubeDef[i].y * CosA + x * SinA);
+		CubeDef[i].x = x * CosA - CubeDef[i].y * SinA;
+		CubeDef[i].y = CubeDef[i].y * CosA + x * SinA;
 
 		// 2D projection & translate
 		Cube[i].x = WidthMid + (int)CubeDef[i].x;
@@ -672,7 +687,7 @@ void DrawDemo()
 		Order[i] = Temp;
 	}
 
-	const int CubeFacesColors[] ={ 1, 2, 3, 4, 5, 6 };
+	const int CubeFacesColors[] ={ 2, 3, 4, 5, 6, 7 };
 	
 	// Since we see only the three faces on top, we only need to render these (3, 4 and 5)
 	for (int i = 3; i < 6; ++i)
@@ -690,9 +705,15 @@ void DrawDemo()
 
 int main()
 {
-    // Load libraries and setup screen
+    // Load libraries
     // Exit with SEVERE Error (20) if something goes wrong
-	if (!LoadLibraries() || !CreateScreen())
+	if (!LoadLibraries())
+    {
+        return 20;
+    }
+
+	// Setup screen
+	if (!CreateScreen())
     {
         return 20;
     }
@@ -705,13 +726,17 @@ int main()
 		return 20;
 	}
 
+	//
+	// Init stuff for demo if needed
+	//
+
 	// Load Copper table and init viewport
 	if (!LoadCopper())
 	{
 		return 20;
 	}
 
-	// Init stuff for demo if needed
+	// Init starfield an precalc cos and sin
 	InitDemo();
 
     // This is our main loop
