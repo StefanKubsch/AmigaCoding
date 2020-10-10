@@ -4,14 +4,14 @@
 //* Effects: Copper background, 3D starfield and filled vector cube    *
 //*														 			   *
 //* This demo will run on a stock A500 in the same speed 			   *
-//* as on a turbo-boosted A1200. It´s limited to 20fps,  			   *
+//* as on a turbo-boosted A1200. It´s limited to 25fps,  			   *
 //* which seems to be a good tradeoff.					 			   *
 //*                                                      			   *
 //* (C) 2020 by Stefan Kubsch                            			   *
 //* Project for vbcc 0.9g                                			   *
 //*                                                      			   *
 //* Compile & link with:                                 			   *
-//* vc -O4 Demo3.c -o Demo3 -lmieee -lamiga              			   *
+//* vc -O4 Demo4.c -o Demo4 -lmieee -lamiga              			   *
 //*                                                      			   *
 //* Quit with Ctrl-C                                     			   *
 //**********************************************************************
@@ -23,6 +23,8 @@
 #include <graphics/videocontrol.h>
 #include <graphics/gfxmacros.h>
 #include <intuition/intuition.h>
+#include <hardware/intbits.h>
+#include <hardware/custom.h>
 #include <devices/timer.h>
 #include <proto/timer.h>   
 #include <clib/exec_protos.h>
@@ -43,6 +45,12 @@ struct RastPort RenderPort;
 struct Library* TimerBase = NULL;
 struct MsgPort* TimerPort = NULL;
 struct timerequest* TimerIO = NULL;
+
+struct View* OldView = NULL;
+struct Custom* custom = NULL;
+UBYTE SystemADKCON = 0;
+UBYTE SystemINTENA = 0;
+UBYTE SystemDMACON = 0;
 
 // Our timing/fps limit is targeted at 20fps
 // If you want to use 50fps instead, calc 1000000 / 50
@@ -86,6 +94,8 @@ UBYTE* AreaBuffer = NULL;
 // Function declarations
 //
 
+void TakeOverSystem();
+void ReleaseSystem();
 void FPSCounter();
 void DisplayFPSCounter(const int Color, const int PosX, const int PosY);
 BOOL LoadLibraries();
@@ -107,6 +117,36 @@ void DrawDemo();
 //***************************************************************
 // Functions for screen, bitmap, FPS and library handling       *
 //***************************************************************
+
+void TakeOverSystem()
+{
+	OldView = GfxBase->ActiView;
+	
+    LoadView(NULL);
+
+    WaitTOF();
+    WaitTOF();
+
+	SystemADKCON = custom->adkconr;
+    SystemINTENA = custom->intenar;
+    SystemDMACON = custom->dmaconr;
+
+    custom->intena = INTF_INTEN | 0xFFFF;
+    custom->intreq = INTF_INTEN | 0xFFFF; 
+
+	WORD mask = INTF_PORTS | INTF_VERTB;
+
+	custom->intena = INTF_SETCLR | INTF_INTEN | mask;
+    custom->intreq = mask;
+}
+
+void ReleaseSystem()
+{
+	LoadView(OldView);
+
+	WaitTOF();
+	WaitTOF();
+}
 
 void FPSCounter()
 {
@@ -369,7 +409,8 @@ void DoubleBuffering(void(*CallFunction)())
                 // Here we call the drawing function for demo stuff!            *
                 //***************************************************************
 
-                (*CallFunction)();
+                WaitBlit();
+				(*CallFunction)();
 
 				// DisplayFPSCounter() writes on the backbuffer, too - so we need to call it before blitting
 				DisplayFPSCounter(1, 5, 10);
@@ -497,7 +538,7 @@ BOOL LoadCopper()
         { VTAG_END_CM, 0 }
     };
 
-	struct UCopList* uCopList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_CHIP | MEMF_CLEAR);
+	struct UCopList* uCopList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_PUBLIC | MEMF_CLEAR);
 
 	if (uCopList == NULL)
 	{
@@ -513,20 +554,19 @@ BOOL LoadCopper()
 	};
 
     const int NumberOfColors = sizeof(Colors) / sizeof(*Colors);
-	extern struct Custom custom;
 
 	CINIT(uCopList, NumberOfColors);
 
 	for (int i = 0; i < NumberOfColors; ++i)
 	{
 		CWAIT(uCopList, i * (Screen->Height / NumberOfColors), 0);
-		CMOVE(uCopList, custom.color[0], Colors[i]);
+		CMOVE(uCopList, custom->color[0], Colors[i]);
 	}
 
 	CEND(uCopList);
 	
 	struct ViewPort* viewPort = &Screen->ViewPort;
-	
+
 	Forbid();
 	viewPort->UCopIns = uCopList;
 	Permit();
@@ -589,7 +629,7 @@ void DrawDemo()
 
 	for (int i = 0; i < NumberOfStars; ++i)
 	{
-		Stars[i].z -= 10;
+		Stars[i].z -= 5;
 	
 		if (Stars[i].z <= 0) 
 		{
@@ -712,6 +752,9 @@ int main()
         return 20;
     }
 
+	// Gain control over the OS
+	TakeOverSystem();
+
 	// Setup screen
 	if (!CreateScreen())
     {
@@ -744,6 +787,7 @@ int main()
 	DoubleBuffering(DrawDemo);
 
 	// Cleanup everything
+	ReleaseSystem();
 	CleanupRastPort();
 	CleanupScreen();
 	CloseLibraries();
