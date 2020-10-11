@@ -31,7 +31,6 @@
 #include <clib/graphics_protos.h>
 #include <clib/intuition_protos.h>
 #include <clib/alib_protos.h>
-#include <stdlib.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -46,17 +45,19 @@ struct Library* TimerBase = NULL;
 struct MsgPort* TimerPort = NULL;
 struct timerequest* TimerIO = NULL;
 
-struct View* OldView = NULL;
 struct Custom* custom = NULL;
-UBYTE SystemADKCON = 0;
-UBYTE SystemINTENA = 0;
-UBYTE SystemDMACON = 0;
+
+// Some stuff needed for system takeover
+struct View* OldView = NULL;
+struct copinit *OldCopperInit = NULL;
+UWORD OldInt = 0;
+UWORD OldDMA = 0;
 
 // Our timing/fps limit is targeted at 20fps
 // If you want to use 50fps instead, calc 1000000 / 50
 // If you want to use 25fps instead, calc 1000000 / 25 - I guess, you got it...
 // Is used in function "DoubleBuffering()"
-const ULONG FPSLimit = 1000000 / 20;
+const ULONG FPSLimit = 1000000 / 25;
 
 // Here we define, how many bitplanes we want to use...
 // Colors / number of required Bitplanes
@@ -111,6 +112,7 @@ void DoubleBuffering(void(*CallFunction)());
 //
 
 BOOL LoadCopper();
+ULONG XorShift32();
 void InitDemo();
 void DrawDemo();
 
@@ -120,32 +122,49 @@ void DrawDemo();
 
 void TakeOverSystem()
 {
+	Forbid();
+
 	OldView = GfxBase->ActiView;
+	OldCopperInit = GfxBase->copinit;
 	
     LoadView(NULL);
 
     WaitTOF();
     WaitTOF();
 
-	SystemADKCON = custom->adkconr;
-    SystemINTENA = custom->intenar;
-    SystemDMACON = custom->dmaconr;
+	OldInt = custom->intenar;
+	OldDMA = custom->dmaconr;
 
-    custom->intena = INTF_INTEN | 0xFFFF;
-    custom->intreq = INTF_INTEN | 0xFFFF; 
+	// Disable all interrupts
+	custom->intena = 0x7FFF;
+	// Clear all pending interrupts
+	custom->intreq = 0x7FFF;
+	// Disable DMA
+	custom->dmacon = 0x7FFF;
 
-	WORD mask = INTF_PORTS | INTF_VERTB;
+	Disable();
 
-	custom->intena = INTF_SETCLR | INTF_INTEN | mask;
-    custom->intreq = mask;
+	// Set DMA
+	// custom->dmacon = 
 }
 
 void ReleaseSystem()
 {
+	Enable();
+
+	custom->dmacon = 0x7FFF;
+	custom->dmacon = OldDMA | DMAF_SETCLR | DMAF_MASTER;
+
+	custom->cop1lc = (ULONG)OldCopperInit;
+
+	custom->intena = OldInt | 0xC000;
+
 	LoadView(OldView);
 
 	WaitTOF();
 	WaitTOF();
+
+	Permit();
 }
 
 void FPSCounter()
@@ -387,20 +406,6 @@ void DoubleBuffering(void(*CallFunction)())
 
         while (Continue)
         {
-            if (!WriteOK)
-            {
-                while (!GetMsg(SafePort))
-                {
-                    if (Wait((1 << SafePort->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
-                    {
-                        Continue = FALSE;
-                        break;
-                    }
-                }
-
-                WriteOK = TRUE;
-            }
-
             if (Continue)
             {
 				RenderPort.BitMap = Buffer[CurrentBuffer]->sb_BitMap;
@@ -419,20 +424,7 @@ void DoubleBuffering(void(*CallFunction)())
                 // Ends here ;-)                                                *
                 //***************************************************************
 
-                if (!ChangeOK)
-                {
-                    while (!GetMsg(DisplayPort))
-                    {
-                        if (Wait((1 << DisplayPort->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
-                        {
-                            Continue = FALSE;
-                            break;
-                        }
-                    }
-
-                    ChangeOK = TRUE;
-					FPSCounter();
-                }
+				FPSCounter();
             }
 
             if (Continue)
@@ -441,23 +433,11 @@ void DoubleBuffering(void(*CallFunction)())
                 Buffer[CurrentBuffer]->sb_DBufInfo->dbi_SafeMessage.mn_ReplyPort = SafePort;
                 Buffer[CurrentBuffer]->sb_DBufInfo->dbi_DispMessage.mn_ReplyPort = DisplayPort;
                 
-                while (!ChangeScreenBuffer(Screen, Buffer[CurrentBuffer]))
-                {
-                    if (SetSignal(0, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
-                    {
-                        Continue = FALSE;
-                        break;
-                    }
-                }
+               	ChangeScreenBuffer(Screen, Buffer[CurrentBuffer]);
 
                 ChangeOK = FALSE;
                 WriteOK = FALSE;
                 CurrentBuffer ^= 1;
-
-                if (SetSignal(0, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
-                {
-                    Continue = FALSE;
-                }
 
 				const ULONG Signals = Wait(1 << TimerPort->mp_SigBit | SIGBREAKF_CTRL_C);
 
@@ -576,33 +556,45 @@ BOOL LoadCopper()
 	return TRUE;
 }
 
+// Simple random number generator based on XorShift
+// https://en.wikipedia.org/wiki/Xorshift
+ULONG XorShift32()
+{
+	static ULONG Seed = 7;
+
+	Seed ^= Seed << 13;
+	Seed ^= Seed >> 17;
+	return Seed ^= Seed << 5;
+}
+
 struct StarStruct
 {
     int x;
     int y;
     int z;
-} Stars[150];
+} Stars[100];
 
 float CosA;
 float SinA;
 
 void InitDemo()
 {
-    CosA = cos(0.03f);
-    SinA = sin(0.03f);
+    CosA = cos(0.04f);
+    SinA = sin(0.04f);
 
     const int NumberOfStars = sizeof(Stars) / sizeof(*Stars);
     
     for (int i = 0; i < NumberOfStars; ++i) 
     {
-        Stars[i].x = rand() % 40000 - 15000;
-        Stars[i].y = rand() % 40000 - 15000;
-        Stars[i].z = rand() % 500;
+        Stars[i].x = XorShift32() % 320 - 160;
+        Stars[i].y = XorShift32() % 256 - 128;
+        Stars[i].z = XorShift32() % 800;
     }
 }
 
 void DrawDemo()
 {
+	// Clear background
 	SetRast(&RenderPort, 0);
 
 	const int WidthMid = Screen->Width >> 1;
@@ -625,21 +617,19 @@ void DrawDemo()
 	SetWrMsk(&RenderPort, 0x01);
 	SetAPen(&RenderPort, 1);
 
-	static const int NumberOfStars = sizeof(Stars) / sizeof(*Stars);
+    const int NumberOfStars = sizeof(Stars) / sizeof(*Stars);
 
 	for (int i = 0; i < NumberOfStars; ++i)
 	{
-		Stars[i].z -= 5;
+		Stars[i].z -= 10;
 	
-		if (Stars[i].z <= 0) 
+		if (Stars[i].z <= 1) 
 		{
-			Stars[i].x = rand() % 40000 - 15000;
-			Stars[i].y = rand() % 40000 - 15000;
-			Stars[i].z = 500;
+			Stars[i].z = 800;
 		}
 		
-		const int x = WidthMid + Stars[i].x / Stars[i].z;
-		const int y = HeightMid + Stars[i].y / Stars[i].z;
+		const int x = (Stars[i].x << 8) / Stars[i].z + WidthMid;
+		const int y = (Stars[i].y << 8) / Stars[i].z + HeightMid;
 		
 		if ((unsigned int)x < Screen->Width && (unsigned int)y < Screen->Height)
 		{
