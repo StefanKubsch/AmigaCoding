@@ -47,7 +47,7 @@ struct timerequest* TimerIO = NULL;
 
 struct Custom* custom = NULL;
 
-// Some stuff needed for system takeover
+// Some stuff needed for OS takeover
 struct View* OldView = NULL;
 struct copinit *OldCopperInit = NULL;
 UWORD OldInt = 0;
@@ -95,15 +95,15 @@ UBYTE* AreaBuffer = NULL;
 // Function declarations
 //
 
-void TakeOverSystem();
-void ReleaseSystem();
+void TakeOverOS();
+void ReleaseOS();
 void FPSCounter();
 void DisplayFPSCounter(const int Color, const int PosX, const int PosY);
 BOOL LoadLibraries();
 void CloseLibraries();
 BOOL CreateScreen();
 void CleanupScreen();
-BOOL CreateRastPort(const int NumberOfVertices);
+BOOL CreateRastPort(const int NumberOfVertices, const int AreaWidth, const int AreaHeight);
 void CleanupRastPort();
 void DoubleBuffering(void(*CallFunction)());
 
@@ -111,7 +111,8 @@ void DoubleBuffering(void(*CallFunction)());
 // Demo stuff
 //
 
-BOOL LoadCopper();
+BOOL LoadCopperList();
+void CleanupCopperList();
 ULONG XorShift32();
 void InitDemo();
 void DrawDemo();
@@ -120,50 +121,67 @@ void DrawDemo();
 // Functions for screen, bitmap, FPS and library handling       *
 //***************************************************************
 
-void TakeOverSystem()
+void TakeOverOS()
 {
+	// Forbid task rescheduling
 	Forbid();
 
+	// Save current view
 	OldView = GfxBase->ActiView;
+	// Save current copperlist
 	OldCopperInit = GfxBase->copinit;
 	
-    LoadView(NULL);
+    // Reset view (clear anything)
+	LoadView(NULL);
 
     WaitTOF();
     WaitTOF();
 
+	// Save current interrupts
 	OldInt = custom->intenar;
+	// Save current DMA settings
 	OldDMA = custom->dmaconr;
 
 	// Disable all interrupts
 	custom->intena = 0x7FFF;
-	// Clear all pending interrupts
+	// Clear all pending interrupts (twice, not sure if only one works...)
+	custom->intreq = 0x7FFF;
 	custom->intreq = 0x7FFF;
 	// Disable DMA
 	custom->dmacon = 0x7FFF;
 
+	// Disable interrupt processing
 	Disable();
 
 	// Set DMA
-	// custom->dmacon = 
+	// (Currently not used in this demo...)
+	// custom->dmacon = DMAF_SETCLR | DMAF_MASTER | DMAF_RASTER | DMAF_BLITHOG | DMAF_SPRITE | DMAF_BLITTER | DMAF_COPPER;
 }
 
-void ReleaseSystem()
+void ReleaseOS()
 {
+	// Enable interrupt processing
 	Enable();
 
+	// Enable DMA and restore previously saved DMA settings
 	custom->dmacon = 0x7FFF;
 	custom->dmacon = OldDMA | DMAF_SETCLR | DMAF_MASTER;
 
+	// Restore previously saved copperlist
 	custom->cop1lc = (ULONG)OldCopperInit;
+	OldCopperInit = NULL;
 
+	// Enable interrupts
 	custom->intena = OldInt | 0xC000;
 
+	// Restore previously saved vire
 	LoadView(OldView);
+	OldView = NULL;
 
 	WaitTOF();
 	WaitTOF();
 
+	// Enable task rescheduling
 	Permit();
 }
 
@@ -290,24 +308,20 @@ void CloseLibraries()
 BOOL CreateScreen()
 {
     // Open screen with given number of bitplanes and given colors
-	struct Rectangle Rectangle = { 0, 0, 319, 255 };
-
 	Screen = OpenScreenTags(NULL,
 	    SA_DisplayID, LORES_KEY,
-		SA_Width, 320,
-		SA_Height, 256,
+		SA_Width, STDSCREENWIDTH,
+		SA_Height, STDSCREENHEIGHT,
 		SA_Pens, ~0,
 	    SA_Depth, NumberOfBitplanes,
 	    SA_ShowTitle, FALSE,
 	    SA_Type, CUSTOMSCREEN,
 	    SA_Colors, ColorTable,
-		SA_DClip, &Rectangle,
 	    TAG_DONE
     );
 
     if (!Screen)
     {
-        CleanupScreen();
         return FALSE;
     }
 
@@ -323,15 +337,14 @@ void CleanupScreen()
     }
 }
 
-BOOL CreateRastPort(const int NumberOfVertices)
+BOOL CreateRastPort(const int NumberOfVertices, const int AreaWidth, const int AreaHeight)
 {
 	InitRastPort(&RenderPort);
 
 	struct TmpRas tmpras;
 	struct AreaInfo areainfo;
 
-	// We only allocate as little memory as needed to keep the impact on blitter low...
-	const ULONG RasSize = RASSIZE(130, 130);
+	const ULONG RasSize = RASSIZE(AreaWidth, AreaHeight);
 
 	if (TmpRasBuffer = AllocVec(RasSize, MEMF_CHIP | MEMF_CLEAR))
 	{
@@ -340,6 +353,7 @@ BOOL CreateRastPort(const int NumberOfVertices)
 	}
 	else
 	{
+		CleanupRastPort();
 		return FALSE;
 	}
 
@@ -351,6 +365,7 @@ BOOL CreateRastPort(const int NumberOfVertices)
 	}
 	else
 	{
+		CleanupRastPort();
 		return FALSE;
 	}
 
@@ -359,16 +374,6 @@ BOOL CreateRastPort(const int NumberOfVertices)
 
 void CleanupRastPort()
 {
-	// Free copper list if one was used...
-	struct ViewPort* viewPort = &Screen->ViewPort;
-    
-	if (viewPort->UCopIns != NULL)
-    {
-		FreeVPortCopLists(viewPort);
-		MakeScreen(Screen);
-		RethinkDisplay();	
-	}
-
 	if (TmpRasBuffer)
 	{
 		FreeVec(TmpRasBuffer);
@@ -398,101 +403,75 @@ void DoubleBuffering(void(*CallFunction)())
 		SendIO((struct IORequest*)&TickRequest);
 	
 		// Loop control
-		BOOL TickRequestPending = TRUE;
-        BOOL WriteOK = TRUE;
-        BOOL ChangeOK = TRUE;
         BOOL Continue = TRUE;
         int CurrentBuffer = 0;
 
         while (Continue)
         {
-            if (Continue)
-            {
-				RenderPort.BitMap = Buffer[CurrentBuffer]->sb_BitMap;
-                
-                //***************************************************************
-                // Here we call the drawing function for demo stuff!            *
-                //***************************************************************
+			RenderPort.BitMap = Buffer[CurrentBuffer]->sb_BitMap;
+			
+			//***************************************************************
+			// Here we call the drawing function for demo stuff!            *
+			//***************************************************************
 
-                WaitBlit();
-				(*CallFunction)();
+			(*CallFunction)();
 
-				// DisplayFPSCounter() writes on the backbuffer, too - so we need to call it before blitting
-				DisplayFPSCounter(1, 5, 10);
+			// DisplayFPSCounter() writes on the backbuffer, too - so we need to call it before blitting
+			DisplayFPSCounter(1, 5, 10);
 
-                //***************************************************************
-                // Ends here ;-)                                                *
-                //***************************************************************
+			//***************************************************************
+			// Ends here ;-)                                                *
+			//***************************************************************
 
-				FPSCounter();
-            }
+			FPSCounter();
 
-            if (Continue)
-            {
-				WaitBlit();
-                Buffer[CurrentBuffer]->sb_DBufInfo->dbi_SafeMessage.mn_ReplyPort = SafePort;
-                Buffer[CurrentBuffer]->sb_DBufInfo->dbi_DispMessage.mn_ReplyPort = DisplayPort;
-                
-               	ChangeScreenBuffer(Screen, Buffer[CurrentBuffer]);
+			WaitBlit();
 
-                ChangeOK = FALSE;
-                WriteOK = FALSE;
-                CurrentBuffer ^= 1;
+			Buffer[CurrentBuffer]->sb_DBufInfo->dbi_SafeMessage.mn_ReplyPort = SafePort;
+			Buffer[CurrentBuffer]->sb_DBufInfo->dbi_DispMessage.mn_ReplyPort = DisplayPort;
+			
+			ChangeScreenBuffer(Screen, Buffer[CurrentBuffer]);
 
-				const ULONG Signals = Wait(1 << TimerPort->mp_SigBit | SIGBREAKF_CTRL_C);
+			CurrentBuffer ^= 1;
 
-				if (Signals & (1 << TimerPort->mp_SigBit))
-				{
-					WaitIO((struct IORequest*)&TickRequest);
+			const ULONG Signals = Wait(1 << TimerPort->mp_SigBit | SIGBREAKF_CTRL_C);
 
-					if (Continue)
-					{
-						TickRequest.tr_time.tv_secs = 0;
-						TickRequest.tr_time.tv_micro = FPSLimit;
-						SendIO((struct IORequest*)&TickRequest);
-						WriteOK = TRUE;
-					}
-					else
-					{
-						TickRequestPending = FALSE;
-					}
-				}
+			if (Signals & (1 << TimerPort->mp_SigBit))
+			{
+				WaitIO((struct IORequest*)&TickRequest);
+				TickRequest.tr_time.tv_secs = 0;
+				TickRequest.tr_time.tv_micro = FPSLimit;
+				SendIO((struct IORequest*)&TickRequest);
+			}
 
-				if (Signals & SIGBREAKF_CTRL_C)
-				{
-					Continue = FALSE;
-				}
+			if (Signals & SIGBREAKF_CTRL_C)
+			{
+				Continue = FALSE;
+			}
 
-				if (!Continue && TickRequestPending)
-				{
-					AbortIO((struct IORequest*)&TickRequest);
-				}
-            }
+			if (!Continue)
+			{
+				AbortIO((struct IORequest*)&TickRequest);
+			}
         }
 
         // After breaking the loop, we have to make sure that there are no more signals to process.
 		// Without these last two checks, a crash is very possible...
 		
-		if (!WriteOK)
-        {
-            while (!GetMsg (SafePort))
-            {
-                if (Wait ((1 << SafePort->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
-                {
-                    break;
-                }
-            }
-        }
+		while (!GetMsg(SafePort))
+		{
+			if (Wait ((1 << SafePort->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
+			{
+				break;
+			}
+		}
 
-        if (!ChangeOK)
-        {
-            while (!GetMsg (DisplayPort))
-            {
-                if (Wait ((1 << DisplayPort->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
-                {
-                    break;
-                }
-            }
+		while (!GetMsg(DisplayPort))
+		{
+			if (Wait((1 << DisplayPort->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
+			{
+				break;
+			}
         }
     }
 
@@ -510,15 +489,9 @@ void DoubleBuffering(void(*CallFunction)())
 // Demo stuff                                                   *
 //***************************************************************
 
-BOOL LoadCopper()
+BOOL LoadCopperList()
 {
-	struct TagItem uCopTags[] =
-    {
-    	{ VTAG_USERCLIP_SET, 0 },
-        { VTAG_END_CM, 0 }
-    };
-
-	struct UCopList* uCopList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_PUBLIC | MEMF_CLEAR);
+	struct UCopList* uCopList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_CHIP | MEMF_CLEAR);
 
 	if (uCopList == NULL)
 	{
@@ -545,15 +518,18 @@ BOOL LoadCopper()
 
 	CEND(uCopList);
 	
-	struct ViewPort* viewPort = &Screen->ViewPort;
-
-	Forbid();
-	viewPort->UCopIns = uCopList;
-	Permit();
-	VideoControl(viewPort->ColorMap, uCopTags );
+	Screen->ViewPort.UCopIns = uCopList;
 	RethinkDisplay();
 	
 	return TRUE;
+}
+
+void CleanupCopperList()
+{
+	if (Screen->ViewPort.UCopIns != NULL)
+    {
+		FreeVPortCopLists(&Screen->ViewPort);
+	}
 }
 
 // Simple random number generator based on XorShift
@@ -604,7 +580,7 @@ void DrawDemo()
 	// Starfield
 	//
 
-	// Since we use only bitplane 0 here, we enable only bitplane 0
+	// Since we use only bitplane 0 for the starfield, we enable only bitplane 0
 	// Bitmap.Planes[0] = Bit 0
 	// Bitmap.Planes[1] = Bit 1
 	// ...
@@ -743,7 +719,7 @@ int main()
     }
 
 	// Gain control over the OS
-	TakeOverSystem();
+	TakeOverOS();
 
 	// Setup screen
 	if (!CreateScreen())
@@ -754,7 +730,8 @@ int main()
     // Init the RenderPort (=Rastport)
 	// We need to init some buffers for Area operations
 	// Since our demo part draw some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
-	if (!CreateRastPort(5))
+	// Keep the used area as small as possible (we can go with 130x130 here...)
+	if (!CreateRastPort(5, 130, 130))
 	{
 		return 20;
 	}
@@ -764,12 +741,12 @@ int main()
 	//
 
 	// Load Copper table and init viewport
-	if (!LoadCopper())
+	if (!LoadCopperList())
 	{
 		return 20;
 	}
 
-	// Init starfield an precalc cos and sin
+	// Init starfield an precalc cos and sin for vector cube
 	InitDemo();
 
     // This is our main loop
@@ -777,7 +754,8 @@ int main()
 	DoubleBuffering(DrawDemo);
 
 	// Cleanup everything
-	ReleaseSystem();
+	ReleaseOS();
+	CleanupCopperList();
 	CleanupRastPort();
 	CleanupScreen();
 	CloseLibraries();
