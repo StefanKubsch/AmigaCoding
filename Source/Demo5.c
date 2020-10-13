@@ -3,7 +3,7 @@
 //*														 			   *
 //* Effects: Copper background, 3D starfield and filled vector cube    *
 //*														 			   *
-//* This demo will run on a stock A1200 with 25fps (as on an A500)     *
+//* This demo will run on a stock A1200 with 20fps (as on an A500)     *
 //*                                                      			   *
 //* (C) 2020 by Stefan Kubsch                            			   *
 //* Project for vbcc 0.9g                                			   *
@@ -52,6 +52,12 @@ BOOL FastCPU = FALSE;
 // Some stuff needed for OS takeover
 struct View* OldView = NULL;
 struct copinit *OldCopperInit = NULL;
+
+// Our timing/fps limit is targeted at 20fps
+// If you want to use 50fps instead, calc 1000000 / 50
+// If you want to use 20fps instead, calc 1000000 / 20 - I guess, you got it...
+// Is used in function "DoubleBuffering()"
+const ULONG FPSLimit = 1000000 / 20;
 
 // Here we define, how many bitplanes we want to use...
 // Colors / number of required Bitplanes
@@ -376,6 +382,13 @@ void DoubleBuffering(void(*CallFunction)())
     {
 		volatile struct CIA *ciaa = (struct CIA *)0xBFE001;
 
+		// Start timer
+		struct timerequest TickRequest = *TimerIO;
+		TickRequest.tr_node.io_Command = TR_ADDREQUEST;
+		TickRequest.tr_time.tv_secs = 0;
+		TickRequest.tr_time.tv_micro = 0;
+		SendIO((struct IORequest*)&TickRequest);
+	
 		// Loop control
         int CurrentBuffer = 0;
 
@@ -399,10 +412,20 @@ void DoubleBuffering(void(*CallFunction)())
 
 			WaitBlit();
 			ChangeScreenBuffer(Screen, Buffer[CurrentBuffer]);
-			WaitTOF();
 			CurrentBuffer ^= 1;
 			FPSCounter();
+
+			if (Wait(1 << TimerPort->mp_SigBit) & (1 << TimerPort->mp_SigBit))
+			{
+				WaitIO((struct IORequest*)&TickRequest);
+				TickRequest.tr_time.tv_secs = 0;
+				TickRequest.tr_time.tv_micro = FPSLimit;
+				SendIO((struct IORequest*)&TickRequest);
+			}
         }
+
+        // After breaking the loop, we have to make sure that there are no more TickRequests to process
+		AbortIO((struct IORequest*)&TickRequest);
 
 	    FreeScreenBuffer(Screen, Buffer[0]);
 		Buffer[0] = NULL;
