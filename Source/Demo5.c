@@ -1,7 +1,8 @@
 //**********************************************************************
 //* Simple demo for Amiga with at least OS 3.0           			   *
 //*														 			   *
-//* Effects: Copper background, 3D starfield and filled vector cube    *
+//* Effects: Copper background, 3D starfield, filled vector cube       *
+//* and scroller													   *
 //*														 			   *
 //* This demo will run on a stock A1200 with 20fps (as on an A500)     *
 //*                                                      			   *
@@ -86,8 +87,6 @@ const struct ColorSpec ColorTable[] =
 
 // Global variable for FPS Counter
 WORD FPS = 0;
-
-struct BitMap* FontBitMap;
 
 // Some needed buffers for Area operations
 UBYTE* TmpRasBuffer = NULL;
@@ -407,7 +406,6 @@ void DoubleBuffering(void(*CallFunction)())
 
 			// DisplayStatistics() writes on the backbuffer, too - so we need to call it before blitting
 			DisplayStatistics(1, 5, 10);
-			BltBitMap(FontBitMap, 0, 0, RenderPort.BitMap, 40, 240, 200, 10, 0xC0, 0x01, NULL);
 
 			//***************************************************************
 			// Ends here ;-)                                                *
@@ -507,10 +505,19 @@ int NumberOfStars;
 float CosA;
 float SinA;
 
-short aSin[360];
-UBYTE text[] = " This is a simple sine scroller, have fun ";
-UBYTE characters[] = " !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
-UBYTE* text_pointer = text;
+struct BitMap* ScrollFontBitMap;
+
+const char ScrollText[] = "...HELLO FOLKS, THIS IS JUST A LITTLE SCROLLER...ENJOY THE DEMO...";
+const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789?!().,";
+const int ScrollCharWidth = 8;
+const int ScrollCharHeight = 14;
+const int ScrollSpeed = 3;
+const int ScrollFontSpacing = 1;
+const int ScrollPosY = 240;
+int ScrollTextLength = 0;
+int ScrollCharMapLength = 0;
+int ScrollLength = 0;
+int ScrollX = 0;
 
 BOOL InitDemo()
 {
@@ -552,22 +559,19 @@ BOOL InitDemo()
 	// Sine scoller
 	//
 
-	FontBitMap = AllocBitMap(1200, 10, 3, 0, &Screen->BitMap);
-	RenderPort.BitMap = FontBitMap;
+	ScrollX = Screen->Width;
+	ScrollTextLength = strlen(ScrollText);
+	ScrollCharMapLength = strlen(ScrollCharMap);
+	ScrollLength = ScrollTextLength * (ScrollCharWidth + ScrollFontSpacing);
+
+	ScrollFontBitMap = AllocBitMap(ScrollCharMapLength * ScrollCharWidth, ScrollCharHeight, 1, BMF_DISPLAYABLE | BMF_INTERLEAVED, &Screen->BitMap);
+	RenderPort.BitMap = ScrollFontBitMap;
 	
 	SetRast(&RenderPort, 0);
 	SetAPen(&RenderPort, 1);
-	Move(&RenderPort, 0, 7);
-	Text(&RenderPort, characters, strlen(characters));
+	Move(&RenderPort, 0, 6);
+	Text(&RenderPort, ScrollCharMap, strlen(ScrollCharMap));
 
-	float rad = 0.0f;
-
-	for (int i = 0; i < 360; i++)
-    {
-      rad =  (float)i * 0.0174532f; 
-      aSin[i] = (Screen->Width >> 1) + (short)((sin(rad) * 45.0f));
-    }
-  
 	return TRUE;
 }
 
@@ -578,9 +582,9 @@ void CleanupDemo()
 		FreeVec(Stars);
 	}
 
-	if (FontBitMap)
+	if (ScrollFontBitMap)
 	{
-		FreeBitMap(FontBitMap);
+		FreeBitMap(ScrollFontBitMap);
 	}
 }
 
@@ -629,6 +633,40 @@ void DrawDemo()
 
 	// Re-enable all bitplanes
 	SetWrMsk(&RenderPort, -1);
+
+	//
+	// Scroller
+	//
+
+	for (int i = 0, XPos = ScrollX; i < ScrollTextLength; ++i)
+	{
+		for (int j = 0, CharX = 0; j < ScrollCharMapLength; ++j)
+		{
+			if (*(ScrollText + i) == *(ScrollCharMap + j))
+			{
+				for (int YSine = (int)(sin(0.03f * XPos) * 10.0f), x1 = 0, x = CharX; x < CharX + ScrollCharWidth; ++x1, ++x)
+				{
+					if ((unsigned int)XPos + x1 < Screen->Width)
+					{
+						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, XPos + x1, ScrollPosY + YSine, 1, ScrollCharHeight, 0xC0, 0x01, NULL);
+					}
+				}
+
+				break;
+			}
+
+			CharX += ScrollCharWidth;
+		}
+
+		XPos += ScrollCharWidth + ScrollFontSpacing;
+	}
+
+	ScrollX -= ScrollSpeed;
+
+	if (ScrollX < -ScrollLength)
+	{
+		ScrollX = Screen->Width;
+	}
 
 	//
 	// Vector Cube
