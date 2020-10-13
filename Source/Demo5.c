@@ -46,7 +46,7 @@ struct timerequest* TimerIO = NULL;
 
 struct Custom* custom = NULL;
 
-// Variable for keeping the state if a 68020 cpu or higher was found...
+// Variable for keeping the state if a 68020 CPU or better was found...
 BOOL FastCPU = FALSE;
 
 // Some stuff needed for OS takeover
@@ -55,7 +55,7 @@ struct copinit *OldCopperInit = NULL;
 
 // Our timing/fps limit is targeted at 20fps
 // If you want to use 50fps instead, calc 1000000 / 50
-// If you want to use 20fps instead, calc 1000000 / 20 - I guess, you got it...
+// If you want to use 25fps instead, calc 1000000 / 25 - I guess, you got it...
 // Is used in function "DoubleBuffering()"
 const ULONG FPSLimit = 1000000 / 20;
 
@@ -86,6 +86,8 @@ const struct ColorSpec ColorTable[] =
 
 // Global variable for FPS Counter
 WORD FPS = 0;
+
+struct BitMap* FontBitMap;
 
 // Some needed buffers for Area operations
 UBYTE* TmpRasBuffer = NULL;
@@ -405,6 +407,7 @@ void DoubleBuffering(void(*CallFunction)())
 
 			// DisplayStatistics() writes on the backbuffer, too - so we need to call it before blitting
 			DisplayStatistics(1, 5, 10);
+			BltBitMap(FontBitMap, 0, 0, RenderPort.BitMap, 40, 240, 200, 10, 0xC0, 0x01, NULL);
 
 			//***************************************************************
 			// Ends here ;-)                                                *
@@ -504,10 +507,23 @@ int NumberOfStars;
 float CosA;
 float SinA;
 
+short aSin[360];
+UBYTE text[] = " This is a simple sine scroller, have fun ";
+UBYTE characters[] = " !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
+UBYTE* text_pointer = text;
+
 BOOL InitDemo()
 {
-    CosA = cos(0.04f);
+    //
+	// Vector cube
+	//
+
+	CosA = cos(0.04f);
     SinA = sin(0.04f);
+
+	//
+	// 3D starfield
+	//
 
 	// Use more stars, if a fast CPU is available...
 	NumberOfStars = FastCPU ? 200 : 100;
@@ -532,6 +548,26 @@ BOOL InitDemo()
         Stars[i].z = XorShift32() % 800;
     }
 
+	//
+	// Sine scoller
+	//
+
+	FontBitMap = AllocBitMap(1200, 10, 3, 0, &Screen->BitMap);
+	RenderPort.BitMap = FontBitMap;
+	
+	SetRast(&RenderPort, 0);
+	SetAPen(&RenderPort, 1);
+	Move(&RenderPort, 0, 7);
+	Text(&RenderPort, characters, strlen(characters));
+
+	float rad = 0.0f;
+
+	for (int i = 0; i < 360; i++)
+    {
+      rad =  (float)i * 0.0174532f; 
+      aSin[i] = (Screen->Width >> 1) + (short)((sin(rad) * 45.0f));
+    }
+  
 	return TRUE;
 }
 
@@ -540,6 +576,11 @@ void CleanupDemo()
 	if (Stars)
 	{
 		FreeVec(Stars);
+	}
+
+	if (FontBitMap)
+	{
+		FreeBitMap(FontBitMap);
 	}
 }
 
@@ -559,7 +600,7 @@ void DrawDemo()
 	// Bitmap.Planes[0] = Bit 0
 	// Bitmap.Planes[1] = Bit 1
 	// ...
-	// To enable bitplane 0 only set the mask as following:
+	// To enable bitplane 0 only set the mask as follows:
 	// 00000001 = Hex 0x01
 	//
 	// Another example: Enable only bitplanes 1 and 2:
@@ -691,6 +732,8 @@ int main()
         return 20;
     }
 
+	// Check which CPU is used in your Amiga (or UAE...)
+	// Depening on this, we use more or less stars (or effects in the near future...)
 	CheckCPU();
 
 	// Gain control over the OS
