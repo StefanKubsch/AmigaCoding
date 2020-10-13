@@ -3,9 +3,7 @@
 //*														 			   *
 //* Effects: Copper background, 3D starfield and filled vector cube    *
 //*														 			   *
-//* This demo will run on a stock A500 in the same speed 			   *
-//* as on a turbo-boosted A1200. It´s limited to 25fps,  			   *
-//* which seems to be a good tradeoff.					 			   *
+//* This demo will run on a stock A1200 with 25fps	     			   *
 //*                                                      			   *
 //* (C) 2020 by Stefan Kubsch                            			   *
 //* Project for vbcc 0.9g                                			   *
@@ -13,7 +11,7 @@
 //* Compile & link with:                                 			   *
 //* vc -O4 Demo4.c -o Demo4 -lmieee -lamiga              			   *
 //*                                                      			   *
-//* Quit with Ctrl-C                                     			   *
+//* Quit with mouse click                                  			   *
 //**********************************************************************
 
 #include <exec/exec.h>
@@ -25,6 +23,7 @@
 #include <intuition/intuition.h>
 #include <hardware/intbits.h>
 #include <hardware/custom.h>
+#include <hardware/cia.h>
 #include <devices/timer.h>
 #include <proto/timer.h>   
 #include <clib/exec_protos.h>
@@ -50,12 +49,10 @@ struct Custom* custom = NULL;
 // Some stuff needed for OS takeover
 struct View* OldView = NULL;
 struct copinit *OldCopperInit = NULL;
-UWORD OldInt = 0;
-UWORD OldDMA = 0;
 
-// Our timing/fps limit is targeted at 20fps
+// Our timing/fps limit is targeted at 25fps
 // If you want to use 50fps instead, calc 1000000 / 50
-// If you want to use 25fps instead, calc 1000000 / 25 - I guess, you got it...
+// If you want to use 20fps instead, calc 1000000 / 20 - I guess, you got it...
 // Is used in function "DoubleBuffering()"
 const ULONG FPSLimit = 1000000 / 25;
 
@@ -123,9 +120,6 @@ void DrawDemo();
 
 void TakeOverOS()
 {
-	// Forbid task rescheduling
-	Forbid();
-
 	// Save current view
 	OldView = GfxBase->ActiView;
 	// Save current copperlist
@@ -137,42 +131,15 @@ void TakeOverOS()
     WaitTOF();
     WaitTOF();
 
-	// Save current interrupts
-	OldInt = custom->intenar;
-	// Save current DMA settings
-	OldDMA = custom->dmaconr;
-
-	// Disable all interrupts
-	custom->intena = 0x7FFF;
-	// Clear all pending interrupts (twice, not sure if only one works...)
-	custom->intreq = 0x7FFF;
-	custom->intreq = 0x7FFF;
-	// Disable DMA
-	custom->dmacon = 0x7FFF;
-
-	// Disable interrupt processing
-	Disable();
-
-	// Set DMA
-	// (Currently not used in this demo...)
-	// custom->dmacon = DMAF_SETCLR | DMAF_MASTER | DMAF_RASTER | DMAF_BLITHOG | DMAF_SPRITE | DMAF_BLITTER | DMAF_COPPER;
+	// Set task priority
+	SetTaskPri(FindTask(NULL), 100);
 }
 
 void ReleaseOS()
 {
-	// Enable interrupt processing
-	Enable();
-
-	// Enable DMA and restore previously saved DMA settings
-	custom->dmacon = 0x7FFF;
-	custom->dmacon = OldDMA | DMAF_SETCLR | DMAF_MASTER;
-
 	// Restore previously saved copperlist
 	custom->cop1lc = (ULONG)OldCopperInit;
 	OldCopperInit = NULL;
-
-	// Enable interrupts
-	custom->intena = OldInt | 0xC000;
 
 	// Restore previously saved vire
 	LoadView(OldView);
@@ -180,9 +147,6 @@ void ReleaseOS()
 
 	WaitTOF();
 	WaitTOF();
-
-	// Enable task rescheduling
-	Permit();
 }
 
 void FPSCounter()
@@ -341,15 +305,15 @@ BOOL CreateRastPort(const int NumberOfVertices, const int AreaWidth, const int A
 {
 	InitRastPort(&RenderPort);
 
-	struct TmpRas tmpras;
-	struct AreaInfo areainfo;
+	struct TmpRas tmpRas;
+	struct AreaInfo areaInfo;
 
 	const ULONG RasSize = RASSIZE(AreaWidth, AreaHeight);
 
 	if (TmpRasBuffer = AllocVec(RasSize, MEMF_CHIP | MEMF_CLEAR))
 	{
-		InitTmpRas(&tmpras, TmpRasBuffer, RasSize);
-		RenderPort.TmpRas = &tmpras;
+		InitTmpRas(&tmpRas, TmpRasBuffer, RasSize);
+		RenderPort.TmpRas = &tmpRas;
 	}
 	else
 	{
@@ -358,10 +322,10 @@ BOOL CreateRastPort(const int NumberOfVertices, const int AreaWidth, const int A
 	}
 
 	// We need to allocate 5bytes per vertex
-	if (AreaBuffer = AllocVec(5 * NumberOfVertices, MEMF_CLEAR))
+	if (AreaBuffer = AllocVec(5 * NumberOfVertices, MEMF_CHIP | MEMF_CLEAR))
 	{
-		InitArea(&areainfo, AreaBuffer, NumberOfVertices);
-		RenderPort.AreaInfo = &areainfo;
+		InitArea(&areaInfo, AreaBuffer, NumberOfVertices);
+		RenderPort.AreaInfo = &areaInfo;
 	}
 	else
 	{
@@ -390,11 +354,11 @@ void CleanupRastPort()
 void DoubleBuffering(void(*CallFunction)())
 {
     struct ScreenBuffer* Buffer[2] = { AllocScreenBuffer(Screen, NULL, SB_SCREEN_BITMAP), AllocScreenBuffer(Screen, NULL, SB_COPY_BITMAP) };
-    struct MsgPort* DisplayPort = CreateMsgPort();
-    struct MsgPort* SafePort = CreateMsgPort();
 
-    if (Buffer[0] && Buffer[1] && DisplayPort && SafePort)
+    if (Buffer[0] && Buffer[1])
     {
+		volatile struct CIA *ciaa = (struct CIA *)0xBFE001;
+
 		// Start timer
 		struct timerequest TickRequest = *TimerIO;
 		TickRequest.tr_node.io_Command = TR_ADDREQUEST;
@@ -403,10 +367,10 @@ void DoubleBuffering(void(*CallFunction)())
 		SendIO((struct IORequest*)&TickRequest);
 	
 		// Loop control
-        BOOL Continue = TRUE;
         int CurrentBuffer = 0;
 
-        while (Continue)
+        // Loop until mouse button is pressed...
+		while (ciaa->ciapra & CIAF_GAMEPORT0)
         {
 			RenderPort.BitMap = Buffer[CurrentBuffer]->sb_BitMap;
 			
@@ -423,66 +387,28 @@ void DoubleBuffering(void(*CallFunction)())
 			// Ends here ;-)                                                *
 			//***************************************************************
 
+			WaitBlit();
+			ChangeScreenBuffer(Screen, Buffer[CurrentBuffer]);
+			CurrentBuffer ^= 1;
 			FPSCounter();
 
-			WaitBlit();
-
-			Buffer[CurrentBuffer]->sb_DBufInfo->dbi_SafeMessage.mn_ReplyPort = SafePort;
-			Buffer[CurrentBuffer]->sb_DBufInfo->dbi_DispMessage.mn_ReplyPort = DisplayPort;
-			
-			ChangeScreenBuffer(Screen, Buffer[CurrentBuffer]);
-
-			CurrentBuffer ^= 1;
-
-			const ULONG Signals = Wait(1 << TimerPort->mp_SigBit | SIGBREAKF_CTRL_C);
-
-			if (Signals & (1 << TimerPort->mp_SigBit))
+			if (Wait(1 << TimerPort->mp_SigBit) & (1 << TimerPort->mp_SigBit))
 			{
 				WaitIO((struct IORequest*)&TickRequest);
 				TickRequest.tr_time.tv_secs = 0;
 				TickRequest.tr_time.tv_micro = FPSLimit;
 				SendIO((struct IORequest*)&TickRequest);
 			}
-
-			if (Signals & SIGBREAKF_CTRL_C)
-			{
-				Continue = FALSE;
-			}
-
-			if (!Continue)
-			{
-				AbortIO((struct IORequest*)&TickRequest);
-			}
         }
 
-        // After breaking the loop, we have to make sure that there are no more signals to process.
-		// Without these last two checks, a crash is very possible...
-		
-		while (!GetMsg(SafePort))
-		{
-			if (Wait ((1 << SafePort->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
-			{
-				break;
-			}
-		}
+        // After breaking the loop, we have to make sure that there are no more TickRequests to process
+		AbortIO((struct IORequest*)&TickRequest);
 
-		while (!GetMsg(DisplayPort))
-		{
-			if (Wait((1 << DisplayPort->mp_SigBit) | SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
-			{
-				break;
-			}
-        }
+	    FreeScreenBuffer(Screen, Buffer[0]);
+		Buffer[0] = NULL;
+		FreeScreenBuffer(Screen, Buffer[1]);
+		Buffer[1] = NULL;
     }
-
-    FreeScreenBuffer(Screen, Buffer[0]);
-	Buffer[0] = NULL;
-    FreeScreenBuffer(Screen, Buffer[1]);
-	Buffer[1] = NULL;
-    DeleteMsgPort(SafePort);
-	SafePort = NULL;
-    DeleteMsgPort(DisplayPort);
-	DisplayPort = NULL;
 }
 
 //***************************************************************
@@ -491,7 +417,7 @@ void DoubleBuffering(void(*CallFunction)())
 
 BOOL LoadCopperList()
 {
-	struct UCopList* uCopList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_CHIP | MEMF_CLEAR);
+	struct UCopList* uCopList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_ANY | MEMF_CLEAR);
 
 	if (uCopList == NULL)
 	{
