@@ -2,9 +2,8 @@
 //* Simple demo for Amiga with at least OS 3.0           			   *
 //*														 			   *
 //* Effects: Copper background, 3D starfield, filled vector cube       *
-//* and scroller													   *
+//* and a sine scroller												   *
 //*														 			   *
-//* This demo will run on a stock A1200 with 20fps (as on an A500)     *
 //*                                                      			   *
 //* (C) 2020 by Stefan Kubsch                            			   *
 //* Project for vbcc 0.9g                                			   *
@@ -19,24 +18,28 @@
 #include <dos/dos.h>
 #include <graphics/gfxbase.h>
 #include <graphics/copper.h>
-#include <graphics/videocontrol.h>
 #include <graphics/gfxmacros.h>
+#include <graphics/text.h>
 #include <intuition/intuition.h>
 #include <hardware/intbits.h>
 #include <hardware/custom.h>
 #include <hardware/cia.h>
 #include <devices/timer.h>
-#include <proto/timer.h>   
+#include <proto/timer.h>  
+#include <proto/diskfont.h> 
 #include <clib/exec_protos.h>
 #include <clib/graphics_protos.h>
 #include <clib/intuition_protos.h>
+#include <clib/diskfont_protos.h>
 #include <clib/alib_protos.h>
+#include <diskfont/diskfont.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
 
 struct GfxBase* GfxBase = NULL;
 struct IntuitionBase* IntuitionBase = NULL;
+struct DiskFontBase* DiskfontBase = NULL;
 
 struct Screen* Screen = NULL;
 struct RastPort RenderPort;
@@ -46,9 +49,6 @@ struct MsgPort* TimerPort = NULL;
 struct timerequest* TimerIO = NULL;
 
 struct Custom* custom = NULL;
-
-// Variable for keeping the state if a 68020 CPU or better was found...
-BOOL FastCPU = FALSE;
 
 // Some stuff needed for OS takeover
 struct View* OldView = NULL;
@@ -85,8 +85,11 @@ const struct ColorSpec ColorTable[] =
 	{-1, 0, 0, 0} 
 };
 
-// Global variable for FPS Counter
+// Some global variables for our statistics...
 WORD FPS = 0;
+BOOL FastCPUFlag;
+char* CPUText;
+int CPUTextLength = 0;
 
 // Some needed buffers for Area operations
 UBYTE* TmpRasBuffer = NULL;
@@ -194,11 +197,8 @@ void DisplayStatistics(const int Color, const int PosX, const int PosY)
 	Move(&RenderPort, PosX, PosY);
 	Text(&RenderPort, FPSStr, strlen(FPSStr));
 
-	const UBYTE FastCPUStr[] = "CPU:68020 or higher";
-	const UBYTE SlowCPUStr[] = "CPU:68000 or 68010";
-
 	Move(&RenderPort, PosX, PosY + 10);
-	FastCPU ? Text(&RenderPort, FastCPUStr, strlen(FastCPUStr)) : Text(&RenderPort, SlowCPUStr, strlen(SlowCPUStr));
+	Text(&RenderPort, CPUText, CPUTextLength);
 }
 
 void CheckCPU()
@@ -206,11 +206,19 @@ void CheckCPU()
 	struct ExecBase *SysBase = *((struct ExecBase**)4L);
 
 	// Check if CPU is a 68020, 030, 040, 060 (this is the "0x80")
-	// If yes, we can calculate some more stuff...
+	// If yes, we can calculate more stuff...
 	if (SysBase->AttnFlags & AFF_68020 || SysBase->AttnFlags & AFF_68030 || SysBase->AttnFlags & AFF_68040 || SysBase->AttnFlags & 0x80)
 	{
-		FastCPU = TRUE;
+		FastCPUFlag = TRUE;
+		CPUText = "CPU:68020 or higher";
 	}
+	else
+	{
+		FastCPUFlag = FALSE;
+		CPUText = "CPU:68000 or 68010";
+	}
+
+	CPUTextLength = strlen(CPUText);
 }
 
 BOOL LoadLibraries()
@@ -257,6 +265,11 @@ BOOL LoadLibraries()
         return FALSE;
     }
 
+	if (!(DiskfontBase = (struct DiskFontBase*)OpenLibrary("diskfont.library", 39)))
+	{
+        CloseLibraries();
+        return FALSE;
+	}
     return TRUE;
 }
 
@@ -279,6 +292,12 @@ void CloseLibraries()
 		DeletePort(TimerPort);
 		TimerPort = NULL;
 	}
+
+	if (DiskfontBase)
+    {
+       CloseLibrary((struct Library*)DiskfontBase);
+	   DiskfontBase = NULL;
+    }     
 
     if (IntuitionBase)
     {
@@ -423,6 +442,8 @@ void DoubleBuffering(void(*CallFunction)())
 				TickRequest.tr_time.tv_micro = FPSLimit;
 				SendIO((struct IORequest*)&TickRequest);
 			}
+
+			WaitTOF();
         }
 
         // After breaking the loop, we have to make sure that there are no more TickRequests to process
@@ -502,18 +523,40 @@ struct StarStruct
 
 int NumberOfStars;
 
-float CosA;
-float SinA;
+struct IntPointStruct
+{
+	int x;
+	int y;
+};
+
+struct OrderPair
+{
+	int first;
+	float second;
+};
+
+struct CubeFaceStruct
+{
+	int p0;
+	int p1;
+	int p2;
+	int p3;
+} CubeFaces[] = { {0,1,3,2}, {4,0,2,6}, {5,4,6,7}, {1,5,7,3}, {0,1,5,4}, {2,3,7,6} };
+
+struct CubeStruct
+{
+	struct OrderPair Order[6];
+	struct IntPointStruct Cube[8];
+} CubePreCalc[90];
+
+int VCCount = 0;
 
 struct BitMap* ScrollFontBitMap;
-
-const char ScrollText[] = "...HELLO FOLKS, THIS IS JUST A LITTLE SCROLLER...ENJOY THE DEMO...";
+const char ScrollText[] = "...HELLO FOLKS...THIS IS JUST A LITTLE SCROLLER...ENJOY THE DEMO...";
 const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789?!().,";
-const int ScrollCharWidth = 8;
-const int ScrollCharHeight = 14;
-const int ScrollSpeed = 3;
-const int ScrollFontSpacing = 1;
-const int ScrollPosY = 240;
+const int ScrollCharWidth = 16;
+const int ScrollCharHeight = 28;
+int YSine[360];
 int ScrollTextLength = 0;
 int ScrollCharMapLength = 0;
 int ScrollLength = 0;
@@ -521,19 +564,73 @@ int ScrollX = 0;
 
 BOOL InitDemo()
 {
-    //
-	// Vector cube
+	//
+	// Init Vector cube
 	//
 
-	CosA = cos(0.04f);
-    SinA = sin(0.04f);
+	struct VertexStruct
+	{
+		float x;
+		float y;
+		float z;
+	} CubeDef[8] = { { -50.0f, -50.0f, -50.0f }, { -50.0f, -50.0f, 50.0f }, { -50.0f, 50.0f, -50.0f }, { -50.0f, 50.0f, 50.0f }, { 50.0f, -50.0f, -50.0f }, { 50.0f, -50.0f, 50.0f }, { 50.0f, 50.0f, -50.0f }, { 50.0f, 50.0f, 50.0f } };
+
+	const float CosA = cos(0.04f);
+    const float SinA = sin(0.04f);
+
+	for (int Pre = 0; Pre < 90; ++Pre)
+	{
+		for (int i = 0; i < 8; ++i)
+		{
+			// x - rotation
+			const float y = CubeDef[i].y;
+			CubeDef[i].y = y * CosA - CubeDef[i].z * SinA;
+
+			// y - rotation
+			const float z = CubeDef[i].z * CosA + y * SinA;
+			CubeDef[i].z = z * CosA + CubeDef[i].x * SinA;
+
+			// z - rotation
+			const float x = CubeDef[i].x * CosA - z * SinA;
+			CubeDef[i].x = x * CosA - CubeDef[i].y * SinA;
+			CubeDef[i].y = CubeDef[i].y * CosA + x * SinA;
+
+			// 2D projection & translate
+			CubePreCalc[Pre].Cube[i].x = (Screen->Width >> 1) + (int)CubeDef[i].x;
+			CubePreCalc[Pre].Cube[i].y = (Screen->Height >> 1) + (int)CubeDef[i].y;
+		}
+
+		// selection-sort of depth/faces
+		for (int i = 0; i < 6; ++i)
+		{
+			CubePreCalc[Pre].Order[i].second = (CubeDef[CubeFaces[i].p0].z + CubeDef[CubeFaces[i].p1].z + CubeDef[CubeFaces[i].p2].z + CubeDef[CubeFaces[i].p3].z) * 0.25f;
+			CubePreCalc[Pre].Order[i].first = i;
+		}
+
+		for (int i = 0; i < 5; ++i)
+		{
+			int Min = i;
+
+			for (int j = i + 1; j <= 5; ++j)
+			{
+				if (CubePreCalc[Pre].Order[j].second < CubePreCalc[Pre].Order[Min].second)
+				{
+					Min = j;
+				}
+			}
+			
+			struct OrderPair Temp = CubePreCalc[Pre].Order[Min];
+			CubePreCalc[Pre].Order[Min] = CubePreCalc[Pre].Order[i];
+			CubePreCalc[Pre].Order[i] = Temp;
+		}
+	}
 
 	//
-	// 3D starfield
+	// Init 3D starfield
 	//
 
 	// Use more stars, if a fast CPU is available...
-	NumberOfStars = FastCPU ? 200 : 100;
+	NumberOfStars = FastCPUFlag ? 200 : 50;
 
 	Stars = AllocVec(sizeof(struct StarStruct) * NumberOfStars, MEMF_ANY);
 
@@ -556,22 +653,57 @@ BOOL InitDemo()
     }
 
 	//
-	// Sine scoller
+	// Init sine scoller
 	//
+
+	for (int i = 0; i < 360; ++i)
+	{
+		YSine[i] = (int)(sin(0.05f * i) * 10.0f);
+	}
 
 	ScrollX = Screen->Width;
 	ScrollTextLength = strlen(ScrollText);
 	ScrollCharMapLength = strlen(ScrollCharMap);
-	ScrollLength = ScrollTextLength * (ScrollCharWidth + ScrollFontSpacing);
+	ScrollLength = ScrollTextLength * ScrollCharWidth;
 
-	ScrollFontBitMap = AllocBitMap(ScrollCharMapLength * ScrollCharWidth, ScrollCharHeight, 1, BMF_DISPLAYABLE | BMF_INTERLEAVED, &Screen->BitMap);
+	ScrollFontBitMap = AllocBitMap(ScrollCharMapLength * ScrollCharWidth, ScrollCharHeight + 6, 1, BMF_DISPLAYABLE | BMF_INTERLEAVED, &Screen->BitMap);
+
+	if (!ScrollFontBitMap)
+	{
+		ReleaseOS();
+		CleanupDemo();
+		CleanupCopperList();
+		CleanupRastPort();
+		CleanupScreen();
+		CloseLibraries();
+	}
+
 	RenderPort.BitMap = ScrollFontBitMap;
-	
+
+	struct TextAttr ScrollFontAttrib;
+
+	ScrollFontAttrib.ta_Name = "topaz.font";
+    ScrollFontAttrib.ta_YSize = 16;
+    ScrollFontAttrib.ta_Style = FSF_BOLD;
+    ScrollFontAttrib.ta_Flags = 0;
+
+	struct TextFont* ScrollFont;
+	struct TextFont* OldFont;
+
+	if (ScrollFont = OpenDiskFont(&ScrollFontAttrib))
+   	{
+    	OldFont = RenderPort.Font;
+     	SetFont(&RenderPort, ScrollFont);
+	}
+
 	SetRast(&RenderPort, 0);
 	SetAPen(&RenderPort, 1);
-	Move(&RenderPort, 0, 6);
-	Text(&RenderPort, ScrollCharMap, strlen(ScrollCharMap));
+	Move(&RenderPort, 0, ScrollCharHeight + 2);
+	Text(&RenderPort, ScrollCharMap, ScrollCharMapLength);
 
+	SetFont(&RenderPort, OldFont);
+    CloseFont(ScrollFont);
+	
 	return TRUE;
 }
 
@@ -635,7 +767,7 @@ void DrawDemo()
 	SetWrMsk(&RenderPort, -1);
 
 	//
-	// Scroller
+	// Sine scroller
 	//
 
 	for (int i = 0, XPos = ScrollX; i < ScrollTextLength; ++i)
@@ -644,11 +776,13 @@ void DrawDemo()
 		{
 			if (*(ScrollText + i) == *(ScrollCharMap + j))
 			{
-				for (int YSine = (int)(sin(0.03f * XPos) * 10.0f), x1 = 0, x = CharX; x < CharX + ScrollCharWidth; ++x1, ++x)
+				for (int x1 = 0, x = CharX; x < CharX + ScrollCharWidth; ++x1, ++x)
 				{
-					if ((unsigned int)XPos + x1 < Screen->Width)
+					const int TempPosX = XPos + x1;
+
+					if (XPos >= 0 && TempPosX < Screen->Width)
 					{
-						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, XPos + x1, ScrollPosY + YSine, 1, ScrollCharHeight, 0xC0, 0x01, NULL);
+						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, TempPosX, 225 + YSine[TempPosX], 1, ScrollCharHeight + 3, 0xC0, 0x01, NULL);
 					}
 				}
 
@@ -658,10 +792,10 @@ void DrawDemo()
 			CharX += ScrollCharWidth;
 		}
 
-		XPos += ScrollCharWidth + ScrollFontSpacing;
+		XPos += ScrollCharWidth;
 	}
 
-	ScrollX -= ScrollSpeed;
+	ScrollX -= 5;
 
 	if (ScrollX < -ScrollLength)
 	{
@@ -672,92 +806,24 @@ void DrawDemo()
 	// Vector Cube
 	//
 
-	static struct VertexStruct
-	{
-		float x;
-		float y;
-		float z;
-	} CubeDef[8] = { { -50.0f, -50.0f, -50.0f }, { -50.0f, -50.0f, 50.0f }, { -50.0f, 50.0f, -50.0f }, { -50.0f, 50.0f, 50.0f }, { 50.0f, -50.0f, -50.0f }, { 50.0f, -50.0f, 50.0f }, { 50.0f, 50.0f, -50.0f }, { 50.0f, 50.0f, 50.0f } };
-	
-	struct IntPointStruct
-	{
-		int x;
-		int y;
-	} Cube[8];
-
-	for (int i = 0; i < 8; ++i)
-	{
-		// x - rotation
-		const float y = CubeDef[i].y;
-		CubeDef[i].y = y * CosA - CubeDef[i].z * SinA;
-
-		// y - rotation
-		const float z = CubeDef[i].z * CosA + y * SinA;
-		CubeDef[i].z = z * CosA + CubeDef[i].x * SinA;
-
-		// z - rotation
-		const float x = CubeDef[i].x * CosA - z * SinA;
-		CubeDef[i].x = x * CosA - CubeDef[i].y * SinA;
-		CubeDef[i].y = CubeDef[i].y * CosA + x * SinA;
-
-		// 2D projection & translate
-		Cube[i].x = WidthMid + (int)CubeDef[i].x;
-		Cube[i].y = HeightMid + (int)CubeDef[i].y;
-	}
-
-	static struct CubeFaceStruct
-	{
-		int p0;
-		int p1;
-		int p2;
-		int p3;
-	} CubeFaces[] = { {0,1,3,2}, {4,0,2,6}, {5,4,6,7}, {1,5,7,3}, {0,1,5,4}, {2,3,7,6} };
-
-	struct OrderPair
-	{
-		int first;
-		float second;
-	};
-	
-	struct OrderPair Order[6];
-
-	// selection-sort of depth/faces
-	for (int i = 0; i < 6; ++i)
-	{
-		Order[i].second = (CubeDef[CubeFaces[i].p0].z + CubeDef[CubeFaces[i].p1].z + CubeDef[CubeFaces[i].p2].z + CubeDef[CubeFaces[i].p3].z) * 0.25f;
-		Order[i].first = i;
-	}
-
-	for (int i = 0; i < 5; ++i)
-	{
-		int Min = i;
-
-		for (int j = i + 1; j <= 5; ++j)
-		{
-			if (Order[j].second < Order[Min].second)
-			{
-				Min = j;
-			}
-		}
-		
-		struct OrderPair Temp = Order[Min];
-		Order[Min] = Order[i];
-		Order[i] = Temp;
-	}
-
 	const int CubeFacesColors[] ={ 2, 3, 4, 5, 6, 7 };
 	
 	// Since we see only the three faces on top, we only need to render these (3, 4 and 5)
 	for (int i = 3; i < 6; ++i)
 	{
-		SetAPen(&RenderPort, CubeFacesColors[Order[i].first]);
+		SetAPen(&RenderPort, CubeFacesColors[CubePreCalc[VCCount].Order[i].first]);
 
-		AreaMove(&RenderPort, Cube[CubeFaces[Order[i].first].p0].x, Cube[CubeFaces[Order[i].first].p0].y);
-		AreaDraw(&RenderPort, Cube[CubeFaces[Order[i].first].p1].x, Cube[CubeFaces[Order[i].first].p1].y);
-		AreaDraw(&RenderPort, Cube[CubeFaces[Order[i].first].p2].x, Cube[CubeFaces[Order[i].first].p2].y);
-		AreaDraw(&RenderPort, Cube[CubeFaces[Order[i].first].p3].x, Cube[CubeFaces[Order[i].first].p3].y);
+		AreaMove(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p0].x, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p0].y);
+		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p1].x, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p1].y);
+		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p2].x, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p2].y);
+		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p3].x, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p3].y);
 
 		AreaEnd(&RenderPort);
+	}
+
+	if (++VCCount >= 90)
+	{
+		VCCount = 0;
 	}
 }
 
