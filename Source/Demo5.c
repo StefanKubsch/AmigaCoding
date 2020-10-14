@@ -52,7 +52,12 @@ struct Custom* custom = NULL;
 
 // Some stuff needed for OS takeover
 struct View* OldView = NULL;
-struct copinit *OldCopperInit = NULL;
+struct copinit* OldCopperInit = NULL;
+UWORD Old_dmacon = 0;
+UWORD Old_intena = 0;
+UWORD Old_adkcon = 0;
+UWORD Old_intreq = 0;
+
 
 // Our timing/fps limit is targeted at 20fps
 // If you want to use 50fps instead, calc 1000000 / 50
@@ -87,8 +92,8 @@ const struct ColorSpec ColorTable[] =
 
 // Some global variables for our statistics...
 WORD FPS = 0;
-BOOL FastCPUFlag;
-char* CPUText;
+BOOL FastCPUFlag = FALSE;
+char* CPUText = NULL;
 int CPUTextLength = 0;
 
 // Some needed buffers for Area operations
@@ -110,6 +115,8 @@ BOOL CreateScreen();
 void CleanupScreen();
 BOOL CreateRastPort(const int NumberOfVertices, const int AreaWidth, const int AreaHeight);
 void CleanupRastPort();
+void ForcedWaitBlit();
+void WaitVBeam(ULONG Line);
 void DoubleBuffering(void(*CallFunction)());
 
 //
@@ -142,10 +149,31 @@ void TakeOverOS()
 
 	// Set task priority
 	SetTaskPri(FindTask(NULL), 100);
+	
+	Disable();
+
+	// Save custom registers
+	Old_dmacon = custom->dmaconr | 0x8000;
+	Old_intena = custom->intenar | 0x8000;
+	Old_adkcon = custom->adkconr | 0x8000;
+	Old_intreq = custom->intreqr | 0x8000;
 }
 
 void ReleaseOS()
 {
+	// Restore custom registers
+	custom->dmacon = 0x7FFF;
+	custom->intena = 0x7FFF;
+	custom->adkcon = 0x7FFF;
+	custom->intreq = 0x7FFF;
+
+	custom->dmacon = Old_dmacon;
+	custom->intena = Old_intena;
+	custom->adkcon = Old_adkcon;
+	custom->intreq = Old_intreq;
+
+	Enable();
+
 	// Restore previously saved copperlist
 	custom->cop1lc = (ULONG)OldCopperInit;
 	OldCopperInit = NULL;
@@ -214,7 +242,6 @@ void CheckCPU()
 	}
 	else
 	{
-		FastCPUFlag = FALSE;
 		CPUText = "CPU:68000 or 68010";
 	}
 
@@ -394,6 +421,24 @@ void CleanupRastPort()
 	}
 }
 
+void ForcedWaitBlit()
+{
+	while (custom->dmaconr & DMAF_BLTDONE)
+	{
+	}
+}
+
+void WaitVBeam(ULONG Line)
+{
+	ULONG VPos = 0;
+	Line *= 0x100;
+
+	while ((VPos & 0x1FF00) != Line)
+	{
+		VPos = *(ULONG*)0xDFF004;
+	}
+}
+
 void DoubleBuffering(void(*CallFunction)())
 {
     struct ScreenBuffer* Buffer[2] = { AllocScreenBuffer(Screen, NULL, SB_SCREEN_BITMAP), AllocScreenBuffer(Screen, NULL, SB_COPY_BITMAP) };
@@ -430,7 +475,9 @@ void DoubleBuffering(void(*CallFunction)())
 			// Ends here ;-)                                                *
 			//***************************************************************
 
-			WaitBlit();
+			ForcedWaitBlit();
+			WaitVBeam(240);
+
 			ChangeScreenBuffer(Screen, Buffer[CurrentBuffer]);
 			CurrentBuffer ^= 1;
 			FPSCounter();
@@ -443,7 +490,6 @@ void DoubleBuffering(void(*CallFunction)())
 				SendIO((struct IORequest*)&TickRequest);
 			}
 
-			WaitTOF();
         }
 
         // After breaking the loop, we have to make sure that there are no more TickRequests to process
@@ -462,7 +508,7 @@ void DoubleBuffering(void(*CallFunction)())
 
 BOOL LoadCopperList()
 {
-	struct UCopList* uCopList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_ANY | MEMF_CLEAR);
+	struct UCopList* uCopList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_CHIP | MEMF_CLEAR);
 
 	if (uCopList == NULL)
 	{
@@ -552,8 +598,8 @@ struct CubeStruct
 int VCCount = 0;
 
 struct BitMap* ScrollFontBitMap;
-const char ScrollText[] = "...HELLO FOLKS...THIS IS JUST A LITTLE SCROLLER...ENJOY THE DEMO...";
-const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789?!().,";
+const char ScrollText[] = "...WELL,WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
+const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ!.,";
 const int ScrollCharWidth = 16;
 const int ScrollCharHeight = 28;
 int YSine[360];
@@ -630,9 +676,9 @@ BOOL InitDemo()
 	//
 
 	// Use more stars, if a fast CPU is available...
-	NumberOfStars = FastCPUFlag ? 200 : 50;
+	NumberOfStars = FastCPUFlag ? 100 : 50;
 
-	Stars = AllocVec(sizeof(struct StarStruct) * NumberOfStars, MEMF_ANY);
+	Stars = AllocVec(sizeof(struct StarStruct) * NumberOfStars, MEMF_FAST);
 
 	if (!Stars)
 	{
@@ -647,8 +693,8 @@ BOOL InitDemo()
 
     for (int i = 0; i < NumberOfStars; ++i) 
     {
-        Stars[i].x = XorShift32() % 320 - 160;
-        Stars[i].y = XorShift32() % 256 - 128;
+        Stars[i].x = XorShift32() % Screen->Width - 160;
+        Stars[i].y = XorShift32() % Screen->Height - 128;
         Stars[i].z = XorShift32() % 800;
     }
 
@@ -666,7 +712,7 @@ BOOL InitDemo()
 	ScrollCharMapLength = strlen(ScrollCharMap);
 	ScrollLength = ScrollTextLength * ScrollCharWidth;
 
-	ScrollFontBitMap = AllocBitMap(ScrollCharMapLength * ScrollCharWidth, ScrollCharHeight + 6, 1, BMF_DISPLAYABLE | BMF_INTERLEAVED, &Screen->BitMap);
+	ScrollFontBitMap = AllocBitMap(ScrollCharMapLength * ScrollCharWidth, ScrollCharHeight + 4, 1, BMF_STANDARD | BMF_INTERLEAVED | BMF_CLEAR, RenderPort.BitMap);
 
 	if (!ScrollFontBitMap)
 	{
@@ -680,15 +726,16 @@ BOOL InitDemo()
 
 	RenderPort.BitMap = ScrollFontBitMap;
 
-	struct TextAttr ScrollFontAttrib;
+	struct TextAttr ScrollFontAttrib =
+	{
+		"topaz.font", 
+		16,
+		FSF_BOLD,
+		0
+	};
 
-	ScrollFontAttrib.ta_Name = "topaz.font";
-    ScrollFontAttrib.ta_YSize = 16;
-    ScrollFontAttrib.ta_Style = FSF_BOLD;
-    ScrollFontAttrib.ta_Flags = 0;
-
-	struct TextFont* ScrollFont;
-	struct TextFont* OldFont;
+	struct TextFont* ScrollFont = NULL;
+	struct TextFont* OldFont = NULL;
 
 	if (ScrollFont = OpenDiskFont(&ScrollFontAttrib))
    	{
@@ -696,9 +743,8 @@ BOOL InitDemo()
      	SetFont(&RenderPort, ScrollFont);
 	}
 
-	SetRast(&RenderPort, 0);
 	SetAPen(&RenderPort, 1);
-	Move(&RenderPort, 0, ScrollCharHeight + 2);
+	Move(&RenderPort, 0, ScrollCharHeight);
 	Text(&RenderPort, ScrollCharMap, ScrollCharMapLength);
 
 	SetFont(&RenderPort, OldFont);
@@ -780,9 +826,9 @@ void DrawDemo()
 				{
 					const int TempPosX = XPos + x1;
 
-					if (XPos >= 0 && TempPosX < Screen->Width)
+					if ((unsigned int)TempPosX < Screen->Width)
 					{
-						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, TempPosX, 225 + YSine[TempPosX], 1, ScrollCharHeight + 3, 0xC0, 0x01, NULL);
+						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, TempPosX, 200 + YSine[TempPosX], 1, ScrollCharHeight + 4, 0xC0, 0x01, NULL);
 					}
 				}
 
@@ -790,6 +836,11 @@ void DrawDemo()
 			}
 
 			CharX += ScrollCharWidth;
+		}
+
+		if (XPos >= Screen->Width)
+		{
+			break;
 		}
 
 		XPos += ScrollCharWidth;
@@ -842,7 +893,7 @@ int main()
 
 	// Gain control over the OS
 	TakeOverOS();
-
+	
 	// Setup screen
 	if (!CreateScreen())
     {
@@ -852,7 +903,6 @@ int main()
     // Init the RenderPort (=Rastport)
 	// We need to init some buffers for Area operations
 	// Since our demo part draw some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
-	// Keep the used area as small as possible (we can go with 130x130 here...)
 	if (!CreateRastPort(5, 130, 130))
 	{
 		return 20;
