@@ -1,15 +1,11 @@
 //**********************************************************************
-//* Simple combined demo for Amiga with at least OS 3.0    			   *
+//* Simple filled vector cubed emo for Amiga with at least OS 3.0      *
 //*														 			   *
-//* Effects: Copper background, 3D starfield, filled vector cube       *
-//* and a sine scroller												   *
-//*														 			   *
-//*                                                      			   *
 //* (C) 2020 by Stefan Kubsch                            			   *
 //* Project for vbcc 0.9g                                			   *
 //*                                                      			   *
 //* Compile & link with:                                 			   *
-//* vc -O4 Demo.c -o Demo -lmieee -lamiga              			   	   *
+//* vc -O4 FilledVectorCube.c -o FilledVectorCube -lmieee -lamiga      *
 //*                                                      			   *
 //* Quit with mouse click                                  			   *
 //**********************************************************************
@@ -29,9 +25,7 @@
 #include <clib/exec_protos.h>
 #include <clib/graphics_protos.h>
 #include <clib/intuition_protos.h>
-#include <clib/diskfont_protos.h>
 #include <clib/alib_protos.h>
-#include <diskfont/diskfont.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -42,7 +36,6 @@
 
 struct GfxBase* GfxBase = NULL;
 struct IntuitionBase* IntuitionBase = NULL;
-struct DiskFontBase* DiskfontBase = NULL;
 
 struct Screen* Screen = NULL;
 struct RastPort RenderPort;
@@ -68,11 +61,11 @@ UWORD Old_intreq = 0;
 #define WIDTH 320
 #define HEIGHT 256
 
-// Our timing/fps limit is targeted at 20fps
+// Our timing/fps limit is targeted at 25fps
 // If you want to use 50fps instead, calc 1000000 / 50
-// If you want to use 25fps instead, calc 1000000 / 25 - I guess, you got it...
+// If you want to use 20fps instead, calc 1000000 / 20 - I guess, you got it...
 // Is used in function "DoubleBuffering()"
-#define FPSLIMIT (1000000 / 20)
+#define FPSLIMIT (1000000 / 25)
 
 // Here we define, how many bitplanes we want to use...
 // Colors / number of required Bitplanes
@@ -130,10 +123,7 @@ void DoubleBuffering(void(*CallFunction)());
 // Demo stuff
 //
 
-BOOL LoadCopperList();
-void CleanupCopperList();
 BOOL InitDemo();
-void CleanupDemo();
 void DrawDemo();
 
 //***************************************************************
@@ -298,11 +288,6 @@ BOOL LoadLibraries()
         return FALSE;
     }
 
-	if (!(DiskfontBase = (struct DiskFontBase*)OpenLibrary("diskfont.library", 39)))
-	{
-        CloseLibraries();
-        return FALSE;
-	}
     return TRUE;
 }
 
@@ -325,12 +310,6 @@ void CloseLibraries()
 		DeletePort(TimerPort);
 		TimerPort = NULL;
 	}
-
-	if (DiskfontBase)
-    {
-       CloseLibrary((struct Library*)DiskfontBase);
-	   DiskfontBase = NULL;
-    }     
 
     if (IntuitionBase)
     {
@@ -493,58 +472,6 @@ void DoubleBuffering(void(*CallFunction)())
 // Demo stuff                                                   *
 //***************************************************************
 
-BOOL LoadCopperList()
-{
-	struct UCopList* uCopList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_CHIP | MEMF_CLEAR);
-
-	if (uCopList == NULL)
-	{
-		return FALSE;
-	}
-	
-	const UWORD Colors[] =
-	{
-		0x0604, 0x0605, 0x0606, 0x0607, 0x0617, 0x0618, 0x0619,	0x0629, 
-		0x072A, 0x073B, 0x074B, 0x074C, 0x075D, 0x076E,	0x077E, 0x088F, 
-		0x07AF, 0x06CF, 0x05FF, 0x04FB, 0x04F7,	0x03F3, 0x07F2, 0x0BF1, 
-		0x0FF0, 0x0FC0, 0x0EA0, 0x0E80,	0x0E60, 0x0D40, 0x0D20, 0x0D00
-	};
-
-    const int NumberOfColors = sizeof(Colors) / sizeof(*Colors);
-
-	CINIT(uCopList, NumberOfColors);
-
-	for (int i = 0; i < NumberOfColors; ++i)
-	{
-		CWAIT(uCopList, i * (HEIGHT / NumberOfColors), 0);
-		CMOVE(uCopList, custom->color[0], Colors[i]);
-	}
-
-	CEND(uCopList);
-	
-	Screen->ViewPort.UCopIns = uCopList;
-	RethinkDisplay();
-	
-	return TRUE;
-}
-
-void CleanupCopperList()
-{
-	if (Screen->ViewPort.UCopIns)
-    {
-		FreeVPortCopLists(&Screen->ViewPort);
-	}
-}
-
-struct StarStruct
-{
-    int x;
-    int y;
-    int z;
-} *Stars;
-
-int NumberOfStars;
-
 struct IntPointStruct
 {
 	int x;
@@ -572,17 +499,6 @@ struct CubeStruct
 } CubePreCalc[90];
 
 int VCCount = 0;
-
-struct BitMap* ScrollFontBitMap;
-const char ScrollText[] = "...WELL,WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
-const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ!.,";
-const int ScrollCharWidth = 16;
-const int ScrollCharHeight = 28;
-int YSine[360];
-int ScrollTextLength = 0;
-int ScrollCharMapLength = 0;
-int ScrollLength = 0;
-int ScrollX = 0;
 
 BOOL InitDemo()
 {
@@ -647,99 +563,7 @@ BOOL InitDemo()
 		}
 	}
 
-	//
-	// Init 3D starfield
-	//
-
-	// Use more stars, if a fast CPU is available...
-	NumberOfStars = FastCPUFlag ? 100 : 50;
-
-	Stars = AllocVec(sizeof(struct StarStruct) * NumberOfStars, MEMF_FAST);
-
-	if (!Stars)
-	{
-		ReleaseOS();
-		CleanupCopperList();
-		CleanupRastPort();
-		CleanupScreen();
-		CloseLibraries();
-
-		return FALSE;
-	}
-
-    for (int i = 0; i < NumberOfStars; ++i) 
-    {
-        Stars[i].x = XorShift32() % WIDTH - 160;
-        Stars[i].y = XorShift32() % HEIGHT - 128;
-        Stars[i].z = XorShift32() % 800;
-    }
-
-	//
-	// Init sine scoller
-	//
-
-	for (int i = 0; i < 360; ++i)
-	{
-		YSine[i] = (int)(sin(0.05f * i) * 10.0f);
-	}
-
-	ScrollX = WIDTH;
-	ScrollTextLength = strlen(ScrollText);
-	ScrollCharMapLength = strlen(ScrollCharMap);
-	ScrollLength = ScrollTextLength * ScrollCharWidth;
-
-	ScrollFontBitMap = AllocBitMap(ScrollCharMapLength * ScrollCharWidth, ScrollCharHeight + 4, 1, BMF_STANDARD | BMF_INTERLEAVED | BMF_CLEAR, RenderPort.BitMap);
-
-	if (!ScrollFontBitMap)
-	{
-		ReleaseOS();
-		CleanupDemo();
-		CleanupCopperList();
-		CleanupRastPort();
-		CleanupScreen();
-		CloseLibraries();
-	}
-
-	RenderPort.BitMap = ScrollFontBitMap;
-
-	struct TextAttr ScrollFontAttrib =
-	{
-		"topaz.font", 
-		16,
-		FSF_BOLD,
-		0
-	};
-
-	struct TextFont* ScrollFont = NULL;
-	struct TextFont* OldFont = NULL;
-
-	if (ScrollFont = OpenDiskFont(&ScrollFontAttrib))
-   	{
-    	OldFont = RenderPort.Font;
-     	SetFont(&RenderPort, ScrollFont);
-	}
-
-	SetAPen(&RenderPort, 1);
-	Move(&RenderPort, 0, ScrollCharHeight);
-	Text(&RenderPort, ScrollCharMap, ScrollCharMapLength);
-
-	SetFont(&RenderPort, OldFont);
-    CloseFont(ScrollFont);
-	
 	return TRUE;
-}
-
-void CleanupDemo()
-{
-	if (Stars)
-	{
-		FreeVec(Stars);
-	}
-
-	if (ScrollFontBitMap)
-	{
-		FreeBitMap(ScrollFontBitMap);
-	}
 }
 
 void DrawDemo()
@@ -749,85 +573,6 @@ void DrawDemo()
 
 	const int WidthMid = WIDTH >> 1;
 	const int HeightMid = HEIGHT >> 1;
-
-	//
-	// Starfield
-	//
-
-	// Since we use only bitplane 0 for the starfield, we enable only bitplane 0
-	// Bitmap.Planes[0] = Bit 0
-	// Bitmap.Planes[1] = Bit 1
-	// ...
-	// To enable bitplane 0 only set the mask as follows:
-	// 00000001 = Hex 0x01
-	//
-	// Another example: Enable only bitplanes 1 and 2:
-	// 11111110 = Hex 0xFE
-
-	SetWrMsk(&RenderPort, 0x01);
-	SetAPen(&RenderPort, 1);
-
-	for (int i = 0; i < NumberOfStars; ++i)
-	{
-		Stars[i].z -= 10;
-	
-		if (Stars[i].z <= 1) 
-		{
-			Stars[i].z = 800;
-		}
-		
-		const int x = (Stars[i].x << 8) / Stars[i].z + WidthMid;
-		const int y = (Stars[i].y << 8) / Stars[i].z + HeightMid;
-		
-		if ((unsigned int)x < Screen->Width && (unsigned int)y < Screen->Height)
-		{
-			WritePixel(&RenderPort, x, y);
-		}
-	}
-
-	// Re-enable all bitplanes
-	SetWrMsk(&RenderPort, -1);
-
-	//
-	// Sine scroller
-	//
-
-	for (int i = 0, XPos = ScrollX; i < ScrollTextLength; ++i)
-	{
-		for (int j = 0, CharX = 0; j < ScrollCharMapLength; ++j)
-		{
-			if (*(ScrollText + i) == *(ScrollCharMap + j))
-			{
-				for (int x1 = 0, x = CharX; x < CharX + ScrollCharWidth; ++x1, ++x)
-				{
-					const int TempPosX = XPos + x1;
-
-					if ((unsigned int)TempPosX < Screen->Width)
-					{
-						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, TempPosX, 200 + YSine[TempPosX], 1, ScrollCharHeight + 4, 0xC0, 0x01, NULL);
-					}
-				}
-
-				break;
-			}
-
-			CharX += ScrollCharWidth;
-		}
-
-		if (XPos >= Screen->Width)
-		{
-			break;
-		}
-
-		XPos += ScrollCharWidth;
-	}
-
-	ScrollX -= 5;
-
-	if (ScrollX < -ScrollLength)
-	{
-		ScrollX = Screen->Width;
-	}
 
 	//
 	// Vector Cube
@@ -888,13 +633,7 @@ int main()
 	// Init stuff for demo if needed
 	//
 
-	// Load Copper table and init viewport
-	if (!LoadCopperList())
-	{
-		return 20;
-	}
-
-	// Init all demo effects
+	// Init vector cube
 	if (!InitDemo())
 	{
 		return 20;
@@ -906,8 +645,6 @@ int main()
 
 	// Cleanup everything
 	ReleaseOS();
-	CleanupDemo();
-	CleanupCopperList();
 	CleanupRastPort();
 	CleanupScreen();
 	CloseLibraries();
