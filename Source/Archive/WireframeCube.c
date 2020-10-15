@@ -1,20 +1,20 @@
-//********************************************************
-//* Simple demo for Amiga with at least OS 3.0           *
-//*														 *
-//* Effects: Filled vector cube						     *
-//*														 *
-//* This demo will run on a stock A500 in the same speed *
-//* as on a turbo-boosted A1200. It´s limited to 25fps,  *
-//* which seems to be a good tradeoff.					 *
-//*                                                      *
-//* (C) 2020 by Stefan Kubsch                            *
-//* Project for vbcc 0.9g                                *
-//*                                                      *
-//* Compile & link with:                                 *
-//* vc -O4 Demo2.c -o Demo2 -lmieee -lamiga              *
-//*                                                      *
-//* Quit with Ctrl-C                                     *
-//********************************************************
+//***********************************************************
+//* Simple demo for Amiga with at least OS 3.0           	*
+//*														 	*
+//* Effects: 3D-Starfield and wireframe vector cube      	*
+//*														 	*
+//* This demo will run on a stock A500 in the same speed 	*
+//* as on a turbo-boosted A1200. It´s limited to 25fps,  	*
+//* which seems to be a good tradeoff.					 	*
+//*                                                      	*
+//* (C) 2020 by Stefan Kubsch                            	*
+//* Project for vbcc 0.9g                                	*
+//*                                                      	*
+//* Compile & link with:                                 	*
+//* vc -O4 WireframeCube.c -o WireframeCube -lmieee -lamiga	*
+//*                                                     	*
+//* Quit with Ctrl-C                                     	*
+//***********************************************************
 
 #include <exec/exec.h>
 #include <dos/dos.h>
@@ -23,7 +23,6 @@
 #include <devices/timer.h>
 #include <proto/timer.h>   
 #include <clib/exec_protos.h>
-#include <graphics/gfxmacros.h>
 #include <clib/graphics_protos.h>
 #include <clib/intuition_protos.h>
 #include <clib/alib_protos.h>
@@ -45,7 +44,7 @@ struct timerequest* TimerIO = NULL;
 // Our timing/fps limit is targeted at 25fps
 // If you want to use 50fps instead, calc 1000000 / 50
 // Is used in function "DoubleBuffering()"
-const ULONG FPSLimit = 1000000 / 25;
+const ULONG FPSLimit = 1000000 / 50;
 
 // Here we define, how many bitplanes we want to use...
 // Colors / number of required Bitplanes
@@ -59,37 +58,33 @@ const int NumberOfBitplanes = 3;
 
 // ...and here which colors we want to use
 // Format: { Index, Red, Green, Blue }, Array must be terminated with {-1, 0, 0, 0}
+//
+// Our colors here are:
+// {0, 0, 0, 3}		- Dark Blue
+// {1, 15, 15, 15}	- White
+// {2, 8, 8, 8}		- Grey
+// {3, 4, 4, 4}		- Dark Grey
+// {4, 15, 0, 0}	- Red
+// {5, 0, 15, 0}	- Green
 const struct ColorSpec ColorTable[] = 
 { 
 	{0, 0, 0, 3}, 
-	{1, 0, 3, 0},
-	{2, 0, 5, 0},
-	{3, 0, 7, 0},
-	{4, 0, 9, 0},
-	{5, 0, 11, 0},
-	{6, 0, 13, 0},
-	{7, 0, 15, 0},
+	{1, 15, 15, 15}, 
+	{2, 8, 8, 8}, 
+	{3, 4, 4, 4}, 
+	{4, 15, 0, 0}, 
+	{5, 0, 15, 0}, 
 	{-1, 0, 0, 0} 
 };
 
 // Global variable for FPS Counter
 WORD FPS = 0;
 
-// Some needed buffers for Area operations
-UBYTE* TmpRasBuffer = NULL;
-UBYTE* AreaBuffer = NULL;
-
-//
-// Function declarations
-//
-
 void FPSCounter();
 void DisplayFPSCounter();
 BOOL LoadLibraries();
 void CloseScreenAndLibraries();
 BOOL CreateScreen();
-BOOL CreateRastPort(int NumberOfVertices);
-void CleanupRastPort();
 void DoubleBuffering(void(*CallFunction)());
 
 //
@@ -138,7 +133,7 @@ void DisplayFPSCounter()
 	UBYTE String[10];
 	sprintf(String, "%d fps", FPS);
 								
-	SetAPen(&RenderPort, 7);
+	SetAPen(&RenderPort, 5);
 	Move(&RenderPort, 10, 10);
 	Text(&RenderPort, String, strlen(String));
 }
@@ -207,7 +202,7 @@ void CloseScreenAndLibraries()
 	if (TimerPort)
 	{
 		DeletePort(TimerPort);
-		TimerPort = NULL;
+		TimerPort = 0;
 	}
 
 	if (Screen)
@@ -250,53 +245,6 @@ BOOL CreateScreen()
     return TRUE;
 }
 
-BOOL CreateRastPort(int NumberOfVertices)
-{
-	InitRastPort(&RenderPort);
-
-	struct TmpRas tmpras;
-	struct AreaInfo areainfo;
-	const ULONG RasSize = RASSIZE(Screen->Width, Screen->Height);
-
-	if (TmpRasBuffer = AllocVec(RasSize, MEMF_CHIP | MEMF_CLEAR))
-	{
-		InitTmpRas(&tmpras, TmpRasBuffer, RasSize);
-		RenderPort.TmpRas = &tmpras;
-	}
-	else
-	{
-		return FALSE;
-	}
-
-	// We need to allocate 5bytes per vertex
-	if (AreaBuffer = AllocVec(5 * NumberOfVertices, MEMF_CLEAR))
-	{
-		InitArea(&areainfo, AreaBuffer, NumberOfVertices);
-		RenderPort.AreaInfo = &areainfo;
-	}
-	else
-	{
-		return FALSE;
-	}
-
-	return TRUE;
-}
-
-void CleanupRastPort()
-{
-	if (TmpRasBuffer)
-	{
-		FreeVec(TmpRasBuffer);
-		RenderPort.TmpRas = NULL;
-	}
-
-	if (AreaBuffer)
-	{
-		FreeVec(AreaBuffer);
-		RenderPort.AreaInfo = NULL;
-	}
-}
-
 void DoubleBuffering(void(*CallFunction)())
 {
     struct ScreenBuffer* Buffer[2] = { AllocScreenBuffer(Screen, NULL, SB_SCREEN_BITMAP), AllocScreenBuffer(Screen, NULL, SB_COPY_BITMAP) };
@@ -305,6 +253,8 @@ void DoubleBuffering(void(*CallFunction)())
 
     if (Buffer[0] && Buffer[1] && DisplayPort && SafePort)
     {
+        InitRastPort(&RenderPort);
+
 		// Start timer
 		struct timerequest TickRequest;
 
@@ -372,7 +322,7 @@ void DoubleBuffering(void(*CallFunction)())
 
             if (Continue)
             {
-				WaitBlit();
+                WaitBlit();
                 Buffer[CurrentBuffer]->sb_DBufInfo->dbi_SafeMessage.mn_ReplyPort = SafePort;
                 Buffer[CurrentBuffer]->sb_DBufInfo->dbi_DispMessage.mn_ReplyPort = DisplayPort;
                 
@@ -465,13 +415,29 @@ void DoubleBuffering(void(*CallFunction)())
 // Demo stuff                                                   *
 //***************************************************************
 
+struct StarStruct
+{
+    int x;
+    int y;
+    int z;
+} Stars[200];
+
 float CosA;
 float SinA;
 
 void InitDemo()
 {
-    CosA = cos(0.04f);
-    SinA = sin(0.04f);
+    CosA = cos(0.03f);
+    SinA = sin(0.03f);
+
+    const int NumberOfStars = sizeof(Stars) / sizeof(*Stars);
+    
+    for (int i = 0; i < NumberOfStars; ++i) 
+    {
+        Stars[i].x = rand() % 40000 - 15000;
+        Stars[i].y = rand() % 40000 - 15000;
+        Stars[i].z = rand() % 500;
+    }
 }
 
 void DrawDemo()
@@ -480,6 +446,37 @@ void DrawDemo()
 
 	const int WidthMid = Screen->Width >> 1;
 	const int HeightMid = Screen->Height >> 1;
+
+	//
+	// Starfield
+	//
+
+	static const int NumberOfStars = sizeof(Stars) / sizeof(*Stars);
+
+	for (int i = 0; i < NumberOfStars; ++i)
+	{
+		Stars[i].z -= 10;
+	
+		if (Stars[i].z <= 0) 
+		{
+			Stars[i].x = rand() % 40000 - 15000;
+			Stars[i].y = rand() % 40000 - 15000;
+			Stars[i].z = 500;
+		}
+		
+		const int x = WidthMid + Stars[i].x / Stars[i].z;
+		const int y = HeightMid + Stars[i].y / Stars[i].z;
+		
+		if ((unsigned int)x < Screen->Width && (unsigned int)y < Screen->Height)
+		{
+			SetAPen(&RenderPort, Stars[i].z / 200 + 1);
+			WritePixel(&RenderPort, x, y);
+		}
+	}
+
+	//
+	// Vector Cube
+	//
 
 	static struct VertexStruct
 	{
@@ -506,68 +503,34 @@ void DrawDemo()
 
 		// z - rotation
 		const float x = CubeDef[i].x * CosA - z * SinA;
-		CubeDef[i].x = (x * CosA - CubeDef[i].y * SinA);
-		CubeDef[i].y = (CubeDef[i].y * CosA + x * SinA);
+		CubeDef[i].x = x * CosA - CubeDef[i].y * SinA;
+		CubeDef[i].y = CubeDef[i].y * CosA + x * SinA;
 
 		// 2D projection & translate
 		Cube[i].x = WidthMid + (int)CubeDef[i].x;
 		Cube[i].y = HeightMid + (int)CubeDef[i].y;
 	}
 
-	static struct CubeFaceStruct
-	{
-		int p0;
-		int p1;
-		int p2;
-		int p3;
-	} CubeFaces[] = { {0,1,3,2}, {4,0,2,6}, {5,4,6,7}, {1,5,7,3}, {0,1,5,4}, {2,3,7,6} };
+	SetAPen(&RenderPort, 4);
 
-	struct OrderPair
-	{
-		int first;
-		float second;
-	};
+	Move(&RenderPort, Cube[0].x, Cube[0].y);
+	Draw(&RenderPort, Cube[1].x, Cube[1].y);
+	Draw(&RenderPort, Cube[5].x, Cube[5].y);
+	Draw(&RenderPort, Cube[4].x, Cube[4].y);
+	Draw(&RenderPort, Cube[0].x, Cube[0].y);
+	Draw(&RenderPort, Cube[2].x, Cube[2].y);
+	Draw(&RenderPort, Cube[6].x, Cube[6].y);
+	Draw(&RenderPort, Cube[4].x, Cube[4].y);
 	
-	struct OrderPair Order[6];
-
-	// selection-sort of depth/faces
-	for (int i = 0; i < 6; ++i)
-	{
-		Order[i].second = (CubeDef[CubeFaces[i].p0].z + CubeDef[CubeFaces[i].p1].z + CubeDef[CubeFaces[i].p2].z + CubeDef[CubeFaces[i].p3].z) * 0.25f;
-		Order[i].first = i;
-	}
-
-	for (int i = 0; i < 5; ++i)
-	{
-		int Min = i;
-
-		for (int j = i + 1; j <= 5; ++j)
-		{
-			if (Order[j].second < Order[Min].second)
-			{
-				Min = j;
-			}
-		}
-		
-		struct OrderPair Temp = Order[Min];
-		Order[Min] = Order[i];
-		Order[i] = Temp;
-	}
-
-	const int CubeFacesColors[] ={ 1, 2, 3, 4, 5, 6 };
-
-	// Since we see only the three faces on top, we only need to render these (3, 4 and 5)
-	for (int i = 3; i < 6; ++i)
-	{
-		SetAPen(&RenderPort, CubeFacesColors[Order[i].first]);
-
-		AreaMove(&RenderPort, Cube[CubeFaces[Order[i].first].p0].x, Cube[CubeFaces[Order[i].first].p0].y);
-		AreaDraw(&RenderPort, Cube[CubeFaces[Order[i].first].p1].x, Cube[CubeFaces[Order[i].first].p1].y);
-		AreaDraw(&RenderPort, Cube[CubeFaces[Order[i].first].p2].x, Cube[CubeFaces[Order[i].first].p2].y);
-		AreaDraw(&RenderPort, Cube[CubeFaces[Order[i].first].p3].x, Cube[CubeFaces[Order[i].first].p3].y);
-
-		AreaEnd(&RenderPort);
-	}
+	Move(&RenderPort, Cube[5].x, Cube[5].y);
+	Draw(&RenderPort, Cube[7].x, Cube[7].y);
+	Draw(&RenderPort, Cube[3].x, Cube[3].y);
+	Draw(&RenderPort, Cube[1].x, Cube[1].y);
+	
+	Move(&RenderPort, Cube[2].x, Cube[2].y);
+	Draw(&RenderPort, Cube[3].x, Cube[3].y);
+	Draw(&RenderPort, Cube[7].x, Cube[7].y);
+	Draw(&RenderPort, Cube[6].x, Cube[6].y);
 }
 
 int main()
@@ -579,24 +542,13 @@ int main()
         return 20;
     }
 
-    // Init the RenderPort (=Rastport)
-	// We need to init some buffers for Area operations
-	// Since our demo part draw some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
-	// We also exit at this point if something goes wrong...
-	if (!CreateRastPort(5))
-	{
-		return 20;
-	}
-
-	// Init stuff for demo if needed
+    // Init stuff for demo if needed
 	InitDemo();
 
     // This is our main loop
     // Call "DoubleBuffering" with the name of function you want to use...
 	DoubleBuffering(DrawDemo);
 
-	// Cleanup everything
-	CleanupRastPort();
 	CloseScreenAndLibraries();
 	return 0;
 }

@@ -11,7 +11,7 @@
 //* Project for vbcc 0.9g                                			   *
 //*                                                      			   *
 //* Compile & link with:                                 			   *
-//* vc -O4 Demo3.c -o Demo3 -lmieee -lamiga              			   *
+//* vc -O4 Copper.c -o Copper -lmieee -lamiga              			   *
 //*                                                      			   *
 //* Quit with Ctrl-C                                     			   *
 //**********************************************************************
