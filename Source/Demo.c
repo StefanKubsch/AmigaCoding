@@ -696,6 +696,7 @@ BOOL InitDemo()
 	{
 		ReleaseOS();
 		CleanupDemo();
+		CleanupCopperList();
 		CleanupRastPort();
 		CleanupScreen();
 		CloseLibraries();
