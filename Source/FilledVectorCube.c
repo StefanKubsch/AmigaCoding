@@ -1,5 +1,5 @@
 //**********************************************************************
-//* Simple filled vector cubed emo for Amiga with at least OS 3.0      *
+//* Simple filled vector cube demo for Amiga with at least OS 3.0      *
 //*														 			   *
 //* (C) 2020 by Stefan Kubsch                            			   *
 //* Project for vbcc 0.9g                                			   *
@@ -31,8 +31,8 @@
 #include <string.h>
 
 // Include our own header files
-#include "lwmf_math.h"
-#include "lwmf_hardware.h"
+#include "lwmf/lwmf_math.h"
+#include "lwmf/lwmf_hardware.h"
 
 struct GfxBase* GfxBase = NULL;
 struct IntuitionBase* IntuitionBase = NULL;
@@ -81,14 +81,14 @@ UWORD Old_intreq = 0;
 // Format: { Index, Red, Green, Blue }, Array must be terminated with {-1, 0, 0, 0}
 const struct ColorSpec ColorTable[] = 
 { 
-	{0, 0, 0, 0}, 
+	{0, 0, 0, 3}, 
 	{1, 15, 15, 15},
-	{2, 10, 0, 10},
-	{3, 11, 0, 11},
-	{4, 12, 0, 12},
-	{5, 13, 0, 13},
-	{6, 14, 0, 14},
-	{7, 15, 0, 15},
+	{2, 0, 10, 0},
+	{3, 0, 11, 0},
+	{4, 0, 12, 0},
+	{5, 0, 13, 0},
+	{6, 0, 14, 0},
+	{7, 0, 15, 0},
 	{-1, 0, 0, 0} 
 };
 
@@ -444,7 +444,7 @@ void DoubleBuffering(void(*CallFunction)())
 
 			ForcedWaitBlit();
 			ChangeScreenBuffer(Screen, Buffer[CurrentBuffer]);
-			WaitVBeam(240);
+			WaitVBeam(255);
 			CurrentBuffer ^= 1;
 			FPSCounter();
 
@@ -534,8 +534,8 @@ BOOL InitDemo()
 			CubeDef[i].y = CubeDef[i].y * CosA + x * SinA;
 
 			// 2D projection & translate
-			CubePreCalc[Pre].Cube[i].x = (Screen->Width >> 1) + (int)CubeDef[i].x;
-			CubePreCalc[Pre].Cube[i].y = (Screen->Height >> 1) + (int)CubeDef[i].y;
+			CubePreCalc[Pre].Cube[i].x = (WIDTH >> 1) + (int)CubeDef[i].x;
+			CubePreCalc[Pre].Cube[i].y = (HEIGHT >> 1) + (int)CubeDef[i].y;
 		}
 
 		// selection-sort of depth/faces
@@ -609,7 +609,6 @@ int main()
     }
 
 	// Check which CPU is used in your Amiga (or UAE...)
-	// Depening on this, we use more or less stars (or effects in the near future...)
 	CheckCPU();
 
 	// Gain control over the OS
@@ -623,8 +622,8 @@ int main()
 
     // Init the RenderPort (=Rastport)
 	// We need to init some buffers for Area operations
-	// Since our demo part draw some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
-	if (!CreateRastPort(5, WIDTH, HEIGHT))
+	// Since our demo part draws some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
+	if (!CreateRastPort(5, 130, 130))
 	{
 		return 20;
 	}

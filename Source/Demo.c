@@ -37,8 +37,8 @@
 #include <string.h>
 
 // Include our own header files
-#include "lwmf_math.h"
-#include "lwmf_hardware.h"
+#include "lwmf/lwmf_math.h"
+#include "lwmf/lwmf_hardware.h"
 
 struct GfxBase* GfxBase = NULL;
 struct IntuitionBase* IntuitionBase = NULL;
@@ -618,8 +618,8 @@ BOOL InitDemo()
 			CubeDef[i].y = CubeDef[i].y * CosA + x * SinA;
 
 			// 2D projection & translate
-			CubePreCalc[Pre].Cube[i].x = (Screen->Width >> 1) + (int)CubeDef[i].x;
-			CubePreCalc[Pre].Cube[i].y = (Screen->Height >> 1) + (int)CubeDef[i].y;
+			CubePreCalc[Pre].Cube[i].x = (WIDTH >> 1) + (int)CubeDef[i].x;
+			CubePreCalc[Pre].Cube[i].y = (HEIGHT >> 1) + (int)CubeDef[i].y;
 		}
 
 		// selection-sort of depth/faces
@@ -678,6 +678,7 @@ BOOL InitDemo()
 	// Init sine scoller
 	//
 
+	// Generate sinus table
 	for (int i = 0; i < 360; ++i)
 	{
 		YSine[i] = (int)(sin(0.05f * i) * 10.0f);
@@ -688,13 +689,13 @@ BOOL InitDemo()
 	ScrollCharMapLength = strlen(ScrollCharMap);
 	ScrollLength = ScrollTextLength * ScrollCharWidth;
 
+	// Generate bitmap for charmap
 	ScrollFontBitMap = AllocBitMap(ScrollCharMapLength * ScrollCharWidth, ScrollCharHeight + 4, 1, BMF_STANDARD | BMF_INTERLEAVED | BMF_CLEAR, RenderPort.BitMap);
 
 	if (!ScrollFontBitMap)
 	{
 		ReleaseOS();
 		CleanupDemo();
-		CleanupCopperList();
 		CleanupRastPort();
 		CleanupScreen();
 		CloseLibraries();
@@ -702,6 +703,7 @@ BOOL InitDemo()
 
 	RenderPort.BitMap = ScrollFontBitMap;
 
+	// Load font
 	struct TextAttr ScrollFontAttrib =
 	{
 		"topaz.font", 
@@ -715,14 +717,18 @@ BOOL InitDemo()
 
 	if (ScrollFont = OpenDiskFont(&ScrollFontAttrib))
    	{
-    	OldFont = RenderPort.Font;
+    	// Save current font
+		OldFont = RenderPort.Font;
+		// Set new font
      	SetFont(&RenderPort, ScrollFont);
 	}
 
+	// Draw charmap
 	SetAPen(&RenderPort, 1);
 	Move(&RenderPort, 0, ScrollCharHeight);
 	Text(&RenderPort, ScrollCharMap, ScrollCharMapLength);
 
+	// Load old font
 	SetFont(&RenderPort, OldFont);
     CloseFont(ScrollFont);
 	
@@ -779,7 +785,7 @@ void DrawDemo()
 		const int x = (Stars[i].x << 8) / Stars[i].z + WidthMid;
 		const int y = (Stars[i].y << 8) / Stars[i].z + HeightMid;
 		
-		if ((unsigned int)x < Screen->Width && (unsigned int)y < Screen->Height)
+		if ((unsigned int)x < WIDTH && (unsigned int)y < HEIGHT)
 		{
 			WritePixel(&RenderPort, x, y);
 		}
@@ -802,7 +808,7 @@ void DrawDemo()
 				{
 					const int TempPosX = XPos + x1;
 
-					if ((unsigned int)TempPosX < Screen->Width)
+					if ((unsigned int)TempPosX < WIDTH)
 					{
 						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, TempPosX, 200 + YSine[TempPosX], 1, ScrollCharHeight + 4, 0xC0, 0x01, NULL);
 					}
@@ -814,7 +820,7 @@ void DrawDemo()
 			CharX += ScrollCharWidth;
 		}
 
-		if (XPos >= Screen->Width)
+		if (XPos >= WIDTH)
 		{
 			break;
 		}
@@ -826,7 +832,7 @@ void DrawDemo()
 
 	if (ScrollX < -ScrollLength)
 	{
-		ScrollX = Screen->Width;
+		ScrollX = WIDTH;
 	}
 
 	//
@@ -878,7 +884,7 @@ int main()
 
     // Init the RenderPort (=Rastport)
 	// We need to init some buffers for Area operations
-	// Since our demo part draw some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
+	// Since our demo part draws some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
 	if (!CreateRastPort(5, WIDTH, HEIGHT))
 	{
 		return 20;

@@ -30,8 +30,8 @@
 #include <string.h>
 
 // Include our own header files
-#include "lwmf_math.h"
-#include "lwmf_hardware.h"
+#include "lwmf/lwmf_math.h"
+#include "lwmf/lwmf_hardware.h"
 
 struct GfxBase* GfxBase = NULL;
 struct IntuitionBase* IntuitionBase = NULL;
@@ -438,7 +438,7 @@ void DoubleBuffering(void(*CallFunction)())
 
 			ForcedWaitBlit();
 			ChangeScreenBuffer(Screen, Buffer[CurrentBuffer]);
-			WaitVBeam(240);
+			WaitVBeam(255);
 			CurrentBuffer ^= 1;
 			FPSCounter();
 
@@ -524,7 +524,6 @@ int main()
     }
 
 	// Check which CPU is used in your Amiga (or UAE...)
-	// Depening on this, we use more or less stars (or effects in the near future...)
 	CheckCPU();
 
 	// Gain control over the OS
@@ -537,9 +536,7 @@ int main()
     }
 
     // Init the RenderPort (=Rastport)
-	// We need to init some buffers for Area operations
-	// Since our demo part draw some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
-	if (!CreateRastPort(5, WIDTH, HEIGHT))
+	if (!CreateRastPort(1, 1, 1))
 	{
 		return 20;
 	}

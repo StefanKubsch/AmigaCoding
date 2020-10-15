@@ -33,8 +33,8 @@
 #include <string.h>
 
 // Include our own header files
-#include "lwmf_math.h"
-#include "lwmf_hardware.h"
+#include "lwmf/lwmf_math.h"
+#include "lwmf/lwmf_hardware.h"
 
 struct GfxBase* GfxBase = NULL;
 struct IntuitionBase* IntuitionBase = NULL;
@@ -84,7 +84,7 @@ UWORD Old_intreq = 0;
 // Format: { Index, Red, Green, Blue }, Array must be terminated with {-1, 0, 0, 0}
 const struct ColorSpec ColorTable[] = 
 { 
-	{0, 0, 0, 0}, 
+	{0, 0, 0, 3}, 
 	{1, 15, 15, 15},
 	{-1, 0, 0, 0} 
 };
@@ -453,7 +453,7 @@ void DoubleBuffering(void(*CallFunction)())
 
 			ForcedWaitBlit();
 			ChangeScreenBuffer(Screen, Buffer[CurrentBuffer]);
-			WaitVBeam(240);
+			WaitVBeam(150);
 			CurrentBuffer ^= 1;
 			FPSCounter();
 
@@ -498,6 +498,7 @@ BOOL InitDemo()
 	// Init sine scoller
 	//
 
+	// Generate sinus table
 	for (int i = 0; i < 360; ++i)
 	{
 		YSine[i] = (int)(sin(0.05f * i) * 10.0f);
@@ -508,6 +509,7 @@ BOOL InitDemo()
 	ScrollCharMapLength = strlen(ScrollCharMap);
 	ScrollLength = ScrollTextLength * ScrollCharWidth;
 
+	// Generate bitmap for charmap
 	ScrollFontBitMap = AllocBitMap(ScrollCharMapLength * ScrollCharWidth, ScrollCharHeight + 4, 1, BMF_STANDARD | BMF_INTERLEAVED | BMF_CLEAR, RenderPort.BitMap);
 
 	if (!ScrollFontBitMap)
@@ -521,6 +523,7 @@ BOOL InitDemo()
 
 	RenderPort.BitMap = ScrollFontBitMap;
 
+	// Load font
 	struct TextAttr ScrollFontAttrib =
 	{
 		"topaz.font", 
@@ -534,14 +537,18 @@ BOOL InitDemo()
 
 	if (ScrollFont = OpenDiskFont(&ScrollFontAttrib))
    	{
-    	OldFont = RenderPort.Font;
+    	// Save current font
+		OldFont = RenderPort.Font;
+		// Set new font
      	SetFont(&RenderPort, ScrollFont);
 	}
 
+	// Draw charmap
 	SetAPen(&RenderPort, 1);
 	Move(&RenderPort, 0, ScrollCharHeight);
 	Text(&RenderPort, ScrollCharMap, ScrollCharMapLength);
 
+	// Load old font
 	SetFont(&RenderPort, OldFont);
     CloseFont(ScrollFont);
 	
@@ -575,9 +582,9 @@ void DrawDemo()
 				{
 					const int TempPosX = XPos + x1;
 
-					if ((unsigned int)TempPosX < Screen->Width)
+					if ((unsigned int)TempPosX < WIDTH)
 					{
-						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, TempPosX, 200 + YSine[TempPosX], 1, ScrollCharHeight + 4, 0xC0, 0x01, NULL);
+						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, TempPosX, 100 + YSine[TempPosX], 1, ScrollCharHeight + 4, 0xC0, 0x01, NULL);
 					}
 				}
 
@@ -587,7 +594,7 @@ void DrawDemo()
 			CharX += ScrollCharWidth;
 		}
 
-		if (XPos >= Screen->Width)
+		if (XPos >= WIDTH)
 		{
 			break;
 		}
@@ -599,7 +606,7 @@ void DrawDemo()
 
 	if (ScrollX < -ScrollLength)
 	{
-		ScrollX = Screen->Width;
+		ScrollX = WIDTH;
 	}
 }
 
@@ -613,7 +620,6 @@ int main()
     }
 
 	// Check which CPU is used in your Amiga (or UAE...)
-	// Depening on this, we use more or less stars (or effects in the near future...)
 	CheckCPU();
 
 	// Gain control over the OS
@@ -626,9 +632,7 @@ int main()
     }
 
     // Init the RenderPort (=Rastport)
-	// We need to init some buffers for Area operations
-	// Since our demo part draw some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
-	if (!CreateRastPort(5, WIDTH, HEIGHT))
+	if (!CreateRastPort(1, 1, 1))
 	{
 		return 20;
 	}

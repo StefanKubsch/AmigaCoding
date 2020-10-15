@@ -1,5 +1,5 @@
 //**********************************************************************
-//* Simple starfiel demo for Amiga with at least OS 3.0    			   *
+//* Simple starfield demo for Amiga with at least OS 3.0  			   *
 //*														 			   *
 //* (C) 2020 by Stefan Kubsch                            			   *
 //* Project for vbcc 0.9g                                			   *
@@ -30,8 +30,8 @@
 #include <string.h>
 
 // Include our own header files
-#include "lwmf_math.h"
-#include "lwmf_hardware.h"
+#include "lwmf/lwmf_math.h"
+#include "lwmf/lwmf_hardware.h"
 
 struct GfxBase* GfxBase = NULL;
 struct IntuitionBase* IntuitionBase = NULL;
@@ -440,7 +440,7 @@ void DoubleBuffering(void(*CallFunction)())
 
 			ForcedWaitBlit();
 			ChangeScreenBuffer(Screen, Buffer[CurrentBuffer]);
-			WaitVBeam(240);
+			WaitVBeam(255);
 			CurrentBuffer ^= 1;
 			FPSCounter();
 
@@ -538,7 +538,7 @@ void DrawDemo()
 		const int x = (Stars[i].x << 8) / Stars[i].z + WidthMid;
 		const int y = (Stars[i].y << 8) / Stars[i].z + HeightMid;
 		
-		if ((unsigned int)x < Screen->Width && (unsigned int)y < Screen->Height)
+		if ((unsigned int)x < WIDTH && (unsigned int)y < HEIGHT)
 		{
 			SetAPen(&RenderPort, Stars[i].z / 300 + 1);
 			WritePixel(&RenderPort, x, y);
@@ -569,9 +569,7 @@ int main()
     }
 
     // Init the RenderPort (=Rastport)
-	// We need to init some buffers for Area operations
-	// Since our demo part draw some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
-	if (!CreateRastPort(5, WIDTH, HEIGHT))
+	if (!CreateRastPort(1, 1, 1))
 	{
 		return 20;
 	}
