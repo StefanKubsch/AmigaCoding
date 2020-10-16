@@ -3,7 +3,7 @@
 
 // Simple random number generator based on XorShift
 // https://en.wikipedia.org/wiki/Xorshift
-ULONG XorShift32(void)
+ULONG lwmf_XorShift32(void)
 {
 	static ULONG Seed = 7;
 
@@ -11,5 +11,6 @@ ULONG XorShift32(void)
 	Seed ^= Seed >> 17;
 	return Seed ^= Seed << 5;
 }
+
 
 #endif /* LWMF_MATH_H */

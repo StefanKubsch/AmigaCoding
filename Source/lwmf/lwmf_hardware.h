@@ -1,18 +1,14 @@
 #ifndef LWMF_HARDWARE_H
 #define LWMF_HARDWARE_H
 
-#include <hardware/custom.h>
-
-struct Custom* HardwareCustom = NULL;
-
-void ForcedWaitBlit(void)
+void lwmf_WaitBlit(void)
 {
-	while (HardwareCustom->dmaconr & DMAF_BLTDONE)
+	while (custom->dmaconr & DMAF_BLTDONE)
 	{
 	}
 }
 
-void WaitVBeam(ULONG Line)
+void lwmf_WaitVBeam(ULONG Line)
 {
 	ULONG VPos = 0;
 	Line *= 0x100;
@@ -22,5 +18,6 @@ void WaitVBeam(ULONG Line)
 		VPos = *(ULONG*)0xDFF004;
 	}
 }
+
 
 #endif /* LWMF_HARDWARE_H */
