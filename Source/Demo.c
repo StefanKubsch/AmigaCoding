@@ -6,7 +6,7 @@
 //*														 			   *
 //*                                                      			   *
 //* (C) 2020 by Stefan Kubsch                            			   *
-//* Project for vbcc 0.9g                                			   *
+//* Project for vbcc	                                 			   *
 //*                                                      			   *
 //* Compile & link with:                                 			   *
 //* vc -O4 Demo.c -o Demo -lmieee -lamiga              			   	   *
