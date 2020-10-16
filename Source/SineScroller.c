@@ -2,7 +2,7 @@
 //* Simple sine scroller demo for Amiga with at least OS 3.0           *
 //*														 			   *
 //* (C) 2020 by Stefan Kubsch                            			   *
-//* Project for vbcc 0.9g                                			   *
+//* Project for vbcc	                                 			   *
 //*                                                      			   *
 //* Compile & link with:                                 			   *
 //* vc -O4 SineScroller.c -o SineScroller -lmieee -lamiga  			   *
