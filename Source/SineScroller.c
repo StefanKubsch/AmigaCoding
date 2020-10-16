@@ -54,7 +54,7 @@ void CleanupDemo();
 void DrawDemo();
 
 struct BitMap* ScrollFontBitMap;
-const char ScrollText[] = "...WELL,WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
+const char ScrollText[] = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
 const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ!.,";
 const int ScrollCharWidth = 16;
 const int ScrollCharHeight = 28;
@@ -73,7 +73,7 @@ BOOL InitDemo()
 	// Generate sinus table
 	for (int i = 0; i < 360; ++i)
 	{
-		YSine[i] = (int)(sin(0.05f * i) * 10.0f);
+		YSine[i] = (int)(sin(0.03f * i) * 30.0f);
 	}
 
 	ScrollX = WIDTH;

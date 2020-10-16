@@ -146,7 +146,7 @@ struct CubeStruct
 int VCCount = 0;
 
 struct BitMap* ScrollFontBitMap;
-const char ScrollText[] = "...WELL,WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
+const char ScrollText[] = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
 const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ!.,";
 const int ScrollCharWidth = 16;
 const int ScrollCharHeight = 28;
