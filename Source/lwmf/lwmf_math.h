@@ -1,6 +1,8 @@
 #ifndef LWMF_MATH_H
 #define LWMF_MATH_H
 
+ULONG lwmf_XorShift32(void);
+
 // Simple random number generator based on XorShift
 // https://en.wikipedia.org/wiki/Xorshift
 ULONG lwmf_XorShift32(void)

@@ -1,6 +1,9 @@
 #ifndef LWMF_HARDWARE_H
 #define LWMF_HARDWARE_H
 
+void lwmf_WaitBlit(void);
+void lwmf_WaitVBeam(ULONG Line);
+
 void lwmf_WaitBlit(void)
 {
 	while (custom->dmaconr & DMAF_BLTDONE)

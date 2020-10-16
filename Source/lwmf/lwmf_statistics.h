@@ -8,7 +8,7 @@ char* CPUText = NULL;
 int CPUTextLength = 0;
 
 void lwmf_FPSCounter(void);
-void lwmf_DisplayStatistics(struct RastPort RPort, const int Color, const int PosX, const int PosY);
+void lwmf_DisplayStatistics(const int Color, const int PosX, const int PosY);
 void lwmf_CheckCPU(void);
 
 void lwmf_FPSCounter(void)
@@ -41,17 +41,17 @@ void lwmf_FPSCounter(void)
 	++FPSFrames;
 }
 
-void lwmf_DisplayStatistics(struct RastPort RPort, const int Color, const int PosX, const int PosY)
+void lwmf_DisplayStatistics(const int Color, const int PosX, const int PosY)
 {
 	UBYTE FPSStr[10];
 	sprintf(FPSStr, "%d fps", FPS);
 								
-	SetAPen(&RPort, Color);
-	Move(&RPort, PosX, PosY);
-	Text(&RPort, FPSStr, strlen(FPSStr));
+	SetAPen(&RenderPort, Color);
+	Move(&RenderPort, PosX, PosY);
+	Text(&RenderPort, FPSStr, strlen(FPSStr));
 
-	Move(&RPort, PosX, PosY + 10);
-	Text(&RPort, CPUText, CPUTextLength);
+	Move(&RenderPort, PosX, PosY + 10);
+	Text(&RenderPort, CPUText, CPUTextLength);
 }
 
 void lwmf_CheckCPU(void)

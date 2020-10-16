@@ -33,7 +33,7 @@ void lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit)
 			(*CallFunction)();
 
 			// DisplayStatistics() writes on the backbuffer, too - so we need to call it before blitting
-			lwmf_DisplayStatistics(RenderPort, 1, 5, 10);
+			lwmf_DisplayStatistics(1, 5, 10);
 
 			//***************************************************************
 			// Ends here ;-)                                                *
