@@ -60,10 +60,11 @@ void lwmf_TakeOverOS(void)
 	// So its: 0111111111111111 or 0x7FFF
 	custom->dmacon = 0x7FFF;
 
-	// Set 10, 8, 7, 6
+	// Set 10, 7, 6
 	// To set these, you need also to set bit 15 (SET/CLR)
-	// So its: 1000010111000000 or 0x85C0
-	custom->dmacon = 0x85C0;
+	// So its: 1000010011000000 or 0x84C0
+	// Or use the macros defined in "hardware/dmabits.h":
+	custom->dmacon = DMAF_SETCLR | DMAF_BLITHOG | DMAF_BLITTER | DMAF_COPPER;
 }
 
 void lwmf_ReleaseOS(void)

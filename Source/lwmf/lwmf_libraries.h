@@ -8,7 +8,7 @@
 #include <graphics/rastport.h>
 #include <graphics/text.h>
 #include <intuition/intuition.h>
-#include <hardware/intbits.h>
+#include <hardware/dmabits.h>
 #include <hardware/custom.h>
 #include <hardware/cia.h>
 #include <devices/timer.h>
