@@ -9,6 +9,7 @@
 #include "lwmf_statistics.h"
 #include "lwmf_doublebuffer.h"
 #include "lwmf_math.h"
+#include "lwmf_cleanup.h"
 
 
 #endif /* LWMF_H */

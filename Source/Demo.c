@@ -230,12 +230,8 @@ BOOL InitDemo()
 
 	if (!Stars)
 	{
-		lwmf_ReleaseOS();
 		CleanupCopperList();
-		lwmf_CleanupRastPort();
-		lwmf_CleanupScreen();
-		lwmf_CloseLibraries();
-
+		lwmf_CleanupAll();
 		return FALSE;
 	}
 
@@ -266,12 +262,9 @@ BOOL InitDemo()
 
 	if (!ScrollFontBitMap)
 	{
-		lwmf_ReleaseOS();
 		CleanupDemo();
 		CleanupCopperList();
-		lwmf_CleanupRastPort();
-		lwmf_CleanupScreen();
-		lwmf_CloseLibraries();
+		lwmf_CleanupAll();
 	}
 
 	RenderPort.BitMap = ScrollFontBitMap;
@@ -484,11 +477,8 @@ int main()
 	lwmf_DoubleBuffering(DrawDemo, FPSLIMIT);
 
 	// Cleanup everything
-	lwmf_ReleaseOS();
 	CleanupDemo();
 	CleanupCopperList();
-	lwmf_CleanupRastPort();
-	lwmf_CleanupScreen();
-	lwmf_CloseLibraries();
+	lwmf_CleanupAll();
 	return 0;
 }

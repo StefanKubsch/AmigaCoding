@@ -143,10 +143,7 @@ int main()
 	lwmf_DoubleBuffering(DrawDemo, FPSLIMIT);
 
 	// Cleanup everything
-	lwmf_ReleaseOS();
 	CleanupCopperList();
-	lwmf_CleanupRastPort();
-	lwmf_CleanupScreen();
-	lwmf_CloseLibraries();
+	lwmf_CleanupAll();
 	return 0;
 }
