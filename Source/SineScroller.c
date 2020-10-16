@@ -160,12 +160,12 @@ void DrawDemo()
 				break;
 			}
 
-			CharX += ScrollCharWidth;
-		}
+			if (XPos >= WIDTH)
+			{
+				break;
+			}
 
-		if (XPos >= WIDTH)
-		{
-			break;
+			CharX += ScrollCharWidth;
 		}
 
 		XPos += ScrollCharWidth;
