@@ -209,7 +209,7 @@ int main()
     // Init the RenderPort (=Rastport)
 	// We need to init some buffers for Area operations
 	// Since our demo part draws some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
-	if (!lwmf_CreateRastPort(5, 130, 130))
+	if (!lwmf_CreateRastPort(5, 130, 130, 0))
 	{
 		return 20;
 	}

@@ -28,6 +28,8 @@ BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit)
 	// Loop until mouse button is pressed...
 	while (ciaa->ciapra & CIAF_GAMEPORT0)
 	{
+		lwmf_WaitVBeam(255);
+
 		RenderPort.BitMap = Buffer[CurrentBuffer]->sb_BitMap;
 		
 		//***************************************************************
@@ -45,7 +47,6 @@ BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit)
 
 		lwmf_WaitBlit();
 		ChangeScreenBuffer(Screen, Buffer[CurrentBuffer]);
-		lwmf_WaitVBeam(255);
 		CurrentBuffer ^= 1;
 		lwmf_FPSCounter();
 

@@ -7,10 +7,10 @@ struct RastPort RenderPort;
 UBYTE* TmpRasBuffer = NULL;
 UBYTE* AreaBuffer = NULL;
 
-BOOL lwmf_CreateRastPort(const int NumberOfVertices, const int AreaWidth, const int AreaHeight);
+BOOL lwmf_CreateRastPort(const int NumberOfVertices, const int AreaWidth, const int AreaHeight, const int ClearColor);
 void lwmf_CleanupRastPort(void);
 
-BOOL lwmf_CreateRastPort(const int NumberOfVertices, const int AreaWidth, const int AreaHeight)
+BOOL lwmf_CreateRastPort(const int NumberOfVertices, const int AreaWidth, const int AreaHeight, const int ClearColor)
 {
 	InitRastPort(&RenderPort);
 
@@ -41,6 +41,8 @@ BOOL lwmf_CreateRastPort(const int NumberOfVertices, const int AreaWidth, const 
 		lwmf_CleanupRastPort();
 		return FALSE;
 	}
+
+	SetRast(&Screen->RastPort, ClearColor);
 
 	return TRUE;
 }

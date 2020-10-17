@@ -140,7 +140,7 @@ struct BitMap* ScrollFontBitMap = NULL;
 const char ScrollText[] = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
 const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ!.,";
 const int ScrollCharWidth = 16;
-const int ScrollCharHeight = 28;
+const int ScrollCharHeight = 16;
 int YSine[360];
 int ScrollTextLength = 0;
 int ScrollCharMapLength = 0;
@@ -264,7 +264,7 @@ BOOL InitDemo()
 	struct TextAttr ScrollFontAttrib =
 	{
 		"topaz.font", 
-		16,
+		ScrollCharHeight,
 		FSF_BOLD,
 		0
 	};
@@ -376,7 +376,7 @@ void DrawDemo()
 
 					if ((unsigned int)TempPosX + 1 < WIDTH)
 					{
-						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, TempPosX, 200 + YSine[TempPosX], 2, ScrollCharHeight + 4, 0xC0, 0x01, NULL);
+						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, TempPosX, 220 + YSine[TempPosX], 2, ScrollCharHeight + 4, 0xC0, 0x01, NULL);
 					}
 				}
 
@@ -451,7 +451,7 @@ int main()
     // Init the RenderPort (=Rastport)
 	// We need to init some buffers for Area operations
 	// Since our demo part draws some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
-	if (!lwmf_CreateRastPort(5, WIDTH, HEIGHT))
+	if (!lwmf_CreateRastPort(5, WIDTH, HEIGHT, 0))
 	{
 		return 20;
 	}

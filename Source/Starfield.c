@@ -152,7 +152,7 @@ int main()
     }
 
     // Init the RenderPort (=Rastport)
-	if (!lwmf_CreateRastPort(1, 1, 1))
+	if (!lwmf_CreateRastPort(1, 1, 1, 0))
 	{
 		return 20;
 	}

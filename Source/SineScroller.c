@@ -57,7 +57,7 @@ struct BitMap* ScrollFontBitMap = NULL;
 const char ScrollText[] = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
 const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ!.,";
 const int ScrollCharWidth = 16;
-const int ScrollCharHeight = 28;
+const int ScrollCharHeight = 16;
 int YSine[360];
 int ScrollTextLength = 0;
 int ScrollCharMapLength = 0;
@@ -96,7 +96,7 @@ BOOL InitDemo()
 	struct TextAttr ScrollFontAttrib =
 	{
 		"topaz.font", 
-		16,
+		ScrollCharHeight,
 		FSF_BOLD,
 		0
 	};
@@ -205,7 +205,7 @@ int main()
     }
 
     // Init the RenderPort (=Rastport)
-	if (!lwmf_CreateRastPort(1, 1, 1))
+	if (!lwmf_CreateRastPort(1, 1, 1, 0))
 	{
 		return 20;
 	}
