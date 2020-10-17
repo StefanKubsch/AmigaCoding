@@ -53,7 +53,7 @@ BOOL InitDemo();
 void CleanupDemo();
 void DrawDemo();
 
-struct BitMap* ScrollFontBitMap;
+struct BitMap* ScrollFontBitMap = NULL;
 const char ScrollText[] = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
 const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ!.,";
 const int ScrollCharWidth = 16;
@@ -86,8 +86,8 @@ BOOL InitDemo()
 
 	if (!ScrollFontBitMap)
 	{
-		CleanupDemo();
 		lwmf_CleanupAll();
+		return FALSE;
 	}
 
 	RenderPort.BitMap = ScrollFontBitMap;
@@ -104,13 +104,17 @@ BOOL InitDemo()
 	struct TextFont* ScrollFont = NULL;
 	struct TextFont* OldFont = NULL;
 
-	if (ScrollFont = OpenDiskFont(&ScrollFontAttrib))
+	if (!(ScrollFont = OpenDiskFont(&ScrollFontAttrib)))
    	{
-    	// Save current font
-		OldFont = RenderPort.Font;
-		// Set new font
-     	SetFont(&RenderPort, ScrollFont);
+		CleanupDemo();
+		lwmf_CleanupAll();
+		return FALSE;
 	}
+
+	// Save current font
+	OldFont = RenderPort.Font;
+	// Set new font
+	SetFont(&RenderPort, ScrollFont);
 
 	// Draw charmap
 	SetAPen(&RenderPort, 1);
@@ -147,13 +151,13 @@ void DrawDemo()
 		{
 			if (*(ScrollText + i) == *(ScrollCharMap + j))
 			{
-				for (int x1 = 0, x = CharX; x < CharX + ScrollCharWidth; ++x1, ++x)
+				for (int x1 = 0, x = CharX; x < CharX + ScrollCharWidth; x1 += 2, x += 2)
 				{
 					const int TempPosX = XPos + x1;
 
-					if ((unsigned int)TempPosX < WIDTH)
+					if ((unsigned int)TempPosX + 1 < WIDTH)
 					{
-						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, TempPosX, 100 + YSine[TempPosX], 1, ScrollCharHeight + 4, 0xC0, 0x01, NULL);
+						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, TempPosX, 100 + YSine[TempPosX], 2, ScrollCharHeight + 4, 0xC0, 0x01, NULL);
 					}
 				}
 

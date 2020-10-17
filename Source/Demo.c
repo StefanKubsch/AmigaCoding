@@ -60,7 +60,6 @@ struct ColorSpec ColorTable[] =
 //***************************************************************
 
 BOOL LoadCopperList();
-void CleanupCopperList();
 BOOL InitDemo();
 void CleanupDemo();
 void DrawDemo();
@@ -100,14 +99,6 @@ BOOL LoadCopperList()
 	return TRUE;
 }
 
-void CleanupCopperList()
-{
-	if (Screen->ViewPort.UCopIns)
-    {
-		FreeVPortCopLists(&Screen->ViewPort);
-	}
-}
-
 struct StarStruct
 {
     int x;
@@ -145,7 +136,7 @@ struct CubeStruct
 
 int VCCount = 0;
 
-struct BitMap* ScrollFontBitMap;
+struct BitMap* ScrollFontBitMap = NULL;
 const char ScrollText[] = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
 const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ!.,";
 const int ScrollCharWidth = 16;
@@ -230,7 +221,7 @@ BOOL InitDemo()
 
 	if (!Stars)
 	{
-		CleanupCopperList();
+		CleanupDemo();
 		lwmf_CleanupAll();
 		return FALSE;
 	}
@@ -263,8 +254,8 @@ BOOL InitDemo()
 	if (!ScrollFontBitMap)
 	{
 		CleanupDemo();
-		CleanupCopperList();
 		lwmf_CleanupAll();
+		return FALSE;
 	}
 
 	RenderPort.BitMap = ScrollFontBitMap;
@@ -281,13 +272,17 @@ BOOL InitDemo()
 	struct TextFont* ScrollFont = NULL;
 	struct TextFont* OldFont = NULL;
 
-	if (ScrollFont = OpenDiskFont(&ScrollFontAttrib))
+	if (!(ScrollFont = OpenDiskFont(&ScrollFontAttrib)))
    	{
-    	// Save current font
-		OldFont = RenderPort.Font;
-		// Set new font
-     	SetFont(&RenderPort, ScrollFont);
+		CleanupDemo();
+		lwmf_CleanupAll();
+		return FALSE;
 	}
+
+	// Save current font
+	OldFont = RenderPort.Font;
+	// Set new font
+	SetFont(&RenderPort, ScrollFont);
 
 	// Draw charmap
 	SetAPen(&RenderPort, 1);
@@ -303,6 +298,11 @@ BOOL InitDemo()
 
 void CleanupDemo()
 {
+	if (Screen->ViewPort.UCopIns)
+    {
+		FreeVPortCopLists(&Screen->ViewPort);
+	}
+
 	if (Stars)
 	{
 		FreeVec(Stars);
@@ -370,13 +370,13 @@ void DrawDemo()
 		{
 			if (*(ScrollText + i) == *(ScrollCharMap + j))
 			{
-				for (int x1 = 0, x = CharX; x < CharX + ScrollCharWidth; ++x1, ++x)
+				for (int x1 = 0, x = CharX; x < CharX + ScrollCharWidth; x1 += 2, x += 2)
 				{
 					const int TempPosX = XPos + x1;
 
-					if ((unsigned int)TempPosX < WIDTH)
+					if ((unsigned int)TempPosX + 1 < WIDTH)
 					{
-						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, TempPosX, 200 + YSine[TempPosX], 1, ScrollCharHeight + 4, 0xC0, 0x01, NULL);
+						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, TempPosX, 200 + YSine[TempPosX], 2, ScrollCharHeight + 4, 0xC0, 0x01, NULL);
 					}
 				}
 
@@ -481,7 +481,6 @@ int main()
 
 	// Cleanup everything
 	CleanupDemo();
-	CleanupCopperList();
 	lwmf_CleanupAll();
 	return 0;
 }
