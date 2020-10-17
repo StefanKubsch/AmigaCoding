@@ -226,7 +226,10 @@ int main()
 
     // This is our main loop
     // Call "DoubleBuffering" with the name of function you want to use...
-	lwmf_DoubleBuffering(DrawDemo, FPSLIMIT);
+	if (!lwmf_DoubleBuffering(DrawDemo, FPSLIMIT))
+	{
+		return 20;
+	}
 
 	// Cleanup everything
 	lwmf_CleanupAll();
