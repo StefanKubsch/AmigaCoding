@@ -19,29 +19,26 @@ BOOL lwmf_CreateRastPort(const int NumberOfVertices, const int AreaWidth, const 
 
 	const ULONG RasSize = RASSIZE(AreaWidth, AreaHeight);
 
-	if (TmpRasBuffer = AllocVec(RasSize, MEMF_CHIP | MEMF_CLEAR))
-	{
-		InitTmpRas(&tmpRas, TmpRasBuffer, RasSize);
-		RenderPort.TmpRas = &tmpRas;
-	}
-	else
+	if (!(TmpRasBuffer = AllocVec(RasSize, MEMF_CHIP | MEMF_CLEAR)))
 	{
 		lwmf_CleanupRastPort();
 		return FALSE;
 	}
+
+	InitTmpRas(&tmpRas, TmpRasBuffer, RasSize);
+	RenderPort.TmpRas = &tmpRas;
 
 	// We need to allocate 5bytes per vertex
-	if (AreaBuffer = AllocVec(5 * NumberOfVertices, MEMF_CHIP | MEMF_CLEAR))
-	{
-		InitArea(&areaInfo, AreaBuffer, NumberOfVertices);
-		RenderPort.AreaInfo = &areaInfo;
-	}
-	else
+	if (!(AreaBuffer = AllocVec(5 * NumberOfVertices, MEMF_CHIP | MEMF_CLEAR)))
 	{
 		lwmf_CleanupRastPort();
 		return FALSE;
 	}
 
+	InitArea(&areaInfo, AreaBuffer, NumberOfVertices);
+	RenderPort.AreaInfo = &areaInfo;
+
+	// Inital clear
 	SetRast(&Screen->RastPort, ClearColor);
 
 	return TRUE;

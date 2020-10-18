@@ -73,7 +73,7 @@ BOOL InitDemo()
 	// Use more stars, if a fast CPU is available...
 	NumberOfStars = FastCPUFlag ? 300 : 100;
 
-	Stars = AllocVec(sizeof(struct StarStruct) * NumberOfStars, MEMF_FAST);
+	Stars = AllocVec(sizeof(struct StarStruct) * NumberOfStars, MEMF_ANY);
 
 	if (!Stars)
 	{
@@ -87,6 +87,8 @@ BOOL InitDemo()
         Stars[i].y = lwmf_XorShift32() % HEIGHT - 128;
         Stars[i].z = lwmf_XorShift32() % 800;
     }
+
+	return TRUE;
 }
 
 void CleanupDemo()

@@ -13,8 +13,12 @@ BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit)
 		return FALSE;
 	}
 
-	volatile struct CIA *ciaa = (struct CIA *)0xBFE001;
-
+	// Use odd CIA (CIA-A) for check if mouse button is pressed
+	// https://www.amigacoding.com/index.php/CIA_Memory_Map
+	volatile UBYTE* CIA_PRA = (volatile UBYTE *) 0xBFE001;
+	// Set bit 6 (Port 0 fire button)
+	const int PRA_FIR0 = 1 << 6;
+	
 	// Start timer
 	struct timerequest TickRequest = *TimerIO;
 	TickRequest.tr_node.io_Command = TR_ADDREQUEST;
@@ -26,7 +30,7 @@ BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit)
 	int CurrentBuffer = 0;
 
 	// Loop until mouse button is pressed...
-	while (ciaa->ciapra & CIAF_GAMEPORT0)
+	while (*CIA_PRA & PRA_FIR0)
 	{
 		lwmf_WaitVBeam(255);
 

@@ -9,7 +9,6 @@ void lwmf_CleanupScreen(void);
 BOOL lwmf_CreateScreen(const ULONG Width, const ULONG Height, const int NumberOfBitPlanes, struct ColorSpec* ColorTable)
 {
 	Screen = OpenScreenTags(NULL,
-	    SA_DisplayID, LORES_KEY,
 		SA_Width, Width,
 		SA_Height, Height,
 	    SA_Depth, NumberOfBitPlanes,

@@ -14,6 +14,12 @@ void lwmf_ReleaseOS(void);
 
 void lwmf_TakeOverOS(void)
 {
+	// Set task priority
+	SetTaskPri(FindTask(NULL), 20);
+
+	// Disable task rescheduling
+	Forbid();
+
 	// Save current view
 	OldView = GfxBase->ActiView;
 	// Save current copperlist
@@ -25,16 +31,14 @@ void lwmf_TakeOverOS(void)
     WaitTOF();
     WaitTOF();
 
-	// Set task priority
-	SetTaskPri(FindTask(NULL), 100);
-	
-	Disable();
-
 	// Save custom registers
-	Old_dmacon = custom->dmaconr | 0x8000;
-	Old_intena = custom->intenar | 0x8000;
-	Old_adkcon = custom->adkconr | 0x8000;
-	Old_intreq = custom->intreqr | 0x8000;
+	Old_dmacon = custom->dmaconr;
+	Old_intena = custom->intenar;
+	Old_adkcon = custom->adkconr;
+	Old_intreq = custom->intreqr;
+
+	// Disable all interrupts
+	Disable();
 
 	// Set DMA
 
@@ -56,7 +60,7 @@ void lwmf_TakeOverOS(void)
 	// 0    AUD0EN   Audio channel 0 DMA
 
 	// Set all DMACON bits to zero
-	// To set these, you need also to disable bit 15 (SET/CLR)
+	// To set this, you need also to disable bit 15 (SET/CLR)
 	// So its: 0111111111111111 or 0x7FFF
 	custom->dmacon = 0x7FFF;
 
@@ -64,7 +68,7 @@ void lwmf_TakeOverOS(void)
 	// To set these, you need also to set bit 15 (SET/CLR)
 	// So its: 1000010011000000 or 0x84C0
 	// Or use the macros defined in "hardware/dmabits.h":
-	custom->dmacon = DMAF_SETCLR | DMAF_BLITHOG | DMAF_BLITTER | DMAF_COPPER;
+	custom->dmacon = 0x84C0;
 }
 
 void lwmf_ReleaseOS(void)
@@ -80,8 +84,9 @@ void lwmf_ReleaseOS(void)
 	custom->adkcon = Old_adkcon;
 	custom->intreq = Old_intreq;
 
+	// Enable interrupts
 	Enable();
-
+	
 	// Restore previously saved copperlist
 	custom->cop1lc = (ULONG)OldCopperInit;
 	OldCopperInit = NULL;
@@ -92,6 +97,9 @@ void lwmf_ReleaseOS(void)
 
 	WaitTOF();
 	WaitTOF();
+
+	// Enable task rescheduling
+	Permit();
 }
 
 

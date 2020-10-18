@@ -25,4 +25,8 @@ You´re done!
 
 All you need to test your programs is an editor (I prefer Visual Studio Code, https://code.visualstudio.com/) emulator like WinUAE (https://www.winuae.net/), with a set up Amiga OS installation. Or transfer you programs to a "real" Amiga via CF Card, Network etc.
 
-For reference: I test my code on a real Amiga 1200 with an iComp ACA1221 accelerator card, as well as on a "stock" 14MHz A1200 in WinUAE - each with Amiga OS 3.1.4.
+I test my code on:
+
+- a real Amiga 1200 with an iComp ACA1221 accelerator card and Amiga OS 3.1.4
+- a "stock" 14MHz A1200 in WinUA and Amiga OS 3.1.4
+- a "stock" Amiga 500 in WinUAE and Amiga OS 3.1

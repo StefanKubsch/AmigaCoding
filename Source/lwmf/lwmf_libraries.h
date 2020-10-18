@@ -10,7 +10,6 @@
 #include <intuition/intuition.h>
 #include <hardware/dmabits.h>
 #include <hardware/custom.h>
-#include <hardware/cia.h>
 #include <devices/timer.h>
 #include <clib/timer_protos.h>  
 #include <clib/exec_protos.h>
@@ -85,6 +84,7 @@ BOOL lwmf_LoadLibraries(void)
         lwmf_CloseLibraries();
         return FALSE;
 	}
+	
     return TRUE;
 }
 
