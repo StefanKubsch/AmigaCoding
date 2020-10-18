@@ -135,13 +135,16 @@ struct CubeStruct
 } CubePreCalc[90];
 
 int VCCount = 0;
+int CubeSinTabCount = 0;
+int CubeSinTabY[190];
+int CubeSinTabX[190];
 
 struct BitMap* ScrollFontBitMap = NULL;
 const char ScrollText[] = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
 const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ!.,";
 const int ScrollCharWidth = 16;
 const int ScrollCharHeight = 16;
-int YSine[360];
+int ScrollSinTab[360];
 int ScrollTextLength = 0;
 int ScrollCharMapLength = 0;
 int ScrollLength = 0;
@@ -162,6 +165,12 @@ BOOL InitDemo()
 
 	const float CosA = cos(0.04f);
     const float SinA = sin(0.04f);
+
+	for (int i = 0; i < 190; ++i)
+	{
+		CubeSinTabY[i] = (int)(sin(0.2f * i) * 30.0f);
+		CubeSinTabX[i] = (int)(sin(0.1f * i) * 60.0f);
+	}
 
 	for (int Pre = 0; Pre < 90; ++Pre)
 	{
@@ -240,7 +249,7 @@ BOOL InitDemo()
 	// Generate sinus table
 	for (int i = 0; i < 360; ++i)
 	{
-		YSine[i] = (int)(sin(0.05f * i) * 10.0f);
+		ScrollSinTab[i] = (int)(sin(0.03f * i) * 30.0f);
 	}
 
 	ScrollX = WIDTH;
@@ -376,7 +385,7 @@ void DrawDemo()
 
 					if ((unsigned int)TempPosX + 1 < WIDTH)
 					{
-						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, TempPosX, 220 + YSine[TempPosX], 2, ScrollCharHeight + 4, 0xC0, 0x01, NULL);
+						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, TempPosX, 200 + ScrollSinTab[TempPosX], 2, ScrollCharHeight + 4, 0xC0, 0x01, NULL);
 					}
 				}
 
@@ -412,10 +421,10 @@ void DrawDemo()
 	{
 		SetAPen(&RenderPort, CubeFacesColors[CubePreCalc[VCCount].Order[i].first]);
 
-		AreaMove(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p0].x, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p0].y);
-		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p1].x, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p1].y);
-		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p2].x, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p2].y);
-		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p3].x, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p3].y);
+		AreaMove(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p0].x + CubeSinTabX[CubeSinTabCount], CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p0].y + CubeSinTabY[CubeSinTabCount]);
+		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p1].x + CubeSinTabX[CubeSinTabCount], CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p1].y + CubeSinTabY[CubeSinTabCount]);
+		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p2].x + CubeSinTabX[CubeSinTabCount], CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p2].y + CubeSinTabY[CubeSinTabCount]);
+		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p3].x + CubeSinTabX[CubeSinTabCount], CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p3].y + CubeSinTabY[CubeSinTabCount]);
 
 		AreaEnd(&RenderPort);
 	}
@@ -423,6 +432,11 @@ void DrawDemo()
 	if (++VCCount >= 90)
 	{
 		VCCount = 0;
+	}
+
+	if (++CubeSinTabCount >= 189)
+	{
+		CubeSinTabCount = 0;
 	}
 }
 

@@ -58,7 +58,7 @@ const char ScrollText[] = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT 
 const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ!.,";
 const int ScrollCharWidth = 16;
 const int ScrollCharHeight = 16;
-int YSine[360];
+int ScrollSinTab[360];
 int ScrollTextLength = 0;
 int ScrollCharMapLength = 0;
 int ScrollLength = 0;
@@ -73,7 +73,7 @@ BOOL InitDemo()
 	// Generate sinus table
 	for (int i = 0; i < 360; ++i)
 	{
-		YSine[i] = (int)(sin(0.03f * i) * 30.0f);
+		ScrollSinTab[i] = (int)(sin(0.03f * i) * 30.0f);
 	}
 
 	ScrollX = WIDTH;
@@ -157,7 +157,7 @@ void DrawDemo()
 
 					if ((unsigned int)TempPosX + 1 < WIDTH)
 					{
-						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, TempPosX, 100 + YSine[TempPosX], 2, ScrollCharHeight + 4, 0xC0, 0x01, NULL);
+						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, TempPosX, 100 + ScrollSinTab[TempPosX], 2, ScrollCharHeight + 4, 0xC0, 0x01, NULL);
 					}
 				}
 
