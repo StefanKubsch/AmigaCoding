@@ -4,11 +4,9 @@
 #include <exec/exec.h>
 #include <graphics/gfxbase.h>
 #include <graphics/copper.h>
-#include <graphics/gfxmacros.h>
 #include <graphics/rastport.h>
 #include <graphics/text.h>
 #include <intuition/intuition.h>
-#include <hardware/dmabits.h>
 #include <hardware/custom.h>
 #include <devices/timer.h>
 #include <clib/timer_protos.h>  
@@ -18,10 +16,6 @@
 #include <clib/diskfont_protos.h>
 #include <clib/alib_protos.h>
 #include <diskfont/diskfont.h>
-
-#include <math.h>
-#include <stdio.h>
-#include <string.h>
 
 struct GfxBase* GfxBase = NULL;
 struct IntuitionBase* IntuitionBase = NULL;

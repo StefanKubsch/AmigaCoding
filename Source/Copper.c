@@ -33,7 +33,7 @@ const int FPSLIMIT = (1000000 / 50);
 // 8 / 3
 // 16 / 4
 // 32 / 5
-// 64 / 6 (Amiga Halfbrite mode)
+// 64 / 6 (Extra Halfbrite mode)
 const int NUMBEROFBITPLANES = 1;
 
 // ...and here which colors we want to use
@@ -55,9 +55,9 @@ void DrawDemo();
 
 BOOL LoadCopperList()
 {
-	struct UCopList* uCopList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_CHIP | MEMF_CLEAR);
+	struct UCopList* uCopList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_ANY | MEMF_CLEAR);
 
-	if (uCopList == NULL)
+	if (!uCopList)
 	{
 		return FALSE;
 	}
@@ -72,15 +72,18 @@ BOOL LoadCopperList()
 
     const int NumberOfColors = sizeof(Colors) / sizeof(*Colors);
 
-	CINIT(uCopList, NumberOfColors);
+	UCopperListInit(uCopList, NumberOfColors);
 
 	for (int i = 0; i < NumberOfColors; ++i)
 	{
-		CWAIT(uCopList, i * (HEIGHT / NumberOfColors), 0);
-		CMOVE(uCopList, custom->color[0], Colors[i]);
+		CWait(uCopList, i * (HEIGHT / NumberOfColors), 0);
+		CBump(uCopList);
+		CMove(uCopList, &custom->color[0], Colors[i]);
+		CBump(uCopList);
 	}
 
-	CEND(uCopList);
+	CWait(uCopList, 10000, 255);
+	CBump(uCopList);
 	
 	Screen->ViewPort.UCopIns = uCopList;
 	RethinkDisplay();
@@ -98,7 +101,7 @@ void CleanupCopperList()
 
 void DrawDemo()
 {
-	SetRast(&RenderPort, 0);
+	// Not much to do here...
 }
 
 int main()
@@ -140,7 +143,7 @@ int main()
 
     // This is our main loop
     // Call "DoubleBuffering" with the name of function you want to use...
-	if (!lwmf_DoubleBuffering(DrawDemo, FPSLIMIT))
+	if (!lwmf_DoubleBuffering(DrawDemo, FPSLIMIT, TRUE))
 	{
 		return 20;
 	}

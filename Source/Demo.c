@@ -14,6 +14,9 @@
 //* Quit with mouse click                                  			   *
 //**********************************************************************
 
+#include <math.h>
+#include <string.h>
+
 // Include our own header files
 #include "lwmf/lwmf.h"
 
@@ -37,7 +40,7 @@ const int FPSLIMIT = (1000000 / 20);
 // 8 / 3
 // 16 / 4
 // 32 / 5
-// 64 / 6 (Amiga Halfbrite mode)
+// 64 / 6 (Extra Halfbrite mode)
 const int NUMBEROFBITPLANES = 3;
 
 // ...and here which colors we want to use
@@ -66,9 +69,9 @@ void DrawDemo();
 
 BOOL LoadCopperList()
 {
-	struct UCopList* uCopList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_CHIP | MEMF_CLEAR);
+	struct UCopList* uCopList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_ANY | MEMF_CLEAR);
 
-	if (uCopList == NULL)
+	if (!uCopList)
 	{
 		return FALSE;
 	}
@@ -83,16 +86,19 @@ BOOL LoadCopperList()
 
     const int NumberOfColors = sizeof(Colors) / sizeof(*Colors);
 
-	CINIT(uCopList, NumberOfColors);
+	UCopperListInit(uCopList, NumberOfColors);
 
 	for (int i = 0; i < NumberOfColors; ++i)
 	{
-		CWAIT(uCopList, i * (HEIGHT / NumberOfColors), 0);
-		CMOVE(uCopList, custom->color[0], Colors[i]);
+		CWait(uCopList, i * (HEIGHT / NumberOfColors), 0);
+		CBump(uCopList);
+		CMove(uCopList, &custom->color[0], Colors[i]);
+		CBump(uCopList);
 	}
 
-	CEND(uCopList);
-	
+	CWait(uCopList, 10000, 255);
+	CBump(uCopList);
+
 	Screen->ViewPort.UCopIns = uCopList;
 	RethinkDisplay();
 	
@@ -134,17 +140,15 @@ struct CubeStruct
 	struct IntPointStruct Cube[8];
 } CubePreCalc[90];
 
-int VCCount = 0;
-int CubeSinTabCount = 0;
-int CubeSinTabY[190];
-int CubeSinTabX[190];
+int CubeSinTabY[64];
+int CubeSinTabX[64];
 
 struct BitMap* ScrollFontBitMap = NULL;
 const char ScrollText[] = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
 const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ!.,";
 const int ScrollCharWidth = 16;
 const int ScrollCharHeight = 16;
-int ScrollSinTab[360];
+int ScrollSinTab[320];
 int ScrollTextLength = 0;
 int ScrollCharMapLength = 0;
 int ScrollLength = 0;
@@ -166,7 +170,8 @@ BOOL InitDemo()
 	const float CosA = cos(0.04f);
     const float SinA = sin(0.04f);
 
-	for (int i = 0; i < 190; ++i)
+	// Create two sintabs for a lissajous figure
+	for (int i = 0; i < 64; ++i)
 	{
 		CubeSinTabY[i] = (int)(sin(0.2f * i) * 30.0f);
 		CubeSinTabX[i] = (int)(sin(0.1f * i) * 60.0f);
@@ -226,9 +231,7 @@ BOOL InitDemo()
 	// Use more stars, if a fast CPU is available...
 	NumberOfStars = FastCPUFlag ? 100 : 50;
 
-	Stars = AllocVec(sizeof(struct StarStruct) * NumberOfStars, MEMF_ANY);
-
-	if (!Stars)
+	if (!(Stars = AllocVec(sizeof(struct StarStruct) * NumberOfStars, MEMF_ANY)))
 	{
 		CleanupDemo();
 		lwmf_CleanupAll();
@@ -237,8 +240,8 @@ BOOL InitDemo()
 
     for (int i = 0; i < NumberOfStars; ++i) 
     {
-        Stars[i].x = lwmf_XorShift32() % WIDTH - 160;
-        Stars[i].y = lwmf_XorShift32() % HEIGHT - 128;
+        Stars[i].x = (lwmf_XorShift32() % WIDTH - 160) << 8;
+        Stars[i].y = (lwmf_XorShift32() % HEIGHT - 128) << 8;
         Stars[i].z = lwmf_XorShift32() % 800;
     }
 
@@ -247,7 +250,7 @@ BOOL InitDemo()
 	//
 
 	// Generate sinus table
-	for (int i = 0; i < 360; ++i)
+	for (int i = 0; i < 320; ++i)
 	{
 		ScrollSinTab[i] = (int)(sin(0.03f * i) * 30.0f);
 	}
@@ -258,7 +261,7 @@ BOOL InitDemo()
 	ScrollLength = ScrollTextLength * ScrollCharWidth;
 
 	// Generate bitmap for charmap
-	ScrollFontBitMap = AllocBitMap(ScrollCharMapLength * ScrollCharWidth, ScrollCharHeight + 4, 1, BMF_STANDARD | BMF_INTERLEAVED | BMF_CLEAR, RenderPort.BitMap);
+	ScrollFontBitMap = AllocBitMap(ScrollCharMapLength * ScrollCharWidth, ScrollCharHeight + 4, 1, BMF_INTERLEAVED | BMF_CLEAR, RenderPort.BitMap);
 
 	if (!ScrollFontBitMap)
 	{
@@ -279,7 +282,6 @@ BOOL InitDemo()
 	};
 
 	struct TextFont* ScrollFont = NULL;
-	struct TextFont* OldFont = NULL;
 
 	if (!(ScrollFont = OpenDiskFont(&ScrollFontAttrib)))
    	{
@@ -289,7 +291,9 @@ BOOL InitDemo()
 	}
 
 	// Save current font
+	struct TextFont* OldFont = NULL;
 	OldFont = RenderPort.Font;
+	
 	// Set new font
 	SetFont(&RenderPort, ScrollFont);
 
@@ -300,7 +304,13 @@ BOOL InitDemo()
 
 	// Load old font
 	SetFont(&RenderPort, OldFont);
-    CloseFont(ScrollFont);
+	OldFont = NULL;
+    
+	if (ScrollFont)
+	{
+		CloseFont(ScrollFont);
+		ScrollFont = NULL;
+	}
 	
 	return TRUE;
 }
@@ -319,6 +329,7 @@ void CleanupDemo()
 
 	if (ScrollFontBitMap)
 	{
+		lwmf_WaitBlit();
 		FreeBitMap(ScrollFontBitMap);
 	}
 }
@@ -342,10 +353,9 @@ void DrawDemo()
 	// To enable bitplane 0 only set the mask as follows:
 	// 00000001 = Hex 0x01
 	//
-	// Another example: Enable only bitplanes 1 and 2:
-	// 11111110 = Hex 0xFE
+	// You could also use "SetWrMsk(RP, Color)" - but it´s just a macro...
 
-	SetWrMsk(&RenderPort, 0x01);
+	RenderPort.Mask = 0x01;
 	SetAPen(&RenderPort, 1);
 
 	for (int i = 0; i < NumberOfStars; ++i)
@@ -357,8 +367,8 @@ void DrawDemo()
 			Stars[i].z = 800;
 		}
 		
-		const int x = (Stars[i].x << 8) / Stars[i].z + WidthMid;
-		const int y = (Stars[i].y << 8) / Stars[i].z + HeightMid;
+		const int x = Stars[i].x / Stars[i].z + WidthMid;
+		const int y = Stars[i].y / Stars[i].z + HeightMid;
 		
 		if ((unsigned int)x < WIDTH && (unsigned int)y < HEIGHT)
 		{
@@ -367,7 +377,7 @@ void DrawDemo()
 	}
 
 	// Re-enable all bitplanes
-	SetWrMsk(&RenderPort, -1);
+	RenderPort.Mask = -1;
 
 	//
 	// Sine scroller
@@ -414,8 +424,10 @@ void DrawDemo()
 	// Vector Cube
 	//
 
-	const int CubeFacesColors[] ={ 2, 3, 4, 5, 6, 7 };
-	
+	const int CubeFacesColors[] = { 2, 3, 4, 5, 6, 7 };
+	static int VCCount = 0;
+	static int CubeSinTabCount = 0;
+
 	// Since we see only the three faces on top, we only need to render these (3, 4 and 5)
 	for (int i = 3; i < 6; ++i)
 	{
@@ -434,7 +446,7 @@ void DrawDemo()
 		VCCount = 0;
 	}
 
-	if (++CubeSinTabCount >= 189)
+	if (++CubeSinTabCount >= 63)
 	{
 		CubeSinTabCount = 0;
 	}
@@ -488,7 +500,7 @@ int main()
 
     // This is our main loop
     // Call "DoubleBuffering" with the name of function you want to use...
-	if (!lwmf_DoubleBuffering(DrawDemo, FPSLIMIT))
+	if (!lwmf_DoubleBuffering(DrawDemo, FPSLIMIT, TRUE))
 	{
 		return 20;
 	}

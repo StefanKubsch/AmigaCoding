@@ -1,14 +1,15 @@
 #ifndef LWMF_STATISTICS_H
 #define LWMF_STATISTICS_H
 
+#include <stdio.h>
+#include <string.h>
+
 // Some global variables for our statistics...
 WORD FPS = 0;
 BOOL FastCPUFlag = FALSE;
-char* CPUText = NULL;
-int CPUTextLength = 0;
 
 void lwmf_FPSCounter(void);
-void lwmf_DisplayStatistics(const int Color, const int PosX, const int PosY);
+void lwmf_DisplayFPSCounter(const int PosX, const int PosY, const int Color);
 void lwmf_CheckCPU(void);
 
 void lwmf_FPSCounter(void)
@@ -41,17 +42,14 @@ void lwmf_FPSCounter(void)
 	++FPSFrames;
 }
 
-void lwmf_DisplayStatistics(const int Color, const int PosX, const int PosY)
+void lwmf_DisplayFPSCounter(const int PosX, const int PosY, const int Color)
 {
-	UBYTE FPSStr[10];
-	sprintf(FPSStr, "%d fps", FPS);
+	UBYTE FPSStr[4];
+	sprintf(FPSStr, "%d", FPS);
 								
 	SetAPen(&RenderPort, Color);
 	Move(&RenderPort, PosX, PosY);
 	Text(&RenderPort, FPSStr, strlen(FPSStr));
-
-	Move(&RenderPort, PosX, PosY + 10);
-	Text(&RenderPort, CPUText, CPUTextLength);
 }
 
 void lwmf_CheckCPU(void)
@@ -63,14 +61,7 @@ void lwmf_CheckCPU(void)
 	if (SysBase->AttnFlags & AFF_68020 || SysBase->AttnFlags & AFF_68030 || SysBase->AttnFlags & AFF_68040 || SysBase->AttnFlags & 0x80)
 	{
 		FastCPUFlag = TRUE;
-		CPUText = "CPU:68020 or higher";
 	}
-	else
-	{
-		CPUText = "CPU:68000 or 68010";
-	}
-
-	CPUTextLength = strlen(CPUText);
 }
 
 

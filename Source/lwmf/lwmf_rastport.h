@@ -17,7 +17,7 @@ BOOL lwmf_CreateRastPort(const int NumberOfVertices, const int AreaWidth, const 
 	struct TmpRas tmpRas;
 	struct AreaInfo areaInfo;
 
-	const ULONG RasSize = RASSIZE(AreaWidth, AreaHeight);
+	const ULONG RasSize = AreaHeight * (AreaWidth + 15) >> 3&0xFFFE;
 
 	if (!(TmpRasBuffer = AllocVec(RasSize, MEMF_CHIP | MEMF_CLEAR)))
 	{

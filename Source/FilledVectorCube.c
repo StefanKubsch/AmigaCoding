@@ -10,6 +10,8 @@
 //* Quit with mouse click                                  			   *
 //**********************************************************************
 
+#include <math.h>
+
 // Include our own header files
 #include "lwmf/lwmf.h"
 
@@ -33,7 +35,7 @@ const int FPSLIMIT = (1000000 / 25);
 // 8 / 3
 // 16 / 4
 // 32 / 5
-// 64 / 6 (Amiga Halfbrite mode)
+// 64 / 6 (Extra Halfbrite mode)
 const int NUMBEROFBITPLANES = 3;
 
 // ...and here which colors we want to use
@@ -84,7 +86,8 @@ struct CubeStruct
 	struct IntPointStruct Cube[8];
 } CubePreCalc[90];
 
-int VCCount = 0;
+int CubeSinTabY[64];
+int CubeSinTabX[64];
 
 BOOL InitDemo()
 {
@@ -101,6 +104,13 @@ BOOL InitDemo()
 
 	const float CosA = cos(0.04f);
     const float SinA = sin(0.04f);
+
+	// Create two sintabs for a lissajous figure
+	for (int i = 0; i < 64; ++i)
+	{
+		CubeSinTabY[i] = (int)(sin(0.2f * i) * 30.0f);
+		CubeSinTabX[i] = (int)(sin(0.1f * i) * 60.0f);
+	}
 
 	for (int Pre = 0; Pre < 90; ++Pre)
 	{
@@ -157,24 +167,23 @@ void DrawDemo()
 	// Clear background
 	SetRast(&RenderPort, 0);
 
-	const int WidthMid = WIDTH >> 1;
-	const int HeightMid = HEIGHT >> 1;
-
 	//
 	// Vector Cube
 	//
 
-	const int CubeFacesColors[] ={ 2, 3, 4, 5, 6, 7 };
-	
+	const int CubeFacesColors[] = { 2, 3, 4, 5, 6, 7 };
+	static int VCCount = 0;
+	static int CubeSinTabCount = 0;
+
 	// Since we see only the three faces on top, we only need to render these (3, 4 and 5)
 	for (int i = 3; i < 6; ++i)
 	{
 		SetAPen(&RenderPort, CubeFacesColors[CubePreCalc[VCCount].Order[i].first]);
 
-		AreaMove(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p0].x, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p0].y);
-		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p1].x, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p1].y);
-		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p2].x, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p2].y);
-		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p3].x, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p3].y);
+		AreaMove(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p0].x + CubeSinTabX[CubeSinTabCount], CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p0].y + CubeSinTabY[CubeSinTabCount]);
+		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p1].x + CubeSinTabX[CubeSinTabCount], CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p1].y + CubeSinTabY[CubeSinTabCount]);
+		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p2].x + CubeSinTabX[CubeSinTabCount], CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p2].y + CubeSinTabY[CubeSinTabCount]);
+		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p3].x + CubeSinTabX[CubeSinTabCount], CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p3].y + CubeSinTabY[CubeSinTabCount]);
 
 		AreaEnd(&RenderPort);
 	}
@@ -182,6 +191,11 @@ void DrawDemo()
 	if (++VCCount >= 90)
 	{
 		VCCount = 0;
+	}
+
+	if (++CubeSinTabCount >= 63)
+	{
+		CubeSinTabCount = 0;
 	}
 }
 
@@ -226,7 +240,7 @@ int main()
 
     // This is our main loop
     // Call "DoubleBuffering" with the name of function you want to use...
-	if (!lwmf_DoubleBuffering(DrawDemo, FPSLIMIT))
+	if (!lwmf_DoubleBuffering(DrawDemo, FPSLIMIT, TRUE))
 	{
 		return 20;
 	}

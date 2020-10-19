@@ -10,6 +10,9 @@
 //* Quit with mouse click                                  			   *
 //**********************************************************************
 
+#include <math.h>
+#include <string.h>
+
 // Include our own header files
 #include "lwmf/lwmf.h"
 
@@ -33,7 +36,7 @@ const int FPSLIMIT = (1000000 / 25);
 // 8 / 3
 // 16 / 4
 // 32 / 5
-// 64 / 6 (Amiga Halfbrite mode)
+// 64 / 6 (Extra Halfbrite mode)
 const int NUMBEROFBITPLANES = 1;
 
 // ...and here which colors we want to use
@@ -58,7 +61,7 @@ const char ScrollText[] = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT 
 const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ!.,";
 const int ScrollCharWidth = 16;
 const int ScrollCharHeight = 16;
-int ScrollSinTab[360];
+int ScrollSinTab[320];
 int ScrollTextLength = 0;
 int ScrollCharMapLength = 0;
 int ScrollLength = 0;
@@ -71,7 +74,7 @@ BOOL InitDemo()
 	//
 
 	// Generate sinus table
-	for (int i = 0; i < 360; ++i)
+	for (int i = 0; i < 320; ++i)
 	{
 		ScrollSinTab[i] = (int)(sin(0.03f * i) * 30.0f);
 	}
@@ -82,7 +85,7 @@ BOOL InitDemo()
 	ScrollLength = ScrollTextLength * ScrollCharWidth;
 
 	// Generate bitmap for charmap
-	ScrollFontBitMap = AllocBitMap(ScrollCharMapLength * ScrollCharWidth, ScrollCharHeight + 4, 1, BMF_STANDARD | BMF_INTERLEAVED | BMF_CLEAR, RenderPort.BitMap);
+	ScrollFontBitMap = AllocBitMap(ScrollCharMapLength * ScrollCharWidth, ScrollCharHeight + 4, 1, BMF_INTERLEAVED | BMF_CLEAR, RenderPort.BitMap);
 
 	if (!ScrollFontBitMap)
 	{
@@ -102,7 +105,6 @@ BOOL InitDemo()
 	};
 
 	struct TextFont* ScrollFont = NULL;
-	struct TextFont* OldFont = NULL;
 
 	if (!(ScrollFont = OpenDiskFont(&ScrollFontAttrib)))
    	{
@@ -112,7 +114,9 @@ BOOL InitDemo()
 	}
 
 	// Save current font
+	struct TextFont* OldFont = NULL;
 	OldFont = RenderPort.Font;
+	
 	// Set new font
 	SetFont(&RenderPort, ScrollFont);
 
@@ -123,7 +127,13 @@ BOOL InitDemo()
 
 	// Load old font
 	SetFont(&RenderPort, OldFont);
-    CloseFont(ScrollFont);
+	OldFont = NULL;
+
+	if (ScrollFont)
+	{
+		CloseFont(ScrollFont);
+		ScrollFont = NULL;
+	}
 	
 	return TRUE;
 }
@@ -132,6 +142,7 @@ void CleanupDemo()
 {
 	if (ScrollFontBitMap)
 	{
+		lwmf_WaitBlit();
 		FreeBitMap(ScrollFontBitMap);
 	}
 }
@@ -222,7 +233,7 @@ int main()
 
     // This is our main loop
     // Call "DoubleBuffering" with the name of function you want to use...
-	if (!lwmf_DoubleBuffering(DrawDemo, FPSLIMIT))
+	if (!lwmf_DoubleBuffering(DrawDemo, FPSLIMIT, TRUE))
 	{
 		return 20;
 	}

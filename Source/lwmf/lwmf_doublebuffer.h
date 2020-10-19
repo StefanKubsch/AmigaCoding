@@ -1,9 +1,9 @@
 #ifndef LWMF_DOUBLEBUFFER_H
 #define LWMF_DOUBLEBUFFER_H
 
-BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit);
+BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit, const BOOL DisplayFPS);
 
-BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit)
+BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit, const BOOL DisplayFPS)
 {
     struct ScreenBuffer* Buffer[2] = { AllocScreenBuffer(Screen, NULL, SB_SCREEN_BITMAP), AllocScreenBuffer(Screen, NULL, SB_COPY_BITMAP) };
 
@@ -15,9 +15,10 @@ BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit)
 
 	// Use odd CIA (CIA-A) for check if mouse button is pressed
 	// https://www.amigacoding.com/index.php/CIA_Memory_Map
-	volatile UBYTE* CIA_PRA = (volatile UBYTE *) 0xBFE001;
+	// Use Port Register 1 0xBFE001
+	volatile UBYTE* CIAA_PRA = (volatile UBYTE *) 0xBFE001;
 	// Set bit 6 (Port 0 fire button)
-	const int PRA_FIR0 = 1 << 6;
+	const LONG PRA_FIR0 = 1L << 6;
 	
 	// Start timer
 	struct timerequest TickRequest = *TimerIO;
@@ -30,10 +31,8 @@ BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit)
 	int CurrentBuffer = 0;
 
 	// Loop until mouse button is pressed...
-	while (*CIA_PRA & PRA_FIR0)
+	while (*CIAA_PRA & PRA_FIR0)
 	{
-		lwmf_WaitVBeam(255);
-
 		RenderPort.BitMap = Buffer[CurrentBuffer]->sb_BitMap;
 		
 		//***************************************************************
@@ -42,8 +41,11 @@ BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit)
 
 		(*CallFunction)();
 
-		// DisplayStatistics() writes on the backbuffer, too - so we need to call it before blitting
-		lwmf_DisplayStatistics(1, 5, 10);
+		// lwmf_DisplayFPSCounter() writes on the backbuffer, too - so we need to call it before blitting
+		if (DisplayFPS)
+		{
+			lwmf_DisplayFPSCounter(5, 10, 1);
+		}
 
 		//***************************************************************
 		// Ends here ;-)                                                *
@@ -54,7 +56,7 @@ BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit)
 		CurrentBuffer ^= 1;
 		lwmf_FPSCounter();
 
-		if (Wait(1 << TimerPort->mp_SigBit) & (1 << TimerPort->mp_SigBit))
+		if (Wait(1L << TimerPort->mp_SigBit) & (1L << TimerPort->mp_SigBit))
 		{
 			WaitIO((struct IORequest*)&TickRequest);
 			TickRequest.tr_time.tv_secs = 0;
@@ -62,6 +64,7 @@ BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit)
 			SendIO((struct IORequest*)&TickRequest);
 		}
 
+		lwmf_WaitVBeam(255);
 	}
 
 	// After breaking the loop, we have to make sure that there are no more TickRequests to process
@@ -69,12 +72,14 @@ BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit)
 
 	if (Buffer[0])
 	{
+		lwmf_WaitBlit();
 		FreeScreenBuffer(Screen, Buffer[0]);
 		Buffer[0] = NULL;
 	}
 
 	if (Buffer[1])
 	{
+		lwmf_WaitBlit();
 		FreeScreenBuffer(Screen, Buffer[1]);
 		Buffer[1] = NULL;
 	}

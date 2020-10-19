@@ -33,7 +33,7 @@ const int FPSLIMIT = (1000000 / 25);
 // 8 / 3
 // 16 / 4
 // 32 / 5
-// 64 / 6 (Amiga Halfbrite mode)
+// 64 / 6 (Extra Halfbrite mode)
 const int NUMBEROFBITPLANES = 2;
 
 // ...and here which colors we want to use
@@ -73,9 +73,7 @@ BOOL InitDemo()
 	// Use more stars, if a fast CPU is available...
 	NumberOfStars = FastCPUFlag ? 300 : 100;
 
-	Stars = AllocVec(sizeof(struct StarStruct) * NumberOfStars, MEMF_ANY);
-
-	if (!Stars)
+	if (!(Stars = AllocVec(sizeof(struct StarStruct) * NumberOfStars, MEMF_ANY)))
 	{
 		lwmf_CleanupAll();
 		return FALSE;
@@ -83,8 +81,8 @@ BOOL InitDemo()
 
     for (int i = 0; i < NumberOfStars; ++i) 
     {
-        Stars[i].x = lwmf_XorShift32() % WIDTH - 160;
-        Stars[i].y = lwmf_XorShift32() % HEIGHT - 128;
+        Stars[i].x = (lwmf_XorShift32() % WIDTH - (WIDTH >> 1)) << 8;
+        Stars[i].y = (lwmf_XorShift32() % HEIGHT - (HEIGHT >> 1)) << 8;
         Stars[i].z = lwmf_XorShift32() % 800;
     }
 
@@ -113,15 +111,15 @@ void DrawDemo()
 
 	for (int i = 0; i < NumberOfStars; ++i)
 	{
-		Stars[i].z -= 10;
+		Stars[i].z -= 15;
 	
-		if (Stars[i].z <= 1) 
+		if (Stars[i].z <= 0) 
 		{
 			Stars[i].z = 800;
 		}
 		
-		const int x = (Stars[i].x << 8) / Stars[i].z + WidthMid;
-		const int y = (Stars[i].y << 8) / Stars[i].z + HeightMid;
+		const int x = Stars[i].x / Stars[i].z + WidthMid;
+		const int y = Stars[i].y / Stars[i].z + HeightMid;
 		
 		if ((unsigned int)x < WIDTH && (unsigned int)y < HEIGHT)
 		{
@@ -171,7 +169,7 @@ int main()
 
     // This is our main loop
     // Call "DoubleBuffering" with the name of function you want to use...
-	if (!lwmf_DoubleBuffering(DrawDemo, FPSLIMIT))
+	if (!lwmf_DoubleBuffering(DrawDemo, FPSLIMIT, TRUE))
 	{
 		return 20;
 	}
