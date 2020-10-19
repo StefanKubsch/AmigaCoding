@@ -2,6 +2,7 @@
 #define LWMF_LIBRARIRIES_H
 
 #include <exec/exec.h>
+#include <exec/types.h>
 #include <graphics/gfxbase.h>
 #include <graphics/copper.h>
 #include <graphics/rastport.h>
@@ -11,15 +12,20 @@
 #include <devices/timer.h>
 #include <clib/timer_protos.h>  
 #include <clib/exec_protos.h>
+#include <clib/dos_protos.h>
+
 #include <clib/graphics_protos.h>
 #include <clib/intuition_protos.h>
 #include <clib/diskfont_protos.h>
 #include <clib/alib_protos.h>
+#include <clib/datatypes_protos.h>
 #include <diskfont/diskfont.h>
+#include <datatypes/pictureclass.h>
 
 struct GfxBase* GfxBase = NULL;
 struct IntuitionBase* IntuitionBase = NULL;
 struct DiskFontBase* DiskfontBase = NULL;
+struct Library* DataTypesBase = NULL;
 
 struct Library* TimerBase = NULL;
 struct MsgPort* TimerPort = NULL;
@@ -78,6 +84,12 @@ BOOL lwmf_LoadLibraries(void)
         lwmf_CloseLibraries();
         return FALSE;
 	}
+
+	if (!(DataTypesBase = (struct Library*)OpenLibrary("datatypes.library", 39)))
+    {
+   		lwmf_CloseLibraries();
+    }
+
 	
     return TRUE;
 }
@@ -100,6 +112,12 @@ void lwmf_CloseLibraries(void)
 	{
 		DeletePort(TimerPort);
 		TimerPort = NULL;
+	}
+
+	if (DataTypesBase)
+	{
+		CloseLibrary(DataTypesBase);
+		DataTypesBase = NULL;
 	}
 
 	if (DiskfontBase)

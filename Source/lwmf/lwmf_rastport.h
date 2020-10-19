@@ -22,6 +22,8 @@ BOOL lwmf_CreateRastPort(const int NumberOfVertices, const int AreaWidth, const 
 	if (!(TmpRasBuffer = AllocVec(RasSize, MEMF_CHIP | MEMF_CLEAR)))
 	{
 		lwmf_CleanupRastPort();
+		lwmf_CleanupScreen();
+		lwmf_CloseLibraries();
 		return FALSE;
 	}
 
@@ -32,6 +34,8 @@ BOOL lwmf_CreateRastPort(const int NumberOfVertices, const int AreaWidth, const 
 	if (!(AreaBuffer = AllocVec(5 * NumberOfVertices, MEMF_CHIP | MEMF_CLEAR)))
 	{
 		lwmf_CleanupRastPort();
+		lwmf_CleanupScreen();
+		lwmf_CloseLibraries();
 		return FALSE;
 	}
 
