@@ -34,16 +34,20 @@ const int FPSLIMIT = (1000000 / 25);
 // 16 / 4
 // 32 / 5
 // 64 / 6 (Extra Halfbrite mode)
-const int NUMBEROFBITPLANES = 1;
+const int NUMBEROFBITPLANES = 3;
 
 // ...and here which colors we want to use
 // Format: { Index, Red, Green, Blue }, Array must be terminated with {-1, 0, 0, 0}
 struct ColorSpec ColorTable[] = 
 { 
-	{0, 0, 0, 3}, 
-	{1, 15, 15, 15}, 
-	{2, 8, 8, 8}, 
-	{3, 4, 4, 4}, 
+	{0, 0, 0, 0}, 
+	{1, 15, 15, 15},
+	{2, 11, 13, 15},
+	{3, 7, 9, 13},
+	{4, 5, 7, 10},
+	{5, 3, 5, 8},
+	{6, 1, 3, 5},
+	{7, 0, 2, 4},
 	{-1, 0, 0, 0} 
 };
 
@@ -73,7 +77,7 @@ void DrawDemo()
 {
 	// Clear background
 	SetRast(&RenderPort, 0);
-	BltBitMap(TestImage.Image, 0, 0, RenderPort.BitMap, 0, 20, 300, 100, 0xC0, 0x01, NULL);
+	BltBitMap(TestImage.Image, 0, 0, RenderPort.BitMap, 0, 20, 300, 100, 0xC0, 0xFF, NULL);
 }
 
 int main()
