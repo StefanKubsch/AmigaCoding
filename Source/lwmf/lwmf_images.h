@@ -3,24 +3,22 @@
 
 struct lwmf_Image
 {
-	char* Filename;
 	struct BitMap* Image;
 	int Width;
 	int Height;
 	int Depth;
 	ULONG NumberOfColors;
-	ULONG* CRegs;
 };
 
-BOOL lwmf_LoadImage(struct lwmf_Image* Image);
+BOOL lwmf_LoadImage(struct lwmf_Image* Image, const char* Filename);
 void lwmf_DeleteImage(struct lwmf_Image* Image);
 
-BOOL lwmf_LoadImage(struct lwmf_Image* Image)
+BOOL lwmf_LoadImage(struct lwmf_Image* Image, const char* Filename)
 {
 	struct BitMapHeader *Header = NULL;
 	Object *dtObject = NULL;
 
-	if (!(dtObject = NewDTObject(Image->Filename, DTA_GroupID, GID_PICTURE, PDTA_Remap, FALSE, PDTA_Screen, Screen, TAG_END)))
+	if (!(dtObject = NewDTObject(Filename, DTA_GroupID, GID_PICTURE, PDTA_Remap, FALSE, PDTA_Screen, Screen, TAG_END)))
 	{
 		lwmf_CleanupRastPort();
 		lwmf_CleanupScreen();
@@ -29,7 +27,7 @@ BOOL lwmf_LoadImage(struct lwmf_Image* Image)
 	}
 	
 	DoDTMethod(dtObject, NULL, NULL, DTM_PROCLAYOUT, NULL, TRUE);
-	GetDTAttrs(dtObject, PDTA_BitMapHeader, &Header, PDTA_DestBitMap, &Image->Image, PDTA_NumColors, &Image->NumberOfColors, PDTA_CRegs, &Image->CRegs, TAG_END);
+	GetDTAttrs(dtObject, PDTA_BitMapHeader, &Header, PDTA_DestBitMap, &Image->Image, PDTA_NumColors, &Image->NumberOfColors, TAG_END);
 
 	Image->Width = Header->bmh_Width;
 	Image->Height = Header->bmh_Height;
@@ -44,7 +42,6 @@ void lwmf_DeleteImage(struct lwmf_Image* Image)
 	{
 		FreeBitMap(Image->Image);
 		Image->Image = NULL;
-		Image->CRegs = NULL;
 	}
 }
 

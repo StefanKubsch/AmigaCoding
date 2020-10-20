@@ -56,11 +56,12 @@ BOOL InitDemo();
 void CleanupDemo();
 void DrawDemo();
 
-struct BitMap* ScrollFontBitMap = NULL;
+struct lwmf_Image ScrollFont;
 const char ScrollText[] = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
-const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ!.,";
-const int ScrollCharWidth = 16;
-const int ScrollCharHeight = 16;
+const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!-,+?*()";
+const int ScrollCharWidth = 15;
+const int ScrollCharHeight = 20;
+const int ScrollCharSpacing = 1;
 int ScrollSinTab[320];
 int ScrollTextLength = 0;
 int ScrollCharMapLength = 0;
@@ -82,68 +83,22 @@ BOOL InitDemo()
 	ScrollX = WIDTH;
 	ScrollTextLength = strlen(ScrollText);
 	ScrollCharMapLength = strlen(ScrollCharMap);
-	ScrollLength = ScrollTextLength * ScrollCharWidth;
+	ScrollLength = ScrollTextLength * (ScrollCharWidth + ScrollCharSpacing);
 
-	// Generate bitmap for charmap
-	ScrollFontBitMap = AllocBitMap(ScrollCharMapLength * ScrollCharWidth, ScrollCharHeight + 4, 1, BMF_INTERLEAVED | BMF_CLEAR, RenderPort.BitMap);
-
-	if (!ScrollFontBitMap)
+	if (!lwmf_LoadImage(&ScrollFont, "scrollfont.iff"))
 	{
 		lwmf_CleanupAll();
 		return FALSE;
 	}
 
-	RenderPort.BitMap = ScrollFontBitMap;
-
-	// Load font
-	struct TextAttr ScrollFontAttrib =
-	{
-		"topaz.font", 
-		ScrollCharHeight,
-		FSF_BOLD,
-		0
-	};
-
-	struct TextFont* ScrollFont = NULL;
-
-	if (!(ScrollFont = OpenDiskFont(&ScrollFontAttrib)))
-   	{
-		CleanupDemo();
-		lwmf_CleanupAll();
-		return FALSE;
-	}
-
-	// Save current font
-	struct TextFont* OldFont = NULL;
-	OldFont = RenderPort.Font;
-	
-	// Set new font
-	SetFont(&RenderPort, ScrollFont);
-
-	// Draw charmap
-	SetAPen(&RenderPort, 1);
-	Move(&RenderPort, 0, ScrollCharHeight);
-	Text(&RenderPort, ScrollCharMap, ScrollCharMapLength);
-
-	// Load old font
-	SetFont(&RenderPort, OldFont);
-	OldFont = NULL;
-
-	if (ScrollFont)
-	{
-		CloseFont(ScrollFont);
-		ScrollFont = NULL;
-	}
-	
 	return TRUE;
 }
 
 void CleanupDemo()
 {
-	if (ScrollFontBitMap)
+	if (ScrollFont.Image)
 	{
-		lwmf_WaitBlit();
-		FreeBitMap(ScrollFontBitMap);
+		lwmf_DeleteImage(&ScrollFont);
 	}
 }
 
@@ -168,7 +123,7 @@ void DrawDemo()
 
 					if ((unsigned int)TempPosX + 1 < WIDTH)
 					{
-						BltBitMap(ScrollFontBitMap, x, 0, RenderPort.BitMap, TempPosX, 100 + ScrollSinTab[TempPosX], 2, ScrollCharHeight + 4, 0xC0, 0x01, NULL);
+						BltBitMap(ScrollFont.Image, x, 0, RenderPort.BitMap, TempPosX, 100 + ScrollSinTab[TempPosX], 2, ScrollCharHeight, 0xC0, 0x01, NULL);
 					}
 				}
 
@@ -180,10 +135,10 @@ void DrawDemo()
 				break;
 			}
 
-			CharX += ScrollCharWidth;
+			CharX += ScrollCharWidth + ScrollCharSpacing;
 		}
 
-		XPos += ScrollCharWidth;
+		XPos += ScrollCharWidth + ScrollCharSpacing;
 	}
 
 	ScrollX -= 5;

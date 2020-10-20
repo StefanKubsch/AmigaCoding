@@ -16,10 +16,8 @@
 
 #include <clib/graphics_protos.h>
 #include <clib/intuition_protos.h>
-#include <clib/diskfont_protos.h>
 #include <clib/alib_protos.h>
 #include <clib/datatypes_protos.h>
-#include <diskfont/diskfont.h>
 #include <datatypes/pictureclass.h>
 
 struct GfxBase* GfxBase = NULL;
