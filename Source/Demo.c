@@ -143,7 +143,7 @@ struct CubeStruct
 int CubeSinTabY[64];
 int CubeSinTabX[64];
 
-struct lwmf_Image ScrollFont;
+struct lwmf_Image* ScrollFont;
 const char ScrollText[] = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
 const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!-,+?*()";
 const int ScrollCharWidth = 15;
@@ -261,8 +261,9 @@ BOOL InitDemo()
 	ScrollCharMapLength = strlen(ScrollCharMap);
 	ScrollLength = ScrollTextLength * (ScrollCharWidth + ScrollCharSpacing);
 
-	if (!lwmf_LoadImage(&ScrollFont, "scrollfont.iff"))
+	if (!(ScrollFont = lwmf_LoadImage("scrollfont.iff")))
 	{
+		CleanupDemo();
 		lwmf_CleanupAll();
 		return FALSE;
 	}
@@ -282,9 +283,9 @@ void CleanupDemo()
 		FreeVec(Stars);
 	}
 
-	if (ScrollFont.Image)
+	if (ScrollFont)
 	{
-		lwmf_DeleteImage(&ScrollFont);
+		lwmf_DeleteImage(ScrollFont);
 	}
 }
 
@@ -349,7 +350,7 @@ void DrawDemo()
 
 					if ((unsigned int)TempPosX + 1 < WIDTH)
 					{
-						BltBitMap(ScrollFont.Image, x, 0, RenderPort.BitMap, TempPosX, 200 + ScrollSinTab[TempPosX], 2, ScrollCharHeight, 0xC0, 0x01, NULL);
+						BltBitMap(ScrollFont->Image, x, 0, RenderPort.BitMap, TempPosX, 200 + ScrollSinTab[TempPosX], 2, ScrollCharHeight, 0xC0, 0x01, NULL);
 					}
 				}
 
