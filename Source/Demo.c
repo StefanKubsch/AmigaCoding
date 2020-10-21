@@ -41,21 +41,25 @@ const int FPSLIMIT = (1000000 / 20);
 // 16 / 4
 // 32 / 5
 // 64 / 6 (Extra Halfbrite mode)
-const int NUMBEROFBITPLANES = 3;
+const int NUMBEROFBITPLANES = 4;
 
 // ...and here which colors we want to use
-// Format: { Index, Red, Green, Blue }, Array must be terminated with {-1, 0, 0, 0}
-struct ColorSpec ColorTable[] = 
+UWORD ColorTable[] = 
 { 
-	{0, 0, 0, 0}, 
-	{1, 15, 15, 15},
-	{2, 10, 0, 10},
-	{3, 11, 0, 11},
-	{4, 12, 0, 12},
-	{5, 13, 0, 13},
-	{6, 14, 0, 14},
-	{7, 15, 0, 15},
-	{-1, 0, 0, 0} 
+	0x000,
+	0xFFF,
+	0x878,
+	0x989,
+	0xA9A,
+	0xBAB,
+	0xCBC,
+	0xDCD,
+	0xA0A,
+	0xB0B,
+	0xC0C,
+	0xD0D,
+	0xE0E,
+	0xF0F
 };
 
 //***************************************************************
@@ -261,7 +265,7 @@ BOOL InitDemo()
 	ScrollCharMapLength = strlen(ScrollCharMap);
 	ScrollLength = ScrollTextLength * (ScrollCharWidth + ScrollCharSpacing);
 
-	if (!(ScrollFont = lwmf_LoadImage("scrollfont.iff")))
+	if (!(ScrollFont = lwmf_LoadImage("gfx/scrollfont.iff")))
 	{
 		CleanupDemo();
 		lwmf_CleanupAll();
@@ -350,7 +354,7 @@ void DrawDemo()
 
 					if ((unsigned int)TempPosX + 1 < WIDTH)
 					{
-						BltBitMap(ScrollFont->Image, x, 0, RenderPort.BitMap, TempPosX, 200 + ScrollSinTab[TempPosX], 2, ScrollCharHeight, 0xC0, 0x01, NULL);
+						BltBitMap(ScrollFont->Image, x, 0, RenderPort.BitMap, TempPosX, 200 + ScrollSinTab[TempPosX], 2, ScrollCharHeight, 0xC0, 0x07, NULL);
 					}
 				}
 
@@ -379,7 +383,7 @@ void DrawDemo()
 	// Vector Cube
 	//
 
-	const int CubeFacesColors[] = { 2, 3, 4, 5, 6, 7 };
+	const int CubeFacesColors[] = { 8, 9, 10, 11, 12, 13 };
 	static int VCCount = 0;
 	static int CubeSinTabCount = 0;
 
@@ -424,7 +428,7 @@ int main()
 	lwmf_TakeOverOS();
 	
 	// Setup screen
-	if (!lwmf_CreateScreen(WIDTH, HEIGHT, NUMBEROFBITPLANES, ColorTable))
+	if (!lwmf_CreateScreen(WIDTH, HEIGHT, NUMBEROFBITPLANES, ColorTable, 14))
     {
         return 20;
     }

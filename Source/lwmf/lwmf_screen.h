@@ -3,10 +3,10 @@
 
 struct Screen* Screen = NULL;
 
-BOOL lwmf_CreateScreen(const ULONG Width, const ULONG Height, const int NumberOfBitPlanes, struct ColorSpec* ColorTable);
+BOOL lwmf_CreateScreen(const ULONG Width, const ULONG Height, const int NumberOfBitPlanes, UWORD* ColorTable, const int NumberOfColors);
 void lwmf_CleanupScreen(void);
 
-BOOL lwmf_CreateScreen(const ULONG Width, const ULONG Height, const int NumberOfBitPlanes, struct ColorSpec* ColorTable)
+BOOL lwmf_CreateScreen(const ULONG Width, const ULONG Height, const int NumberOfBitPlanes, UWORD* ColorTable, const int NumberOfColors)
 {
 	Screen = OpenScreenTags(NULL,
 		SA_Width, Width,
@@ -14,7 +14,6 @@ BOOL lwmf_CreateScreen(const ULONG Width, const ULONG Height, const int NumberOf
 	    SA_Depth, NumberOfBitPlanes,
 	    SA_ShowTitle, FALSE,
 	    SA_Type, CUSTOMSCREEN,
-	    SA_Colors, ColorTable,
 	    TAG_DONE
     );
 
@@ -22,6 +21,8 @@ BOOL lwmf_CreateScreen(const ULONG Width, const ULONG Height, const int NumberOf
     {
         return FALSE;
     }
+
+	LoadRGB4(&Screen->ViewPort, ColorTable, NumberOfColors);
 
     return TRUE;
 }

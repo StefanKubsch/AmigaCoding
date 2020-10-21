@@ -1,8 +1,6 @@
 #ifndef LWMF_IMAGES_H
 #define LWMF_IMAGES_H
 
-#include <string.h>
-
 struct lwmf_Image
 {
 	struct BitMap* Image;
@@ -10,7 +8,6 @@ struct lwmf_Image
 	int Height;
 	int Depth;
 	ULONG NumberOfColors;
-	ULONG *CRegs;
 };
 
 struct BitMap* lwmf_BitmapCopy(struct BitMap* SourceBM);
@@ -39,7 +36,6 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 	struct BitMapHeader* Header = NULL;
 	struct BitMap* TempBitmap = NULL;
 	ULONG NumberOfColors = 0;
-	ULONG* CRegs = NULL;
 	Object* dtObject = NULL;
 
 	if (!(dtObject = NewDTObject(Filename, DTA_GroupID, GID_PICTURE, PDTA_Remap, FALSE, PDTA_Screen, Screen, TAG_END)))
@@ -68,14 +64,6 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 	TempImage->Depth = GetBitMapAttr (TempImage->Image, BMA_DEPTH);
 	TempImage->NumberOfColors = NumberOfColors;
 	
-	if (!(TempImage->CRegs = AllocMem(12 * TempImage->NumberOfColors, MEMF_ANY | MEMF_CLEAR)))
-	{
-		lwmf_CleanupAll();
-		return NULL;
-	}
-	
-	memcpy(TempImage->CRegs, CRegs, 12 * TempImage->NumberOfColors);
-
 	DisposeDTObject(dtObject);
 	return TempImage;
 }
@@ -86,7 +74,6 @@ void lwmf_DeleteImage(struct lwmf_Image* Image)
 	{
 		FreeBitMap(Image->Image);
 		Image->Image = NULL;
-		Image->CRegs = NULL;
 	}
 }
 

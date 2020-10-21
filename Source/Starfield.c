@@ -37,14 +37,12 @@ const int FPSLIMIT = (1000000 / 25);
 const int NUMBEROFBITPLANES = 2;
 
 // ...and here which colors we want to use
-// Format: { Index, Red, Green, Blue }, Array must be terminated with {-1, 0, 0, 0}
-struct ColorSpec ColorTable[] = 
+UWORD ColorTable[] = 
 { 
-	{0, 0, 0, 3}, 
-	{1, 15, 15, 15}, 
-	{2, 8, 8, 8}, 
-	{3, 4, 4, 4}, 
-	{-1, 0, 0, 0} 
+	0x003,
+	0xFFF,
+	0x888,
+	0x444
 };
 
 //***************************************************************
@@ -146,7 +144,7 @@ int main()
 	lwmf_TakeOverOS();
 	
 	// Setup screen
-	if (!lwmf_CreateScreen(WIDTH, HEIGHT, NUMBEROFBITPLANES, ColorTable))
+	if (!lwmf_CreateScreen(WIDTH, HEIGHT, NUMBEROFBITPLANES, ColorTable, 4))
     {
         return 20;
     }

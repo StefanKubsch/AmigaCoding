@@ -13,7 +13,6 @@
 #include <clib/timer_protos.h>  
 #include <clib/exec_protos.h>
 #include <clib/dos_protos.h>
-
 #include <clib/graphics_protos.h>
 #include <clib/intuition_protos.h>
 #include <clib/alib_protos.h>
@@ -22,7 +21,6 @@
 
 struct GfxBase* GfxBase = NULL;
 struct IntuitionBase* IntuitionBase = NULL;
-struct DiskFontBase* DiskfontBase = NULL;
 struct Library* DataTypesBase = NULL;
 
 struct Library* TimerBase = NULL;
@@ -77,12 +75,6 @@ BOOL lwmf_LoadLibraries(void)
         return FALSE;
     }
 
-	if (!(DiskfontBase = (struct DiskFontBase*)OpenLibrary("diskfont.library", 39)))
-	{
-        lwmf_CloseLibraries();
-        return FALSE;
-	}
-
 	if (!(DataTypesBase = (struct Library*)OpenLibrary("datatypes.library", 39)))
     {
    		lwmf_CloseLibraries();
@@ -117,12 +109,6 @@ void lwmf_CloseLibraries(void)
 		CloseLibrary(DataTypesBase);
 		DataTypesBase = NULL;
 	}
-
-	if (DiskfontBase)
-    {
-       CloseLibrary((struct Library*)DiskfontBase);
-	   DiskfontBase = NULL;
-    }     
 
     if (IntuitionBase)
     {

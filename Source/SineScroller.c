@@ -37,15 +37,19 @@ const int FPSLIMIT = (1000000 / 25);
 // 16 / 4
 // 32 / 5
 // 64 / 6 (Extra Halfbrite mode)
-const int NUMBEROFBITPLANES = 1;
+const int NUMBEROFBITPLANES = 3;
 
 // ...and here which colors we want to use
-// Format: { Index, Red, Green, Blue }, Array must be terminated with {-1, 0, 0, 0}
-struct ColorSpec ColorTable[] = 
+UWORD ColorTable[] = 
 { 
-	{0, 0, 0, 3}, 
-	{1, 15, 15, 15},
-	{-1, 0, 0, 0} 
+	0x222,
+	0xEEF,
+	0x57B,
+	0x247,
+	0x9BF,
+	0x469,
+	0x8AD,
+	0xBDF
 };
 
 //***************************************************************
@@ -85,7 +89,7 @@ BOOL InitDemo()
 	ScrollCharMapLength = strlen(ScrollCharMap);
 	ScrollLength = ScrollTextLength * (ScrollCharWidth + ScrollCharSpacing);
 
-	if (!(ScrollFont = lwmf_LoadImage("scrollfont.iff")))
+	if (!(ScrollFont = lwmf_LoadImage("gfx/scrollfont.iff")))
 	{
 		CleanupDemo();
 		lwmf_CleanupAll();
@@ -124,7 +128,7 @@ void DrawDemo()
 
 					if ((unsigned int)TempPosX + 1 < WIDTH)
 					{
-						BltBitMap(ScrollFont->Image, x, 0, RenderPort.BitMap, TempPosX, 100 + ScrollSinTab[TempPosX], 2, ScrollCharHeight, 0xC0, 0x01, NULL);
+						BltBitMap(ScrollFont->Image, x, 0, RenderPort.BitMap, TempPosX, 100 + ScrollSinTab[TempPosX], 2, ScrollCharHeight, 0xC0, 0x07, NULL);
 					}
 				}
 
@@ -166,12 +170,12 @@ int main()
 	lwmf_TakeOverOS();
 	
 	// Setup screen
-	if (!lwmf_CreateScreen(WIDTH, HEIGHT, NUMBEROFBITPLANES, ColorTable))
+	if (!lwmf_CreateScreen(WIDTH, HEIGHT, NUMBEROFBITPLANES, ColorTable, 8))
     {
         return 20;
     }
-
-    // Init the RenderPort (=Rastport)
+	
+	// Init the RenderPort (=Rastport)
 	if (!lwmf_CreateRastPort(1, 1, 1, 0))
 	{
 		return 20;
