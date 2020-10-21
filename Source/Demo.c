@@ -147,17 +147,21 @@ struct CubeStruct
 int CubeSinTabY[64];
 int CubeSinTabX[64];
 
-struct lwmf_Image* ScrollFont;
-const char ScrollText[] = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
-const char ScrollCharMap[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!-,+?*()";
-const int ScrollCharWidth = 15;
-const int ScrollCharHeight = 20;
-const int ScrollCharSpacing = 1;
+struct Scrollfont
+{
+	struct lwmf_Image* FontBitmap;
+	char* Text;
+	char* CharMap;
+	int CharWidth;
+	int CharHeight;
+	int CharSpacing;
+	int TextLength;
+	int CharMapLength;
+	int Length;
+	int ScrollX;
+} Font;
+
 int ScrollSinTab[320];
-int ScrollTextLength = 0;
-int ScrollCharMapLength = 0;
-int ScrollLength = 0;
-int ScrollX = 0;
 
 BOOL InitDemo()
 {
@@ -260,12 +264,17 @@ BOOL InitDemo()
 		ScrollSinTab[i] = (int)(sin(0.03f * i) * 30.0f);
 	}
 
-	ScrollX = WIDTH;
-	ScrollTextLength = strlen(ScrollText);
-	ScrollCharMapLength = strlen(ScrollCharMap);
-	ScrollLength = ScrollTextLength * (ScrollCharWidth + ScrollCharSpacing);
+	Font.Text = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
+	Font.CharMap = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!-,+?*()";
+	Font.CharWidth = 15;
+	Font.CharHeight = 20;
+	Font.CharSpacing = 1;
+	Font.ScrollX = WIDTH;
+	Font.TextLength = strlen(Font.Text);
+	Font.CharMapLength = strlen(Font.CharMap);
+	Font.Length = Font.TextLength * (Font.CharWidth + Font.CharSpacing);
 
-	if (!(ScrollFont = lwmf_LoadImage("gfx/scrollfont.iff")))
+	if (!(Font.FontBitmap = lwmf_LoadImage("gfx/scrollfont.iff")))
 	{
 		CleanupDemo();
 		lwmf_CleanupAll();
@@ -287,9 +296,9 @@ void CleanupDemo()
 		FreeVec(Stars);
 	}
 
-	if (ScrollFont)
+	if (Font.FontBitmap)
 	{
-		lwmf_DeleteImage(ScrollFont);
+		lwmf_DeleteImage(Font.FontBitmap);
 	}
 }
 
@@ -342,19 +351,19 @@ void DrawDemo()
 	// Sine scroller
 	//
 
-	for (int i = 0, XPos = ScrollX; i < ScrollTextLength; ++i)
+	for (int i = 0, XPos = Font.ScrollX; i < Font.TextLength; ++i)
 	{
-		for (int j = 0, CharX = 0; j < ScrollCharMapLength; ++j)
+		for (int j = 0, CharX = 0; j < Font.CharMapLength; ++j)
 		{
-			if (*(ScrollText + i) == *(ScrollCharMap + j))
+			if (*(Font.Text + i) == *(Font.CharMap + j))
 			{
-				for (int x1 = 0, x = CharX; x < CharX + ScrollCharWidth; x1 += 2, x += 2)
+				for (int x1 = 0, x = CharX; x < CharX + Font.CharWidth; x1 += 2, x += 2)
 				{
 					const int TempPosX = XPos + x1;
 
 					if ((unsigned int)TempPosX + 1 < WIDTH)
 					{
-						BltBitMap(ScrollFont->Image, x, 0, RenderPort.BitMap, TempPosX, 200 + ScrollSinTab[TempPosX], 2, ScrollCharHeight, 0xC0, 0x07, NULL);
+						BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, 200 + ScrollSinTab[TempPosX], 2, Font.CharHeight, 0xC0, 0x07, NULL);
 					}
 				}
 
@@ -366,17 +375,17 @@ void DrawDemo()
 				break;
 			}
 
-			CharX += ScrollCharWidth + ScrollCharSpacing;
+			CharX += Font.CharWidth + Font.CharSpacing;
 		}
 
-		XPos += ScrollCharWidth + ScrollCharSpacing;
+		XPos += Font.CharWidth + Font.CharSpacing;
 	}
 
-	ScrollX -= 5;
+	Font.ScrollX -= 5;
 
-	if (ScrollX < -ScrollLength)
+	if (Font.ScrollX < -Font.Length)
 	{
-		ScrollX = WIDTH;
+		Font.ScrollX = WIDTH;
 	}
 
 	//

@@ -13,13 +13,6 @@ BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit, const BOOL 
 		return FALSE;
 	}
 
-	// Use odd CIA (CIA-A) for check if mouse button is pressed
-	// https://www.amigacoding.com/index.php/CIA_Memory_Map
-	// Use Port Register 1 0xBFE001
-	volatile UBYTE* CIAA_PRA = (volatile UBYTE *) 0xBFE001;
-	// Set bit 6 (Port 0 fire button)
-	const LONG PRA_FIR0 = 1L << 6;
-	
 	// Start timer
 	struct timerequest TickRequest = *TimerIO;
 	TickRequest.tr_node.io_Command = TR_ADDREQUEST;
@@ -51,7 +44,7 @@ BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit, const BOOL 
 		// Ends here ;-)                                                *
 		//***************************************************************
 
-		lwmf_WaitBlit();
+		WaitBlit();
 		ChangeScreenBuffer(Screen, Buffer[CurrentBuffer]);
 		CurrentBuffer ^= 1;
 		lwmf_FPSCounter();
@@ -72,14 +65,14 @@ BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit, const BOOL 
 
 	if (Buffer[0])
 	{
-		lwmf_WaitBlit();
+		WaitBlit();
 		FreeScreenBuffer(Screen, Buffer[0]);
 		Buffer[0] = NULL;
 	}
 
 	if (Buffer[1])
 	{
-		lwmf_WaitBlit();
+		WaitBlit();
 		FreeScreenBuffer(Screen, Buffer[1]);
 		Buffer[1] = NULL;
 	}

@@ -1,24 +1,13 @@
 #ifndef LWMF_HARDWARE_H
 #define LWMF_HARDWARE_H
 
-void lwmf_WaitBlit(void);
+// CIA-A for check if mouse button is pressed
+// Use Port Register 1 0xBFE001
+volatile UBYTE* CIAA_PRA = (volatile UBYTE*) 0xBFE001;
+// Set bit 6 (Port 0 fire button)
+const LONG PRA_FIR0 = 1L << 6;
+
 void lwmf_WaitVBeam(ULONG Line);
-
-void lwmf_WaitBlit(void)
-{
-	// This is the correct way to check if the blitter is idle...
-	// The additional wait (if) is needed because of some blitter bugs
-	// We check DMAF_BLTDONE = 0x4000
-	// http://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node00CB.html
-
-	if (custom->dmaconr & 0x4000)
-	{
-	}
-
-	while (custom->dmaconr & 0x4000)
-	{
-	}
-}
 
 void lwmf_WaitVBeam(ULONG Line)
 {

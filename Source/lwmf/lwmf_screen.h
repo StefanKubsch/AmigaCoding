@@ -14,6 +14,7 @@ BOOL lwmf_CreateScreen(const ULONG Width, const ULONG Height, const int NumberOf
 	    SA_Depth, NumberOfBitPlanes,
 	    SA_ShowTitle, FALSE,
 	    SA_Type, CUSTOMSCREEN,
+		SA_Quiet, TRUE,
 	    TAG_DONE
     );
 
