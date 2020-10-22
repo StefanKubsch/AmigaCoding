@@ -26,6 +26,8 @@ BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit, const BOOL 
 	// Loop until mouse button is pressed...
 	while (*CIAA_PRA & PRA_FIR0)
 	{
+		lwmf_WaitFrame();
+
 		RenderPort.BitMap = Buffer[CurrentBuffer]->sb_BitMap;
 		
 		//***************************************************************
@@ -44,7 +46,6 @@ BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit, const BOOL 
 		// Ends here ;-)                                                *
 		//***************************************************************
 
-		WaitBlit();
 		ChangeScreenBuffer(Screen, Buffer[CurrentBuffer]);
 		CurrentBuffer ^= 1;
 		lwmf_FPSCounter();
@@ -56,8 +57,6 @@ BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit, const BOOL 
 			TickRequest.tr_time.tv_micro = FPSLimit;
 			SendIO((struct IORequest*)&TickRequest);
 		}
-
-		lwmf_WaitVBeam(255);
 	}
 
 	// After breaking the loop, we have to make sure that there are no more TickRequests to process

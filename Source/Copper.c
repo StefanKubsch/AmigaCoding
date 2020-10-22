@@ -76,7 +76,7 @@ BOOL LoadCopperList()
 	{
 		CWait(uCopList, i * (HEIGHT / NumberOfColors), 0);
 		CBump(uCopList);
-		CMove(uCopList, &custom->color[0], Colors[i]);
+		CMove(uCopList, COLOR, Colors[i]);
 		CBump(uCopList);
 	}
 

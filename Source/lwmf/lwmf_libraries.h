@@ -8,7 +8,7 @@
 #include <graphics/rastport.h>
 #include <graphics/text.h>
 #include <intuition/intuition.h>
-#include <hardware/custom.h>
+#include <datatypes/pictureclass.h>
 #include <devices/timer.h>
 #include <clib/timer_protos.h>  
 #include <clib/exec_protos.h>
@@ -17,7 +17,6 @@
 #include <clib/intuition_protos.h>
 #include <clib/alib_protos.h>
 #include <clib/datatypes_protos.h>
-#include <datatypes/pictureclass.h>
 
 struct GfxBase* GfxBase = NULL;
 struct IntuitionBase* IntuitionBase = NULL;
@@ -26,8 +25,6 @@ struct Library* DataTypesBase = NULL;
 struct Library* TimerBase = NULL;
 struct MsgPort* TimerPort = NULL;
 struct timerequest* TimerIO = NULL;
-
-struct Custom* custom = NULL;
 
 BOOL lwmf_LoadLibraries(void);
 void lwmf_CloseLibraries(void);
@@ -80,7 +77,6 @@ BOOL lwmf_LoadLibraries(void)
    		lwmf_CloseLibraries();
     }
 
-	
     return TRUE;
 }
 
