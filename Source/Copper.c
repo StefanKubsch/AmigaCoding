@@ -32,7 +32,7 @@ UWORD* CopperList;
 
 BOOL InitCopperList(void)
 {
-	// NumberOfColors * 2 + Init & End + some spare
+	// Number Of Colors * 2 + Init & End + some spare
 	const UWORD CopperListLength = 25 + (32 * 2);
 
 	if (!(CopperList = (UWORD *) AllocVec(CopperListLength * sizeof(UWORD), MEMF_CHIP | MEMF_CLEAR)))
@@ -146,9 +146,9 @@ int main()
 	LoadCopperList();
 
     // Wait until mouse button is pressed...
-	while (*CIAA_PRA & PRA_FIR0)
+	// PRA_FIR0 = Bit 6 (0x40)
+	while (*CIAA_PRA & 0x40)
 	{
-		*COP1LC = (ULONG)CopperList;
 	}
 
 	// Cleanup everything

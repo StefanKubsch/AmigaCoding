@@ -24,7 +24,8 @@ BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit, const BOOL 
 	int CurrentBuffer = 0;
 
 	// Loop until mouse button is pressed...
-	while (*CIAA_PRA & PRA_FIR0)
+	// PRA_FIR0 = Bit 6 (0x40)
+	while (*CIAA_PRA & 0x40)
 	{
 		lwmf_WaitFrame();
 
@@ -64,14 +65,14 @@ BOOL lwmf_DoubleBuffering(void(*CallFunction)(), const int FPSLimit, const BOOL 
 
 	if (Buffer[0])
 	{
-		WaitBlit();
+		lwmf_WaitBlit();
 		FreeScreenBuffer(Screen, Buffer[0]);
 		Buffer[0] = NULL;
 	}
 
 	if (Buffer[1])
 	{
-		WaitBlit();
+		lwmf_WaitBlit();
 		FreeScreenBuffer(Screen, Buffer[1]);
 		Buffer[1] = NULL;
 	}

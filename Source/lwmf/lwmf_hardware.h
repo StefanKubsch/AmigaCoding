@@ -1,12 +1,13 @@
 #ifndef LWMF_HARDWARE_H
 #define LWMF_HARDWARE_H
 
-// CIA-A for check if mouse button is pressed
-// Use Port Register A 0xBFE001
-volatile UBYTE* const CIAA_PRA 		= (volatile UBYTE* const) 0xBFE001;
-// Set bit 6 (Port 0 fire button)
-const LONG PRA_FIR0 = 1L << 6;
+//
+// Define required registers
+//
 
+// CIA
+// https://www.amigacoding.com/index.php/CIA_Memory_Map
+volatile UBYTE* const CIAA_PRA 		= (volatile UBYTE* const) 0xBFE001;
 // DMA control register
 volatile UWORD* const DMACON 		= (volatile UWORD* const) 0xDFF096;
 volatile UWORD* const DMACONR 		= (volatile UWORD* const) 0xDFF002;
@@ -33,13 +34,16 @@ volatile UWORD* const SPR0PTL		= (volatile UWORD* const) 0xDFF122;
 // Misc
 volatile UWORD* const COLOR00		= (volatile UWORD* const) 0xDFF180;
 
-UWORD __chip BlankMousePointer[4] = 
+// Define a "blank" sprite for mouse pointer
+// "__chip" tells vbcc to store an array or variable in Chipmem!
+__chip UWORD BlankMousePointer[4] = 
 {
     0x0000, 0x0000,
     0x0000, 0x0000
 };
 
 void lwmf_WaitFrame(void);
+void lwmf_WaitBlit(void);
 
 void lwmf_WaitFrame(void) 
 {
@@ -47,13 +51,24 @@ void lwmf_WaitFrame(void)
 	{
         while (*VPOSR_LOW & 1)
 		{
-
 		}
     }
 
     while (*VPOSHR_HIGH != 0x2A)
 	{
+	}
+}
 
+void lwmf_WaitBlit(void)
+{
+	// Check DMACONR againt Bit DMAF_BLTDONE (Bit 14, 0x4000)
+	// Because of some blitter bugs, you need to check twice as done below!
+	if (*DMACONR & 0x4000)
+	{
+	}
+
+	while (*DMACONR & 0x4000)
+	{
 	}
 }
 

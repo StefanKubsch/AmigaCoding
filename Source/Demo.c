@@ -90,7 +90,7 @@ BOOL LoadCopperList()
 
 	// Copper init
 
-	// NumberOfColors * 2 + Init & End + some spare
+	// Number Of Colors * 2 + Init & End + some spare
 	UCopperListInit(UserCopperList, 10 + 64);
 
 	// Set mouse pointer to blank sprite
