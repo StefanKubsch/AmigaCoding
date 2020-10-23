@@ -179,7 +179,9 @@ int main()
 	lwmf_TakeOverOS();
 	
 	// Setup screen
-	if (!lwmf_CreateScreen(WIDTH, HEIGHT, NUMBEROFBITPLANES, ColorTable, 8))
+	const int NumberOfColors = sizeof(ColorTable) / sizeof(*ColorTable);
+
+	if (!lwmf_CreateScreen(WIDTH, HEIGHT, NUMBEROFBITPLANES, ColorTable, NumberOfColors))
     {
         return 20;
     }

@@ -20,46 +20,31 @@
 const ULONG WIDTH = 320;
 const ULONG HEIGHT = 256;
 
-// Our timing/fps limit is targeted at 50fps
-// If you want to use 20fps instead, calc 1000000 / 20
-// If you want to use 25fps instead, calc 1000000 / 25 - I guess, you got it...
-// Is used in function "DoubleBuffering()"
-const int FPSLIMIT = (1000000 / 50);
-
-// Here we define, how many bitplanes we want to use...
-// Colors / number of required Bitplanes
-// 2 / 1
-// 4 / 2
-// 8 / 3
-// 16 / 4
-// 32 / 5
-// 64 / 6 (Extra Halfbrite mode)
-const int NUMBEROFBITPLANES = 1;
-
-// ...and here which colors we want to use
-UWORD ColorTable[] = 
-{ 
-	0x000,
-	0xFFF
-};
-
 //***************************************************************
 // Demo stuff                                                   *
 //***************************************************************
 
-BOOL LoadCopperList();
-void CleanupCopperList();
-void DrawDemo();
+BOOL InitCopperList(void);
+void LoadCopperList(void);
+void CleanupCopperList(void);
 
-BOOL LoadCopperList()
+UWORD* CopperList;
+
+BOOL InitCopperList(void)
 {
-	struct UCopList* uCopList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_ANY | MEMF_CLEAR);
+	// NumberOfColors * 2 + Init & End + some spare
+	const UWORD CopperListLength = 25 + (32 * 2);
 
-	if (!uCopList)
+	if (!(CopperList = (UWORD *) AllocVec(CopperListLength * sizeof(UWORD), MEMF_CHIP | MEMF_CLEAR)))
 	{
 		return FALSE;
 	}
-	
+
+	return TRUE;
+}
+
+void LoadCopperList(void)
+{
 	const UWORD Colors[] =
 	{
 		0x0604, 0x0605, 0x0606, 0x0607, 0x0617, 0x0618, 0x0619,	0x0629, 
@@ -68,38 +53,76 @@ BOOL LoadCopperList()
 		0x0FF0, 0x0FC0, 0x0EA0, 0x0E80,	0x0E60, 0x0D40, 0x0D20, 0x0D00
 	};
 
-    const int NumberOfColors = sizeof(Colors) / sizeof(*Colors);
+	// Copper init
 
-	UCopperListInit(uCopList, NumberOfColors);
+	int Index = 0;
 
-	for (int i = 0; i < NumberOfColors; ++i)
+	// Slow fetch mode (needed for AGA compatibility)
+	CopperList[Index++] = 0x1FC;
+	CopperList[Index++] = 0;
+
+	// BPLCON0 Set 4 bitplanes (0100001000000000)
+	CopperList[Index++] = 0x100;
+	CopperList[Index++] = 0x4200;
+
+	// BPLCON1 no scrolling
+	CopperList[Index++] = 0x102;
+	CopperList[Index++] = 0x0000;
+
+	// BPLCON2
+	CopperList[Index++] = 0x104;
+	CopperList[Index++] = 0x000F;
+
+	// BPL1MOD Two byte between bitplanes
+	CopperList[Index++] = 0x108;
+	CopperList[Index++] = 0x0002;
+
+	// BPL2MOD Two byte between bitplanes
+	CopperList[Index++] = 0x10A;
+	CopperList[Index++] = 0x0002;
+
+	// Display window top/left (PAL DIWSTRT)
+	CopperList[Index++] = 0x8E;
+	CopperList[Index++] = 0x2C81;
+
+	// Display window bottom/right (PAL DIWSTOP)
+	CopperList[Index++] = 0x90;
+	CopperList[Index++] = 0x2CC1;
+
+	// Display data fetch start (horizontal position)
+	CopperList[Index++] = 0x92;
+	CopperList[Index++] = 0x38;
+
+	// Display data fetch stop (horizontal position)
+	CopperList[Index++] = 0x94;
+	CopperList[Index++] = 0xD0;
+
+	for (int i = 0, Temp = HEIGHT >> 5; i < 32; ++i)
 	{
-		CWait(uCopList, i * (HEIGHT / NumberOfColors), 0);
-		CBump(uCopList);
-		CMove(uCopList, COLOR, Colors[i]);
-		CBump(uCopList);
+		// WAIT
+		CopperList[Index++] = ((i * Temp) << 8) + 7;
+		CopperList[Index++] = 0xFFFE;
+		// CMOVE
+		// Write Colors[i] into color register 0x180 (COLOR00)
+		CopperList[Index++] = 0x180;
+		CopperList[Index++] = Colors[i];
 	}
 
-	CWait(uCopList, 10000, 255);
-	CBump(uCopList);
-	
-	Screen->ViewPort.UCopIns = uCopList;
-	RethinkDisplay();
-	
-	return TRUE;
+	// Copper list end
+	CopperList[Index++] = 0xFFFF;
+	CopperList[Index++] = 0xFFFE;
+
+	*COP1LC = (ULONG)CopperList;
 }
 
-void CleanupCopperList()
+void CleanupCopperList(void)
 {
-	if (Screen->ViewPort.UCopIns)
-    {
-		FreeVPortCopLists(&Screen->ViewPort);
+ 	*COP1LC = (ULONG) ((struct GfxBase*) GfxBase)->copinit;
+	
+	if (CopperList)
+	{
+		FreeVec(CopperList);
 	}
-}
-
-void DrawDemo()
-{
-	// Not much to do here...
 }
 
 int main()
@@ -111,39 +134,21 @@ int main()
         return 20;
     }
 
-	// Check which CPU is used in your Amiga (or UAE...)
-	lwmf_CheckCPU();
-
 	// Gain control over the OS
 	lwmf_TakeOverOS();
 	
-	// Setup screen
-	if (!lwmf_CreateScreen(WIDTH, HEIGHT, NUMBEROFBITPLANES, ColorTable, 2))
-    {
-        return 20;
-    }
-
-    // Init the RenderPort (=Rastport)
-	if (!lwmf_CreateRastPort(1, 1, 1, 0))
+	// Init and load copperlist
+	if (!InitCopperList())
 	{
 		return 20;
 	}
 
-	//
-	// Init stuff for demo if needed
-	//
+	LoadCopperList();
 
-	// Load Copper table and init viewport
-	if (!LoadCopperList())
+    // Wait until mouse button is pressed...
+	while (*CIAA_PRA & PRA_FIR0)
 	{
-		return 20;
-	}
-
-    // This is our main loop
-    // Call "DoubleBuffering" with the name of function you want to use...
-	if (!lwmf_DoubleBuffering(DrawDemo, FPSLIMIT, TRUE))
-	{
-		return 20;
+		*COP1LC = (ULONG)CopperList;
 	}
 
 	// Cleanup everything

@@ -27,8 +27,17 @@ volatile UBYTE* const VPOSR_LOW   	= (volatile UBYTE* const) 0xDFF005;
 volatile UWORD* const VPOSHR      	= (volatile UWORD* const) 0xDFF006;
 volatile UBYTE* const VPOSHR_HIGH 	= (volatile UBYTE* const) 0xDFF006;
 volatile UBYTE* const VPOSHR_LOW  	= (volatile UBYTE* const) 0xDFF007;
+// Mouse pointer (Sprite 0 DMA pointer)
+volatile UWORD* const SPR0PTH		= (volatile UWORD* const) 0xDFF120;
+volatile UWORD* const SPR0PTL		= (volatile UWORD* const) 0xDFF122;
 // Misc
-volatile ULONG* const COLOR 		= (volatile ULONG* const) 0xDFF180;
+volatile UWORD* const COLOR00		= (volatile UWORD* const) 0xDFF180;
+
+UWORD __chip BlankMousePointer[4] = 
+{
+    0x0000, 0x0000,
+    0x0000, 0x0000
+};
 
 void lwmf_WaitFrame(void);
 

@@ -73,9 +73,9 @@ void DrawDemo();
 
 BOOL LoadCopperList()
 {
-	struct UCopList* uCopList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_ANY | MEMF_CLEAR);
-
-	if (!uCopList)
+	struct UCopList* UserCopperList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_ANY | MEMF_CLEAR);
+	
+	if (!UserCopperList)
 	{
 		return FALSE;
 	}
@@ -88,22 +88,30 @@ BOOL LoadCopperList()
 		0x0FF0, 0x0FC0, 0x0EA0, 0x0E80,	0x0E60, 0x0D40, 0x0D20, 0x0D00
 	};
 
-    const int NumberOfColors = sizeof(Colors) / sizeof(*Colors);
+	// Copper init
 
-	UCopperListInit(uCopList, NumberOfColors);
+	// NumberOfColors * 2 + Init & End + some spare
+	UCopperListInit(UserCopperList, 10 + 64);
 
-	for (int i = 0; i < NumberOfColors; ++i)
+	// Set mouse pointer to blank sprite
+	CMove(UserCopperList, SPR0PTH, (LONG)&BlankMousePointer);
+	CBump(UserCopperList);
+    CMove(UserCopperList, SPR0PTL, (LONG)&BlankMousePointer);
+	CBump(UserCopperList);
+	
+	for (int i = 0, Temp = HEIGHT >> 5; i < 32; ++i)
 	{
-		CWait(uCopList, i * (HEIGHT / NumberOfColors), 0);
-		CBump(uCopList);
-		CMove(uCopList, COLOR, Colors[i]);
-		CBump(uCopList);
+		CWait(UserCopperList, i * Temp, 0);
+		CBump(UserCopperList);
+		// Write Colors[i] to register COLOR00
+		CMove(UserCopperList, COLOR00, Colors[i]);
+		CBump(UserCopperList);
 	}
 
-	CWait(uCopList, 10000, 255);
-	CBump(uCopList);
+	// Copper list end
+	CWait(UserCopperList, 10000, 255);
 
-	Screen->ViewPort.UCopIns = uCopList;
+	Screen->ViewPort.UCopIns = UserCopperList;
 	RethinkDisplay();
 	
 	return TRUE;
@@ -437,7 +445,9 @@ int main()
 	lwmf_TakeOverOS();
 	
 	// Setup screen
-	if (!lwmf_CreateScreen(WIDTH, HEIGHT, NUMBEROFBITPLANES, ColorTable, 14))
+	const int NumberOfColors = sizeof(ColorTable) / sizeof(*ColorTable);
+
+	if (!lwmf_CreateScreen(WIDTH, HEIGHT, NUMBEROFBITPLANES, ColorTable, NumberOfColors))
     {
         return 20;
     }
