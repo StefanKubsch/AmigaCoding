@@ -1,62 +1,20 @@
-//**********************************************************************
-//* Simple filled vector cube demo for Amiga with at least OS 3.0      *
-//*														 			   *
-//* (C) 2020 by Stefan Kubsch                            			   *
-//* Project for vbcc	                                 			   *
-//*                                                      			   *
-//* Compile & link with:                                 			   *
-//* vc -O4 FilledVectorCube.c -o FilledVectorCube -lmieee -lamiga      *
-//*                                                      			   *
-//* Quit with mouse click                                  			   *
-//**********************************************************************
+#ifndef FilledVectorCube_H
+#define FilledVectorCube_H
+
+
+//***********************************
+//* Simple filled vector cube       *
+//*								    *
+//* (C) 2020 by Stefan Kubsch       *
+//***********************************
 
 #include <math.h>
 
-// Include our own header files
-#include "lwmf/lwmf.h"
+// Needed bitplanes : 3
+// Needed colors : 8
 
-//
-// Screen settings
-//
-
-const ULONG WIDTH = 320;
-const ULONG HEIGHT = 256;
-
-// Our timing/fps limit is targeted at 25fps
-// If you want to use 50fps instead, calc 1000000 / 50
-// If you want to use 20fps instead, calc 1000000 / 20 - I guess, you got it...
-// Is used in function "DoubleBuffering()"
-const int FPSLIMIT = (1000000 / 25);
-
-// Here we define, how many bitplanes we want to use...
-// Colors / number of required Bitplanes
-// 2 / 1
-// 4 / 2
-// 8 / 3
-// 16 / 4
-// 32 / 5
-// 64 / 6 (Extra Halfbrite mode)
-const int NUMBEROFBITPLANES = 3;
-
-// ...and here which colors we want to use
-UWORD ColorTable[] = 
-{ 
-	0x003,
-	0xFFF,
-	0x0A0,
-	0x0B0,
-	0x0C0,
-	0x0D0,
-	0x0E0,
-	0x0F0
-};
-
-//***************************************************************
-// Demo stuff                                                   *
-//***************************************************************
-
-BOOL InitDemo();
-void DrawDemo();
+BOOL Init_FilledVectorCube(void);
+void Draw_FilledVectorCube(void);
 
 struct IntPointStruct
 {
@@ -87,12 +45,8 @@ struct CubeStruct
 int CubeSinTabY[64];
 int CubeSinTabX[64];
 
-BOOL InitDemo()
+BOOL Init_FilledVectorCube(void)
 {
-	//
-	// Init Vector cube
-	//
-
 	struct VertexStruct
 	{
 		float x;
@@ -160,15 +114,8 @@ BOOL InitDemo()
 	return TRUE;
 }
 
-void DrawDemo()
+void Draw_FilledVectorCube(void)
 {
-	// Clear background
-	SetRast(&RenderPort, 0);
-
-	//
-	// Vector Cube
-	//
-
 	const int CubeFacesColors[] = { 2, 3, 4, 5, 6, 7 };
 	static int VCCount = 0;
 	static int CubeSinTabCount = 0;
@@ -197,55 +144,5 @@ void DrawDemo()
 	}
 }
 
-int main()
-{
-    // Load libraries
-    // Exit with SEVERE Error (20) if something goes wrong
-	if (!lwmf_LoadLibraries())
-    {
-        return 20;
-    }
 
-	// Check which CPU is used in your Amiga (or UAE...)
-	lwmf_CheckCPU();
-
-	// Gain control over the OS
-	lwmf_TakeOverOS();
-	
-	// Setup screen
-	const int NumberOfColors = sizeof(ColorTable) / sizeof(*ColorTable);
-
-	if (!lwmf_CreateScreen(WIDTH, HEIGHT, NUMBEROFBITPLANES, ColorTable, NumberOfColors))
-    {
-        return 20;
-    }
-
-    // Init the RenderPort (=Rastport)
-	// We need to init some buffers for Area operations
-	// Since our demo part draws some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
-	if (!lwmf_CreateRastPort(5, 130, 130, 0))
-	{
-		return 20;
-	}
-
-	//
-	// Init stuff for demo if needed
-	//
-
-	// Init vector cube
-	if (!InitDemo())
-	{
-		return 20;
-	}
-
-    // This is our main loop
-    // Call "DoubleBuffering" with the name of function you want to use...
-	if (!lwmf_DoubleBuffering(DrawDemo, FPSLIMIT, TRUE))
-	{
-		return 20;
-	}
-
-	// Cleanup everything
-	lwmf_CleanupAll();
-	return 0;
-}
+#endif /* FilledVectorCube_H */

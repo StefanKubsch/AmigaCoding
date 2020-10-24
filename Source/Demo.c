@@ -26,12 +26,13 @@
 
 const ULONG WIDTH = 320;
 const ULONG HEIGHT = 256;
+const int WidthMid = 160;
+const int HeightMid = 128;
 
-// Our timing/fps limit is targeted at 20fps
+// Our timing/fps limit is targeted at 25fps
 // If you want to use 50fps instead, calc 1000000 / 50
-// If you want to use 25fps instead, calc 1000000 / 25 - I guess, you got it...
 // Is used in function "DoubleBuffering()"
-const int FPSLIMIT = (1000000 / 20);
+const int FPSLIMIT = (1000000 / 25);
 
 // Here we define, how many bitplanes we want to use...
 // Colors / number of required Bitplanes
@@ -43,35 +44,18 @@ const int FPSLIMIT = (1000000 / 20);
 // 64 / 6 (Extra Halfbrite mode)
 const int NUMBEROFBITPLANES = 4;
 
-// ...and here which colors we want to use
-UWORD ColorTable[] = 
-{ 
-	0x000,
-	0xFFF,
-	0x878,
-	0x989,
-	0xA9A,
-	0xBAB,
-	0xCBC,
-	0xDCD,
-	0xA0A,
-	0xB0B,
-	0xC0C,
-	0xD0D,
-	0xE0E,
-	0xF0F
-};
+// Include the demo effects
+#include "Colors.h"
+#include "SineScroller.h"
+#include "FilledVectorCube.h"
+#include "Starfield3D.h"
 
-//***************************************************************
-// Demo stuff                                                   *
-//***************************************************************
+BOOL Init_CopperList(void);
+void Cleanup_CopperList(void);
+BOOL Init_Demo(void);
+void Cleanup_Demo(void);
 
-BOOL LoadCopperList();
-BOOL InitDemo();
-void CleanupDemo();
-void DrawDemo();
-
-BOOL LoadCopperList()
+BOOL Init_CopperList(void)
 {
 	struct UCopList* UserCopperList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_ANY | MEMF_CLEAR);
 	
@@ -80,18 +64,10 @@ BOOL LoadCopperList()
 		return FALSE;
 	}
 	
-	const UWORD Colors[] =
-	{
-		0x0604, 0x0605, 0x0606, 0x0607, 0x0617, 0x0618, 0x0619,	0x0629, 
-		0x072A, 0x073B, 0x074B, 0x074C, 0x075D, 0x076E,	0x077E, 0x088F, 
-		0x07AF, 0x06CF, 0x05FF, 0x04FB, 0x04F7,	0x03F3, 0x07F2, 0x0BF1, 
-		0x0FF0, 0x0FC0, 0x0EA0, 0x0E80,	0x0E60, 0x0D40, 0x0D20, 0x0D00
-	};
-
 	// Copper init
 
-	// Number Of Colors * 2 + Init & End + some spare
-	UCopperListInit(UserCopperList, 10 + 64);
+	//Init & End + some spare
+	UCopperListInit(UserCopperList, 20);
 
 	// Set mouse pointer to blank sprite
 	CMove(UserCopperList, SPR0PTH, (LONG)&BlankMousePointer);
@@ -99,15 +75,6 @@ BOOL LoadCopperList()
     CMove(UserCopperList, SPR0PTL, (LONG)&BlankMousePointer);
 	CBump(UserCopperList);
 	
-	for (int i = 0, Temp = HEIGHT >> 5; i < 32; ++i)
-	{
-		CWait(UserCopperList, i * Temp, 0);
-		CBump(UserCopperList);
-		// Write Colors[i] to register COLOR00
-		CMove(UserCopperList, COLOR00, Colors[i]);
-		CBump(UserCopperList);
-	}
-
 	// Copper list end
 	CWait(UserCopperList, 10000, 255);
 
@@ -117,318 +84,47 @@ BOOL LoadCopperList()
 	return TRUE;
 }
 
-struct StarStruct
+void Cleanup_CopperList(void)
 {
-    int x;
-    int y;
-    int z;
-} *Stars;
-
-int NumberOfStars;
-
-struct IntPointStruct
-{
-	int x;
-	int y;
-};
-
-struct OrderPair
-{
-	int first;
-	float second;
-};
-
-struct CubeFaceStruct
-{
-	int p0;
-	int p1;
-	int p2;
-	int p3;
-} CubeFaces[] = { {0,1,3,2}, {4,0,2,6}, {5,4,6,7}, {1,5,7,3}, {0,1,5,4}, {2,3,7,6} };
-
-struct CubeStruct
-{
-	struct OrderPair Order[6];
-	struct IntPointStruct Cube[8];
-} CubePreCalc[90];
-
-int CubeSinTabY[64];
-int CubeSinTabX[64];
-
-struct Scrollfont
-{
-	struct lwmf_Image* FontBitmap;
-	char* Text;
-	char* CharMap;
-	int CharWidth;
-	int CharHeight;
-	int CharSpacing;
-	int TextLength;
-	int CharMapLength;
-	int Length;
-	int ScrollX;
-} Font;
-
-int ScrollSinTab[320];
-
-BOOL InitDemo()
-{
-	//
-	// Init Vector cube
-	//
-
-	struct VertexStruct
-	{
-		float x;
-		float y;
-		float z;
-	} CubeDef[8] = { { -50.0f, -50.0f, -50.0f }, { -50.0f, -50.0f, 50.0f }, { -50.0f, 50.0f, -50.0f }, { -50.0f, 50.0f, 50.0f }, { 50.0f, -50.0f, -50.0f }, { 50.0f, -50.0f, 50.0f }, { 50.0f, 50.0f, -50.0f }, { 50.0f, 50.0f, 50.0f } };
-
-	const float CosA = cos(0.04f);
-    const float SinA = sin(0.04f);
-
-	// Create two sintabs for a lissajous figure
-	for (int i = 0; i < 64; ++i)
-	{
-		CubeSinTabY[i] = (int)(sin(0.2f * i) * 30.0f);
-		CubeSinTabX[i] = (int)(sin(0.1f * i) * 60.0f);
+	if (Screen->ViewPort.UCopIns)
+    {
+		FreeVPortCopLists(&Screen->ViewPort);
 	}
+}
 
-	for (int Pre = 0; Pre < 90; ++Pre)
+BOOL Init_Demo(void)
+{
+	if (!Init_CopperList())
 	{
-		for (int i = 0; i < 8; ++i)
-		{
-			// x - rotation
-			const float y = CubeDef[i].y;
-			CubeDef[i].y = y * CosA - CubeDef[i].z * SinA;
-
-			// y - rotation
-			const float z = CubeDef[i].z * CosA + y * SinA;
-			CubeDef[i].z = z * CosA + CubeDef[i].x * SinA;
-
-			// z - rotation
-			const float x = CubeDef[i].x * CosA - z * SinA;
-			CubeDef[i].x = x * CosA - CubeDef[i].y * SinA;
-			CubeDef[i].y = CubeDef[i].y * CosA + x * SinA;
-
-			// 2D projection & translate
-			CubePreCalc[Pre].Cube[i].x = (WIDTH >> 1) + (int)CubeDef[i].x;
-			CubePreCalc[Pre].Cube[i].y = (HEIGHT >> 1) + (int)CubeDef[i].y;
-		}
-
-		// selection-sort of depth/faces
-		for (int i = 0; i < 6; ++i)
-		{
-			CubePreCalc[Pre].Order[i].second = (CubeDef[CubeFaces[i].p0].z + CubeDef[CubeFaces[i].p1].z + CubeDef[CubeFaces[i].p2].z + CubeDef[CubeFaces[i].p3].z) * 0.25f;
-			CubePreCalc[Pre].Order[i].first = i;
-		}
-
-		for (int i = 0; i < 5; ++i)
-		{
-			int Min = i;
-
-			for (int j = i + 1; j <= 5; ++j)
-			{
-				if (CubePreCalc[Pre].Order[j].second < CubePreCalc[Pre].Order[Min].second)
-				{
-					Min = j;
-				}
-			}
-			
-			struct OrderPair Temp = CubePreCalc[Pre].Order[Min];
-			CubePreCalc[Pre].Order[Min] = CubePreCalc[Pre].Order[i];
-			CubePreCalc[Pre].Order[i] = Temp;
-		}
-	}
-
-	//
-	// Init 3D starfield
-	//
-
-	// Use more stars, if a fast CPU is available...
-	NumberOfStars = FastCPUFlag ? 100 : 50;
-
-	if (!(Stars = AllocVec(sizeof(struct StarStruct) * NumberOfStars, MEMF_ANY)))
-	{
-		CleanupDemo();
-		lwmf_CleanupAll();
 		return FALSE;
 	}
 
-    for (int i = 0; i < NumberOfStars; ++i) 
-    {
-        Stars[i].x = (lwmf_XorShift32() % WIDTH - 160) << 8;
-        Stars[i].y = (lwmf_XorShift32() % HEIGHT - 128) << 8;
-        Stars[i].z = lwmf_XorShift32() % 800;
-    }
-
-	//
-	// Init sine scoller
-	//
-
-	// Generate sinus table
-	for (int i = 0; i < 320; ++i)
+	if (!Init_3DStarfield())
 	{
-		ScrollSinTab[i] = (int)(sin(0.03f * i) * 30.0f);
+		return FALSE;
 	}
 
-	Font.Text = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
-	Font.CharMap = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!-,+?*()";
-	Font.CharWidth = 15;
-	Font.CharHeight = 20;
-	Font.CharSpacing = 1;
-	Font.ScrollX = WIDTH;
-	Font.TextLength = strlen(Font.Text);
-	Font.CharMapLength = strlen(Font.CharMap);
-	Font.Length = Font.TextLength * (Font.CharWidth + Font.CharSpacing);
-
-	if (!(Font.FontBitmap = lwmf_LoadImage("gfx/scrollfont.iff")))
+	if (!Init_FilledVectorCube())
 	{
-		CleanupDemo();
-		lwmf_CleanupAll();
+		return FALSE;
+	}
+
+	if (!Init_SineScroller())
+	{
 		return FALSE;
 	}
 	
 	return TRUE;
 }
 
-void CleanupDemo()
+void Cleanup_Demo(void)
 {
-	if (Screen->ViewPort.UCopIns)
-    {
-		FreeVPortCopLists(&Screen->ViewPort);
-	}
-
-	if (Stars)
-	{
-		FreeVec(Stars);
-	}
-
-	if (Font.FontBitmap)
-	{
-		lwmf_DeleteImage(Font.FontBitmap);
-	}
+	Cleanup_CopperList();
+	Cleanup_3DStarfield();
+	Cleanup_SineScroller();
 }
 
-void DrawDemo()
-{
-	// Clear background
-	SetRast(&RenderPort, 0);
-
-	const int WidthMid = WIDTH >> 1;
-	const int HeightMid = HEIGHT >> 1;
-
-	//
-	// Starfield
-	//
-
-	// Since we use only bitplane 0 for the starfield, we enable only bitplane 0
-	// Bitmap.Planes[0] = Bit 0
-	// Bitmap.Planes[1] = Bit 1
-	// ...
-	// To enable bitplane 0 only set the mask as follows:
-	// 00000001 = Hex 0x01
-	//
-	// You could also use "SetWrMsk(RP, Color)" - but it´s just a macro...
-
-	RenderPort.Mask = 0x01;
-	SetAPen(&RenderPort, 1);
-
-	for (int i = 0; i < NumberOfStars; ++i)
-	{
-		Stars[i].z -= 10;
-	
-		if (Stars[i].z <= 1) 
-		{
-			Stars[i].z = 800;
-		}
-		
-		const int x = Stars[i].x / Stars[i].z + WidthMid;
-		const int y = Stars[i].y / Stars[i].z + HeightMid;
-		
-		if ((unsigned int)x < WIDTH && (unsigned int)y < HEIGHT)
-		{
-			WritePixel(&RenderPort, x, y);
-		}
-	}
-
-	// Re-enable all bitplanes
-	RenderPort.Mask = -1;
-
-	//
-	// Sine scroller
-	//
-
-	for (int i = 0, XPos = Font.ScrollX; i < Font.TextLength; ++i)
-	{
-		for (int j = 0, CharX = 0; j < Font.CharMapLength; ++j)
-		{
-			if (*(Font.Text + i) == *(Font.CharMap + j))
-			{
-				for (int x1 = 0, x = CharX; x < CharX + Font.CharWidth; x1 += 2, x += 2)
-				{
-					const int TempPosX = XPos + x1;
-
-					if ((unsigned int)TempPosX + 1 < WIDTH)
-					{
-						BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, 200 + ScrollSinTab[TempPosX], 2, Font.CharHeight, 0xC0, 0x07, NULL);
-					}
-				}
-
-				break;
-			}
-
-			if (XPos >= WIDTH)
-			{
-				break;
-			}
-
-			CharX += Font.CharWidth + Font.CharSpacing;
-		}
-
-		XPos += Font.CharWidth + Font.CharSpacing;
-	}
-
-	Font.ScrollX -= 5;
-
-	if (Font.ScrollX < -Font.Length)
-	{
-		Font.ScrollX = WIDTH;
-	}
-
-	//
-	// Vector Cube
-	//
-
-	const int CubeFacesColors[] = { 8, 9, 10, 11, 12, 13 };
-	static int VCCount = 0;
-	static int CubeSinTabCount = 0;
-
-	// Since we see only the three faces on top, we only need to render these (3, 4 and 5)
-	for (int i = 3; i < 6; ++i)
-	{
-		SetAPen(&RenderPort, CubeFacesColors[CubePreCalc[VCCount].Order[i].first]);
-
-		AreaMove(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p0].x + CubeSinTabX[CubeSinTabCount], CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p0].y + CubeSinTabY[CubeSinTabCount]);
-		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p1].x + CubeSinTabX[CubeSinTabCount], CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p1].y + CubeSinTabY[CubeSinTabCount]);
-		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p2].x + CubeSinTabX[CubeSinTabCount], CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p2].y + CubeSinTabY[CubeSinTabCount]);
-		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p3].x + CubeSinTabX[CubeSinTabCount], CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p3].y + CubeSinTabY[CubeSinTabCount]);
-
-		AreaEnd(&RenderPort);
-	}
-
-	if (++VCCount >= 90)
-	{
-		VCCount = 0;
-	}
-
-	if (++CubeSinTabCount >= 63)
-	{
-		CubeSinTabCount = 0;
-	}
-}
-
-int main()
+int main(void)
 {
     // Load libraries
     // Exit with SEVERE Error (20) if something goes wrong
@@ -445,9 +141,7 @@ int main()
 	lwmf_TakeOverOS();
 	
 	// Setup screen
-	const int NumberOfColors = sizeof(ColorTable) / sizeof(*ColorTable);
-
-	if (!lwmf_CreateScreen(WIDTH, HEIGHT, NUMBEROFBITPLANES, ColorTable, NumberOfColors))
+	if (!lwmf_CreateScreen(WIDTH, HEIGHT, NUMBEROFBITPLANES))
     {
         return 20;
     }
@@ -455,7 +149,7 @@ int main()
     // Init the RenderPort (=Rastport)
 	// We need to init some buffers for Area operations
 	// Since our demo part draws some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
-	if (!lwmf_CreateRastPort(5, 130, 130, 0))
+	if (!lwmf_CreateRastPort(5, WIDTH, HEIGHT))
 	{
 		return 20;
 	}
@@ -464,27 +158,117 @@ int main()
 	// Init stuff for demo if needed
 	//
 
-	// Load Copper table and init viewport
-	if (!LoadCopperList())
+	// Init all demo effects & copper
+	if (!Init_Demo())
 	{
 		return 20;
 	}
 
-	// Init all demo effects
-	if (!InitDemo())
-	{
-		return 20;
-	}
 
     // This is our main loop
     // Call "DoubleBuffering" with the name of function you want to use...
-	if (!lwmf_DoubleBuffering(DrawDemo, FPSLIMIT, TRUE))
-	{
-		return 20;
+    struct ScreenBuffer* Buffer[2] = { AllocScreenBuffer(Screen, NULL, SB_SCREEN_BITMAP), AllocScreenBuffer(Screen, NULL, SB_COPY_BITMAP) };
+
+    if (!Buffer[0] || !Buffer[1])
+    {
+		lwmf_CleanupAll();
+		return FALSE;
 	}
 
+	// Start timer
+	struct timerequest TickRequest = *TimerIO;
+	TickRequest.tr_node.io_Command = TR_ADDREQUEST;
+	TickRequest.tr_time.tv_secs = 0;
+	TickRequest.tr_time.tv_micro = 0;
+	SendIO((struct IORequest*)&TickRequest);
+
+	// Our parts, packed into an array of function pointers
+	void (*DemoParts[3])() =
+	{
+		Draw_SineScroller, Draw_FilledVectorCube, Draw_3DStarfield
+	};
+
+	// Loop control
+	int CurrentBuffer = 0;
+	int CurrentDemoPart = 0;
+	int TimeCount = 0;
+	ULONG PartDuration = 5 * 25;
+
+	// Set colors of first demo part
+	lwmf_SetColors(DemoColorTable[CurrentDemoPart], 8);
+
+	// Check if mouse button is pressed...
+	// PRA_FIR0 = Bit 6 (0x40)
+	while (*CIAA_PRA & 0x40)
+	{
+		lwmf_WaitFrame();
+
+		RenderPort.BitMap = Buffer[CurrentBuffer]->sb_BitMap;
+		
+		//***************************************************************
+		// Here we call the drawing functions for demo stuff!            *
+		//***************************************************************
+
+		SetRast(&RenderPort, 0);
+
+		(*DemoParts[CurrentDemoPart])();;
+
+		// lwmf_DisplayFPSCounter() writes on the backbuffer, too - so we need to call it before blitting
+		lwmf_DisplayFPSCounter(5, 10, 1);
+
+		//***************************************************************
+		// Ends here ;-)                                                *
+		//***************************************************************
+
+		ChangeScreenBuffer(Screen, Buffer[CurrentBuffer]);
+		CurrentBuffer ^= 1;
+
+		lwmf_FPSCounter();
+
+		if (Wait(1L << TimerPort->mp_SigBit) & (1L << TimerPort->mp_SigBit))
+		{
+			WaitIO((struct IORequest*)&TickRequest);
+			TickRequest.tr_time.tv_secs = 0;
+			TickRequest.tr_time.tv_micro = FPSLIMIT;
+			SendIO((struct IORequest*)&TickRequest);
+		}
+
+		++TimeCount;
+
+		if (TimeCount >= PartDuration)
+		{
+			TimeCount = 0;
+
+			++CurrentDemoPart;
+			
+			if (CurrentDemoPart > 2)
+			{
+				CurrentDemoPart = 0;
+			}
+
+			lwmf_SetColors(DemoColorTable[CurrentDemoPart], 8);
+		}
+	}
+
+	// After breaking the loop, we have to make sure that there are no more TickRequests to process
+	AbortIO((struct IORequest*)&TickRequest);
+
 	// Cleanup everything
-	CleanupDemo();
+	if (Buffer[0])
+	{
+		lwmf_WaitBlit();
+		FreeScreenBuffer(Screen, Buffer[0]);
+		Buffer[0] = NULL;
+	}
+
+	if (Buffer[1])
+	{
+		lwmf_WaitBlit();
+		FreeScreenBuffer(Screen, Buffer[1]);
+		Buffer[1] = NULL;
+	}
+
+	Cleanup_Demo();
 	lwmf_CleanupAll();
 	return 0;
 }
