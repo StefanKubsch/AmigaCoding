@@ -11,9 +11,6 @@
 #include <math.h>
 #include <string.h>
 
-// Needed bitplanes : 3
-// Needed colors : 8
-
 BOOL Init_SineScroller(void);
 void Cleanup_SineScroller(void);
 void Draw_SineScroller(void);
@@ -39,7 +36,7 @@ BOOL Init_SineScroller(void)
 	// Generate sinus table
 	for (int i = 0; i < 320; ++i)
 	{
-		ScrollSinTab[i] = (int)(sin(0.03f * i) * 30.0f);
+		ScrollSinTab[i] = (int)(sin(0.03f * i) * 70.0f);
 	}
 
 	Font.Text = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
@@ -54,7 +51,6 @@ BOOL Init_SineScroller(void)
 
 	if (!(Font.FontBitmap = lwmf_LoadImage("gfx/scrollfont.iff")))
 	{
-		lwmf_CleanupAll();
 		return FALSE;
 	}
 
@@ -77,13 +73,13 @@ void Draw_SineScroller(void)
 		{
 			if (*(Font.Text + i) == *(Font.CharMap + j))
 			{
-				for (int x1 = 0, x = CharX; x < CharX + Font.CharWidth; x1 += 2, x += 2)
+				for (int x1 = 0, x = CharX; x < CharX + Font.CharWidth; ++x1, ++x)
 				{
 					const int TempPosX = XPos + x1;
 
-					if ((unsigned int)TempPosX + 1 < WIDTH)
+					if ((unsigned int)TempPosX < WIDTH)
 					{
-						BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, 100 + ScrollSinTab[TempPosX], 2, Font.CharHeight, 0xC0, 0x07, NULL);
+						BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, 120 + ScrollSinTab[TempPosX], 1, Font.CharHeight, 0xC0, 0x07, NULL);
 					}
 				}
 

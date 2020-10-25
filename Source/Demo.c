@@ -24,15 +24,16 @@
 // Screen settings
 //
 
-const ULONG WIDTH = 320;
-const ULONG HEIGHT = 256;
-const int WidthMid = 160;
-const int HeightMid = 128;
+#define WIDTH				320
+#define HEIGHT				256
+#define UPPERBORDERLINE		20
+#define LOWERBORDERLINE		235
 
 // Our timing/fps limit is targeted at 25fps
 // If you want to use 50fps instead, calc 1000000 / 50
 // Is used in function "DoubleBuffering()"
-const int FPSLIMIT = (1000000 / 25);
+#define FPS					25
+#define FPSLIMIT			(1000000 / FPS)
 
 // Here we define, how many bitplanes we want to use...
 // Colors / number of required Bitplanes
@@ -42,22 +43,26 @@ const int FPSLIMIT = (1000000 / 25);
 // 16 / 4
 // 32 / 5
 // 64 / 6 (Extra Halfbrite mode)
-const int NUMBEROFBITPLANES = 4;
+#define NUMBEROFBITPLANES	3
 
 // Include the demo effects
-#include "Colors.h"
-#include "SineScroller.h"
-#include "FilledVectorCube.h"
-#include "Starfield3D.h"
+#include "Demo_Colors.h"
+#include "Demo_SineScroller.h"
+#include "Demo_FilledVectorCube.h"
+#include "Demo_Starfield3D.h"
+#include "Demo_Starfield2D.h"
 
 BOOL Init_CopperList(void);
 void Cleanup_CopperList(void);
 BOOL Init_Demo(void);
 void Cleanup_Demo(void);
+void DemoPart1(void);
+void DemoPart2(void);
+void DemoPart3(void);
 
 BOOL Init_CopperList(void)
 {
-	struct UCopList* UserCopperList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_ANY | MEMF_CLEAR);
+	struct UCopList* UserCopperList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_CHIP | MEMF_CLEAR);
 	
 	if (!UserCopperList)
 	{
@@ -66,15 +71,41 @@ BOOL Init_CopperList(void)
 	
 	// Copper init
 
-	//Init & End + some spare
-	UCopperListInit(UserCopperList, 20);
+	// Needed memory: Init, Mouse, Background & End + some spare
+	UCopperListInit(UserCopperList, 15);
 
 	// Set mouse pointer to blank sprite
 	CMove(UserCopperList, SPR0PTH, (LONG)&BlankMousePointer);
 	CBump(UserCopperList);
     CMove(UserCopperList, SPR0PTL, (LONG)&BlankMousePointer);
 	CBump(UserCopperList);
+
+	// Setup background
 	
+	// Black
+	CMove(UserCopperList, COLOR00, 0x000);
+	CBump(UserCopperList);
+	// White line
+	CWait(UserCopperList, UPPERBORDERLINE - 1, 0);
+	CBump(UserCopperList);
+	CMove(UserCopperList, COLOR00, 0xFFF);
+	CBump(UserCopperList);
+	// Blue
+	CWait(UserCopperList, UPPERBORDERLINE, 0);
+	CBump(UserCopperList);
+	CMove(UserCopperList, COLOR00, 0x003);
+	CBump(UserCopperList);
+	// White line
+	CWait(UserCopperList, LOWERBORDERLINE, 0);
+	CBump(UserCopperList);
+	CMove(UserCopperList, COLOR00, 0xFFF);
+	CBump(UserCopperList);
+	// Black
+	CWait(UserCopperList, LOWERBORDERLINE + 1, 0);
+	CBump(UserCopperList);
+	CMove(UserCopperList, COLOR00, 0x000);
+	CBump(UserCopperList);
+
 	// Copper list end
 	CWait(UserCopperList, 10000, 255);
 
@@ -94,7 +125,7 @@ void Cleanup_CopperList(void)
 
 BOOL Init_Demo(void)
 {
-	if (!Init_CopperList())
+	if (!Init_2DStarfield())
 	{
 		return FALSE;
 	}
@@ -119,9 +150,26 @@ BOOL Init_Demo(void)
 
 void Cleanup_Demo(void)
 {
-	Cleanup_CopperList();
 	Cleanup_3DStarfield();
+	Cleanup_2DStarfield();
 	Cleanup_SineScroller();
+	Cleanup_CopperList();
+}
+
+void DemoPart1(void)
+{
+	Draw_2DStarfield();
+	Draw_SineScroller();
+}
+
+void DemoPart2(void)
+{
+	Draw_FilledVectorCube();
+}
+
+void DemoPart3(void)
+{
+	Draw_3DStarfield();
 }
 
 int main(void)
@@ -143,7 +191,8 @@ int main(void)
 	// Setup screen
 	if (!lwmf_CreateScreen(WIDTH, HEIGHT, NUMBEROFBITPLANES))
     {
-        return 20;
+        lwmf_CleanupAll();
+		return 20;
     }
 
     // Init the RenderPort (=Rastport)
@@ -151,6 +200,7 @@ int main(void)
 	// Since our demo part draws some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
 	if (!lwmf_CreateRastPort(5, WIDTH, HEIGHT))
 	{
+        lwmf_CleanupAll();
 		return 20;
 	}
 
@@ -158,21 +208,42 @@ int main(void)
 	// Init stuff for demo if needed
 	//
 
-	// Init all demo effects & copper
 	if (!Init_Demo())
 	{
+		Cleanup_Demo();
+		lwmf_CleanupAll();
 		return 20;
 	}
 
-
-    // This is our main loop
-    // Call "DoubleBuffering" with the name of function you want to use...
-    struct ScreenBuffer* Buffer[2] = { AllocScreenBuffer(Screen, NULL, SB_SCREEN_BITMAP), AllocScreenBuffer(Screen, NULL, SB_COPY_BITMAP) };
+	struct ScreenBuffer* Buffer[2] = { AllocScreenBuffer(Screen, NULL, SB_SCREEN_BITMAP), AllocScreenBuffer(Screen, NULL, SB_COPY_BITMAP) };
 
     if (!Buffer[0] || !Buffer[1])
     {
+		Cleanup_Demo();
 		lwmf_CleanupAll();
-		return FALSE;
+		return 20;
+	}
+
+	// Our parts, packed into an array of function pointers
+	void (*DemoParts[3])() =
+	{
+		DemoPart1, DemoPart2, DemoPart3
+	};
+
+	// Loop control
+	int CurrentBuffer = 0;
+	int CurrentDemoPart = 0;
+	const ULONG PartDuration = 5 * FPS;
+
+	// Set colors of first demo part & initial clear
+	LoadRGB4(&Screen->ViewPort, DemoColorTable[CurrentDemoPart], 8);
+
+	// Init Copper (Set background, disable mouse pointer)
+	if (!Init_CopperList())
+	{
+		Cleanup_Demo();
+		lwmf_CleanupAll();
+		return 20;
 	}
 
 	// Start timer
@@ -182,20 +253,10 @@ int main(void)
 	TickRequest.tr_time.tv_micro = 0;
 	SendIO((struct IORequest*)&TickRequest);
 
-	// Our parts, packed into an array of function pointers
-	void (*DemoParts[3])() =
-	{
-		Draw_SineScroller, Draw_FilledVectorCube, Draw_3DStarfield
-	};
-
-	// Loop control
-	int CurrentBuffer = 0;
-	int CurrentDemoPart = 0;
-	int TimeCount = 0;
-	ULONG PartDuration = 5 * 25;
-
-	// Set colors of first demo part
-	lwmf_SetColors(DemoColorTable[CurrentDemoPart], 8);
+    //
+	// This is our main loop
+    // Here the double buffering of all drawn stuff is handled...
+	//
 
 	// Check if mouse button is pressed...
 	// PRA_FIR0 = Bit 6 (0x40)
@@ -214,7 +275,7 @@ int main(void)
 		(*DemoParts[CurrentDemoPart])();;
 
 		// lwmf_DisplayFPSCounter() writes on the backbuffer, too - so we need to call it before blitting
-		lwmf_DisplayFPSCounter(5, 10, 1);
+		lwmf_DisplayFPSCounter(0, 10, 1);
 
 		//***************************************************************
 		// Ends here ;-)                                                *
@@ -233,20 +294,20 @@ int main(void)
 			SendIO((struct IORequest*)&TickRequest);
 		}
 
-		++TimeCount;
+		static int FrameCount = 0;
 
-		if (TimeCount >= PartDuration)
+		if (++FrameCount >= PartDuration)
 		{
-			TimeCount = 0;
+			FrameCount = 0;
 
-			++CurrentDemoPart;
-			
-			if (CurrentDemoPart > 2)
+			if (++CurrentDemoPart > 2)
 			{
 				CurrentDemoPart = 0;
 			}
 
-			lwmf_SetColors(DemoColorTable[CurrentDemoPart], 8);
+			// Load colors for next demo part
+			SetRast(&RenderPort, 0);
+			LoadRGB4(&Screen->ViewPort, DemoColorTable[CurrentDemoPart], 8);
 		}
 	}
 

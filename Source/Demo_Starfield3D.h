@@ -3,13 +3,10 @@
 
 
 //**********************************
-//* Simple starfield  			   *
+//* Simple 3D starfield			   *
 //*								   *
 //* (C) 2020 by Stefan Kubsch      *
 //**********************************
-
-// Needed bitplanes : 2
-// Needed colors : 4
 
 BOOL Init_3DStarfield(void);
 void Cleanup_3DStarfield(void);
@@ -27,11 +24,10 @@ int NumberOf3DStars;
 BOOL Init_3DStarfield(void)
 {
 	// Use more stars, if a fast CPU is available...
-	NumberOf3DStars = FastCPUFlag ? 300 : 100;
+	NumberOf3DStars = FastCPUFlag ? 200 : 50;
 
 	if (!(Stars3D = AllocVec(sizeof(struct StarStruct3D) * NumberOf3DStars, MEMF_ANY)))
 	{
-		lwmf_CleanupAll();
 		return FALSE;
 	}
 
@@ -55,16 +51,10 @@ void Cleanup_3DStarfield(void)
 
 void Draw_3DStarfield(void)
 {
-	// Since we use only bitplane 0 for the starfield, we enable only bitplane 0
-	// Bitmap.Planes[0] = Bit 0
-	// Bitmap.Planes[1] = Bit 1
-	// ...
-	// To enable bitplane 0 only set the mask as follows:
-	// 00000001 = Hex 0x01
-	//
-	// You could also use "SetWrMsk(RP, Color)" - but it´s just a macro...
-
 	RenderPort.Mask = 0x03;
+	
+	const int WidthMid = WIDTH >> 1;
+	const int HeightMid = HEIGHT >> 1;
 
 	for (int i = 0; i < NumberOf3DStars; ++i)
 	{
@@ -78,7 +68,7 @@ void Draw_3DStarfield(void)
 		const int x = Stars3D[i].x / Stars3D[i].z + WidthMid;
 		const int y = Stars3D[i].y / Stars3D[i].z + HeightMid;
 		
-		if ((unsigned int)x < WIDTH && (unsigned int)y < HEIGHT)
+		if ((unsigned int)x < WIDTH && y > UPPERBORDERLINE && y < LOWERBORDERLINE)
 		{
 			SetAPen(&RenderPort, Stars3D[i].z / 300 + 1);
 			WritePixel(&RenderPort, x, y);

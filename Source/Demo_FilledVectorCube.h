@@ -10,9 +10,6 @@
 
 #include <math.h>
 
-// Needed bitplanes : 3
-// Needed colors : 8
-
 BOOL Init_FilledVectorCube(void);
 void Draw_FilledVectorCube(void);
 
@@ -60,7 +57,7 @@ BOOL Init_FilledVectorCube(void)
 	// Create two sintabs for a lissajous figure
 	for (int i = 0; i < 64; ++i)
 	{
-		CubeSinTabY[i] = (int)(sin(0.2f * i) * 30.0f);
+		CubeSinTabY[i] = (int)(sin(0.2f * i) * 40.0f);
 		CubeSinTabX[i] = (int)(sin(0.1f * i) * 60.0f);
 	}
 
@@ -83,7 +80,7 @@ BOOL Init_FilledVectorCube(void)
 
 			// 2D projection & translate
 			CubePreCalc[Pre].Cube[i].x = (WIDTH >> 1) + (int)CubeDef[i].x;
-			CubePreCalc[Pre].Cube[i].y = (HEIGHT >> 1) + (int)CubeDef[i].y;
+			CubePreCalc[Pre].Cube[i].y = (HEIGHT >> 1) + (int)CubeDef[i].y - 5;
 		}
 
 		// selection-sort of depth/faces

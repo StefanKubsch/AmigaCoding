@@ -10,20 +10,23 @@
 
 UWORD DemoColorTable[3][8] = 
 {
-	// Sine scroller
+	// Color 0 is background/clear color (Black)
+	// Color 1 is used for fps counter (White)
+
+	// Sine scroller & 2D Starfield
 	{ 
 		0x000,
 		0xFFF,
-		0x878,
-		0x989,
-		0xA9A,
-		0xBAB,
-		0xCBC,
-		0xDCD
+		0x666,
+		0xAAA,
+		0xCCC,
+		0xDDD,
+		0xEEE,
+		0xFFF
 	},
 	// Filled vector cube
 	{
-		0x003,
+		0x000,
 		0xFFF,
 		0x0A0,
 		0x0B0,
@@ -32,9 +35,9 @@ UWORD DemoColorTable[3][8] =
 		0x0E0,
 		0x0F0
 	},
-	// Starfield
+	// 3D Starfield
 	{
-		0x003,
+		0x000,
 		0xFFF,
 		0x888,
 		0x444,

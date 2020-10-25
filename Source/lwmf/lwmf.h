@@ -6,7 +6,6 @@
 #include "lwmf_os.h"
 #include "lwmf_screen.h"
 #include "lwmf_rastport.h"
-#include "lwmf_color.h"
 #include "lwmf_cleanup.h"
 #include "lwmf_images.h"
 #include "lwmf_statistics.h"
