@@ -2,7 +2,7 @@
 //* Simple combined demo for Amiga with at least OS 3.0    			   *
 //*														 			   *
 //* Effects: Copper background, 3D starfield, filled vector cube       *
-//* and a sine scroller												   *
+//* and a sine scroller	with 2D starfield   						   *
 //*														 			   *
 //*                                                      			   *
 //* (C) 2020 by Stefan Kubsch                            			   *
@@ -43,7 +43,7 @@
 // 16 / 4
 // 32 / 5
 // 64 / 6 (Extra Halfbrite mode)
-#define NUMBEROFBITPLANES	3
+#define NUMBEROFBITPLANES	4
 
 // Include the demo effects
 #include "Demo_Colors.h"
@@ -56,9 +56,9 @@ BOOL Init_CopperList(void);
 void Cleanup_CopperList(void);
 BOOL Init_Demo(void);
 void Cleanup_Demo(void);
-void DemoPart1(void);
-void DemoPart2(void);
-void DemoPart3(void);
+inline void DemoPart1(void);
+inline void DemoPart2(void);
+inline void DemoPart3(void);
 
 BOOL Init_CopperList(void)
 {
@@ -156,18 +156,18 @@ void Cleanup_Demo(void)
 	Cleanup_CopperList();
 }
 
-void DemoPart1(void)
+inline void DemoPart1(void)
 {
 	Draw_2DStarfield();
 	Draw_SineScroller();
 }
 
-void DemoPart2(void)
+inline void DemoPart2(void)
 {
 	Draw_FilledVectorCube();
 }
 
-void DemoPart3(void)
+inline void DemoPart3(void)
 {
 	Draw_3DStarfield();
 }
@@ -198,7 +198,7 @@ int main(void)
     // Init the RenderPort (=Rastport)
 	// We need to init some buffers for Area operations
 	// Since our demo part draws some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
-	if (!lwmf_CreateRastPort(5, WIDTH, HEIGHT))
+	if (!lwmf_CreateRastPort(5, 130, 130))
 	{
         lwmf_CleanupAll();
 		return 20;
@@ -225,18 +225,19 @@ int main(void)
 	}
 
 	// Our parts, packed into an array of function pointers
-	void (*DemoParts[3])() =
+	const void (*DemoParts[3])() =
 	{
 		DemoPart1, DemoPart2, DemoPart3
 	};
 
 	// Loop control
-	int CurrentBuffer = 0;
-	int CurrentDemoPart = 0;
-	const ULONG PartDuration = 5 * FPS;
+	UBYTE CurrentBuffer = 0;
+	UBYTE CurrentDemoPart = 0;
+	UWORD FrameCount = 0;
+	const UWORD PartDuration = 5 * FPS;
 
-	// Set colors of first demo part & initial clear
-	LoadRGB4(&Screen->ViewPort, DemoColorTable[CurrentDemoPart], 8);
+	// Set colors of first demo part
+	LoadRGB4(&Screen->ViewPort, DemoColorTable[CurrentDemoPart], 16);
 
 	// Init Copper (Set background, disable mouse pointer)
 	if (!Init_CopperList())
@@ -262,20 +263,18 @@ int main(void)
 	// PRA_FIR0 = Bit 6 (0x40)
 	while (*CIAA_PRA & 0x40)
 	{
-		lwmf_WaitFrame();
-
 		RenderPort.BitMap = Buffer[CurrentBuffer]->sb_BitMap;
 		
 		//***************************************************************
 		// Here we call the drawing functions for demo stuff!            *
 		//***************************************************************
-
+		
 		SetRast(&RenderPort, 0);
 
-		(*DemoParts[CurrentDemoPart])();;
+		(*DemoParts[CurrentDemoPart])();
 
 		// lwmf_DisplayFPSCounter() writes on the backbuffer, too - so we need to call it before blitting
-		lwmf_DisplayFPSCounter(0, 10, 1);
+		lwmf_DisplayFPSCounter(0, 10, 15);
 
 		//***************************************************************
 		// Ends here ;-)                                                *
@@ -283,8 +282,6 @@ int main(void)
 
 		ChangeScreenBuffer(Screen, Buffer[CurrentBuffer]);
 		CurrentBuffer ^= 1;
-
-		lwmf_FPSCounter();
 
 		if (Wait(1L << TimerPort->mp_SigBit) & (1L << TimerPort->mp_SigBit))
 		{
@@ -294,7 +291,8 @@ int main(void)
 			SendIO((struct IORequest*)&TickRequest);
 		}
 
-		static int FrameCount = 0;
+		lwmf_FPSCounter();
+		lwmf_WaitFrame();
 
 		if (++FrameCount >= PartDuration)
 		{
@@ -307,7 +305,7 @@ int main(void)
 
 			// Load colors for next demo part
 			SetRast(&RenderPort, 0);
-			LoadRGB4(&Screen->ViewPort, DemoColorTable[CurrentDemoPart], 8);
+			LoadRGB4(&Screen->ViewPort, DemoColorTable[CurrentDemoPart], 16);
 		}
 	}
 

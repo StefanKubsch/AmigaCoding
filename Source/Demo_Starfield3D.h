@@ -26,7 +26,7 @@ BOOL Init_3DStarfield(void)
 	// Use more stars, if a fast CPU is available...
 	NumberOf3DStars = FastCPUFlag ? 200 : 50;
 
-	if (!(Stars3D = AllocVec(sizeof(struct StarStruct3D) * NumberOf3DStars, MEMF_ANY)))
+	if (!(Stars3D = AllocVec(sizeof(struct StarStruct3D) * NumberOf3DStars, MEMF_ANY | MEMF_CLEAR)))
 	{
 		return FALSE;
 	}

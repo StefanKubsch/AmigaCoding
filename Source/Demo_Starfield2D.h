@@ -24,9 +24,9 @@ int NumberOf2DStars;
 BOOL Init_2DStarfield(void)
 {
 	// Use more stars, if a fast CPU is available...
-	NumberOf2DStars = FastCPUFlag ? 100 : 50;
+	NumberOf2DStars = FastCPUFlag ? 200 : 100;
 
-	if (!(Stars2D = AllocVec(sizeof(struct StarStruct2D) * NumberOf2DStars, MEMF_ANY)))
+	if (!(Stars2D = AllocVec(sizeof(struct StarStruct2D) * NumberOf2DStars, MEMF_ANY | MEMF_CLEAR)))
 	{
 		return FALSE;
 	}
@@ -34,8 +34,8 @@ BOOL Init_2DStarfield(void)
     for (int i = 0; i < NumberOf2DStars; ++i) 
     {
         Stars2D[i].x = lwmf_XorShift32() % WIDTH;
-        Stars2D[i].y = lwmf_XorShift32() % HEIGHT + UPPERBORDERLINE;
-        Stars2D[i].z = lwmf_XorShift32() % 3 + 2;
+        Stars2D[i].y = lwmf_XorShift32() % (LOWERBORDERLINE - UPPERBORDERLINE) + UPPERBORDERLINE;
+        Stars2D[i].z = lwmf_XorShift32() % 3 + 1;
     }
 
 	return TRUE;
@@ -58,13 +58,12 @@ void Draw_2DStarfield(void)
 		if (Stars2D[i].x >= WIDTH) 
 		{
 			Stars2D[i].x = 0;
+			Stars2D[i].y = lwmf_XorShift32() % (LOWERBORDERLINE - UPPERBORDERLINE) + UPPERBORDERLINE;
+			Stars2D[i].z = lwmf_XorShift32() % 3 + 1;
 		}
 		
-		if (Stars2D[i].y < LOWERBORDERLINE)
-		{
-			SetAPen(&RenderPort, Stars2D[i].z);
-			WritePixel(&RenderPort, Stars2D[i].x, Stars2D[i].y);
-		}
+		SetAPen(&RenderPort, Stars2D[i].z + 7);
+		WritePixel(&RenderPort, Stars2D[i].x, Stars2D[i].y);
 	}
 }
 

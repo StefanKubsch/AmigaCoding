@@ -113,9 +113,11 @@ BOOL Init_FilledVectorCube(void)
 
 void Draw_FilledVectorCube(void)
 {
-	const int CubeFacesColors[] = { 2, 3, 4, 5, 6, 7 };
+	const int CubeFacesColors[] = { 1, 2, 3, 4, 5, 6 };
 	static int VCCount = 0;
 	static int CubeSinTabCount = 0;
+
+	RenderPort.Mask = 0x07;
 
 	// Since we see only the three faces on top, we only need to render these (3, 4 and 5)
 	for (int i = 3; i < 6; ++i)
@@ -139,6 +141,8 @@ void Draw_FilledVectorCube(void)
 	{
 		CubeSinTabCount = 0;
 	}
+
+	RenderPort.Mask = -1;
 }
 
 
