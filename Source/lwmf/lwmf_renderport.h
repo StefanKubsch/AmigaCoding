@@ -7,10 +7,10 @@ struct RastPort RenderPort;
 UBYTE* TmpRasBuffer = NULL;
 UBYTE* AreaBuffer = NULL;
 
-BOOL lwmf_CreateRastPort(const int NumberOfVertices, const int AreaWidth, const int AreaHeight);
-void lwmf_CleanupRastPort(void);
+BOOL lwmf_CreateRenderPort(const UWORD NumberOfVertices, const UWORD AreaWidth, const UWORD AreaHeight);
+void lwmf_CleanupRenderPort(void);
 
-BOOL lwmf_CreateRastPort(const int NumberOfVertices, const int AreaWidth, const int AreaHeight)
+BOOL lwmf_CreateRenderPort(const UWORD NumberOfVertices, const UWORD AreaWidth, const UWORD AreaHeight)
 {
 	InitRastPort(&RenderPort);
 
@@ -21,8 +21,7 @@ BOOL lwmf_CreateRastPort(const int NumberOfVertices, const int AreaWidth, const 
 
 	if (!(TmpRasBuffer = AllocVec(RasSize, MEMF_CHIP | MEMF_CLEAR)))
 	{
-		lwmf_CleanupRastPort();
-		lwmf_CleanupScreen();
+		lwmf_CleanupRenderPort();
 		lwmf_CloseLibraries();
 		return FALSE;
 	}
@@ -33,8 +32,7 @@ BOOL lwmf_CreateRastPort(const int NumberOfVertices, const int AreaWidth, const 
 	// We need to allocate 5bytes per vertex
 	if (!(AreaBuffer = AllocVec(5 * NumberOfVertices, MEMF_CHIP | MEMF_CLEAR)))
 	{
-		lwmf_CleanupRastPort();
-		lwmf_CleanupScreen();
+		lwmf_CleanupRenderPort();
 		lwmf_CloseLibraries();
 		return FALSE;
 	}
@@ -45,7 +43,7 @@ BOOL lwmf_CreateRastPort(const int NumberOfVertices, const int AreaWidth, const 
 	return TRUE;
 }
 
-void lwmf_CleanupRastPort(void)
+void lwmf_CleanupRenderPort(void)
 {
 	if (TmpRasBuffer)
 	{

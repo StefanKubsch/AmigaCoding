@@ -62,7 +62,7 @@ inline void DemoPart3(void);
 
 BOOL Init_CopperList(void)
 {
-	struct UCopList* UserCopperList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_CHIP | MEMF_CLEAR);
+	struct UCopList* UserCopperList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_ANY | MEMF_CLEAR);
 	
 	if (!UserCopperList)
 	{
@@ -109,7 +109,7 @@ BOOL Init_CopperList(void)
 	// Copper list end
 	CWait(UserCopperList, 10000, 255);
 
-	Screen->ViewPort.UCopIns = UserCopperList;
+	viewPort.UCopIns = UserCopperList;
 	RethinkDisplay();
 	
 	return TRUE;
@@ -117,9 +117,9 @@ BOOL Init_CopperList(void)
 
 void Cleanup_CopperList(void)
 {
-	if (Screen->ViewPort.UCopIns)
+	if (viewPort.UCopIns)
     {
-		FreeVPortCopLists(&Screen->ViewPort);
+		FreeVPortCopLists(&viewPort);
 	}
 }
 
@@ -158,8 +158,8 @@ void Cleanup_Demo(void)
 
 inline void DemoPart1(void)
 {
-	Draw_2DStarfield();
 	Draw_SineScroller();
+	Draw_2DStarfield();
 }
 
 inline void DemoPart2(void)
@@ -189,7 +189,7 @@ int main(void)
 	lwmf_TakeOverOS();
 	
 	// Setup screen
-	if (!lwmf_CreateScreen(WIDTH, HEIGHT, NUMBEROFBITPLANES))
+	if (!lwmf_CreateViewPort(WIDTH, HEIGHT, NUMBEROFBITPLANES))
     {
         lwmf_CleanupAll();
 		return 20;
@@ -198,7 +198,7 @@ int main(void)
     // Init the RenderPort (=Rastport)
 	// We need to init some buffers for Area operations
 	// Since our demo part draws some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
-	if (!lwmf_CreateRastPort(5, 130, 130))
+	if (!lwmf_CreateRenderPort(5, 130, 130))
 	{
         lwmf_CleanupAll();
 		return 20;
@@ -210,15 +210,6 @@ int main(void)
 
 	if (!Init_Demo())
 	{
-		Cleanup_Demo();
-		lwmf_CleanupAll();
-		return 20;
-	}
-
-	struct ScreenBuffer* Buffer[2] = { AllocScreenBuffer(Screen, NULL, SB_SCREEN_BITMAP), AllocScreenBuffer(Screen, NULL, SB_COPY_BITMAP) };
-
-    if (!Buffer[0] || !Buffer[1])
-    {
 		Cleanup_Demo();
 		lwmf_CleanupAll();
 		return 20;
@@ -236,9 +227,6 @@ int main(void)
 	UWORD FrameCount = 0;
 	const UWORD PartDuration = 5 * FPS;
 
-	// Set colors of first demo part
-	LoadRGB4(&Screen->ViewPort, DemoColorTable[CurrentDemoPart], 16);
-
 	// Init Copper (Set background, disable mouse pointer)
 	if (!Init_CopperList())
 	{
@@ -246,6 +234,10 @@ int main(void)
 		lwmf_CleanupAll();
 		return 20;
 	}
+
+	// Initial loading of colors
+	LoadRGB4(&viewPort, DemoColorTable[CurrentDemoPart], 16);
+	lwmf_UpdateViewPort();	
 
 	// Start timer
 	struct timerequest TickRequest = *TimerIO;
@@ -256,18 +248,26 @@ int main(void)
 
     //
 	// This is our main loop
-    // Here the double buffering of all drawn stuff is handled...
 	//
 
 	// Check if mouse button is pressed...
 	// PRA_FIR0 = Bit 6 (0x40)
 	while (*CIAA_PRA & 0x40)
 	{
-		RenderPort.BitMap = Buffer[CurrentBuffer]->sb_BitMap;
-		
-		//***************************************************************
-		// Here we call the drawing functions for demo stuff!            *
-		//***************************************************************
+		WaitTOF();
+
+		if (CurrentBuffer == 0) 
+		{
+			view.LOFCprList = LOCpr1;
+			view.SHFCprList = SHCpr1;
+			RenderPort.BitMap = RastPort1.BitMap;
+		}
+		else 
+		{
+			view.LOFCprList = LOCpr2;
+			view.SHFCprList = SHCpr2;
+			RenderPort.BitMap = RastPort2.BitMap;
+		}
 		
 		SetRast(&RenderPort, 0);
 
@@ -280,7 +280,7 @@ int main(void)
 		// Ends here ;-)                                                *
 		//***************************************************************
 
-		ChangeScreenBuffer(Screen, Buffer[CurrentBuffer]);
+		LoadView(&view);
 		CurrentBuffer ^= 1;
 
 		if (Wait(1L << TimerPort->mp_SigBit) & (1L << TimerPort->mp_SigBit))
@@ -292,7 +292,6 @@ int main(void)
 		}
 
 		lwmf_FPSCounter();
-		lwmf_WaitFrame();
 
 		if (++FrameCount >= PartDuration)
 		{
@@ -303,9 +302,10 @@ int main(void)
 				CurrentDemoPart = 0;
 			}
 
-			// Load colors for next demo part
+			// Load colors & update viewport
 			SetRast(&RenderPort, 0);
-			LoadRGB4(&Screen->ViewPort, DemoColorTable[CurrentDemoPart], 16);
+			LoadRGB4(&viewPort, DemoColorTable[CurrentDemoPart], 16);
+			lwmf_UpdateViewPort();
 		}
 	}
 
@@ -313,20 +313,6 @@ int main(void)
 	AbortIO((struct IORequest*)&TickRequest);
 
 	// Cleanup everything
-	if (Buffer[0])
-	{
-		lwmf_WaitBlit();
-		FreeScreenBuffer(Screen, Buffer[0]);
-		Buffer[0] = NULL;
-	}
-
-	if (Buffer[1])
-	{
-		lwmf_WaitBlit();
-		FreeScreenBuffer(Screen, Buffer[1]);
-		Buffer[1] = NULL;
-	}
-
 	Cleanup_Demo();
 	lwmf_CleanupAll();
 	return 0;

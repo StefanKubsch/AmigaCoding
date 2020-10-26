@@ -14,12 +14,12 @@ void Draw_3DStarfield(void);
 
 struct StarStruct3D
 {
-    int x;
-    int y;
-    int z;
+    WORD x;
+    WORD y;
+    WORD z;
 } *Stars3D;
 
-int NumberOf3DStars;
+UWORD NumberOf3DStars;
 
 BOOL Init_3DStarfield(void)
 {
@@ -53,8 +53,8 @@ void Draw_3DStarfield(void)
 {
 	RenderPort.Mask = 0x03;
 	
-	const int WidthMid = WIDTH >> 1;
-	const int HeightMid = HEIGHT >> 1;
+	const UWORD WidthMid = WIDTH >> 1;
+	const UWORD HeightMid = HEIGHT >> 1;
 
 	for (int i = 0; i < NumberOf3DStars; ++i)
 	{
@@ -65,10 +65,10 @@ void Draw_3DStarfield(void)
 			Stars3D[i].z = 800;
 		}
 		
-		const int x = Stars3D[i].x / Stars3D[i].z + WidthMid;
-		const int y = Stars3D[i].y / Stars3D[i].z + HeightMid;
+		const UWORD x = Stars3D[i].x / Stars3D[i].z + WidthMid;
+		const UWORD y = Stars3D[i].y / Stars3D[i].z + HeightMid;
 		
-		if ((unsigned int)x < WIDTH && y > UPPERBORDERLINE && y < LOWERBORDERLINE)
+		if (x < WIDTH && y > UPPERBORDERLINE && y < LOWERBORDERLINE)
 		{
 			SetAPen(&RenderPort, Stars3D[i].z / 300 + 1);
 			WritePixel(&RenderPort, x, y);

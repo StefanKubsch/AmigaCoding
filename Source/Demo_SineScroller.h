@@ -20,26 +20,26 @@ struct Scrollfont
 	struct lwmf_Image* FontBitmap;
 	char* Text;
 	char* CharMap;
-	int* Map;
-	int CharWidth;
-	int CharHeight;
-	int CharSpacing;
-	int TextLength;
-	int CharMapLength;
-	int Length;
-	int ScrollX;
+	WORD* Map;
+	UBYTE CharWidth;
+	UBYTE CharHeight;
+	UBYTE CharSpacing;
+	UWORD TextLength;
+	UWORD CharMapLength;
+	UWORD Length;
+	WORD ScrollX;
 } Font;
 
-int ScrollSinTab[320];
+UWORD ScrollSinTab[320];
 
 BOOL Init_SineScroller(void)
 {
 	// Generate sinus table
-	const int HScreenPos = 120;
+	const UBYTE HScreenPos = 120;
 
 	for (int i = 0; i < 320; ++i)
 	{
-		ScrollSinTab[i] = HScreenPos + (int)(sin(0.03f * i) * 70.0f);
+		ScrollSinTab[i] = HScreenPos + (UWORD)(sin(0.03f * i) * 70.0f);
 	}
 
 	Font.Text = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
@@ -57,7 +57,7 @@ BOOL Init_SineScroller(void)
 		return FALSE;
 	}
 
-	if (!(Font.Map = AllocVec(sizeof(int) * Font.TextLength, MEMF_ANY | MEMF_CLEAR)))
+	if (!(Font.Map = AllocVec(sizeof(WORD) * Font.TextLength, MEMF_ANY | MEMF_CLEAR)))
 	{
 		return FALSE;
 	}
@@ -110,9 +110,9 @@ void Draw_SineScroller(void)
 				break;
 			}
 
-			const int TempPosX = XPos + x1;
+			const UWORD TempPosX = XPos + x1;
 
-			if ((unsigned int)TempPosX < WIDTH)
+			if (TempPosX < WIDTH)
 			{
 				BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, ScrollSinTab[TempPosX], 1, Font.CharHeight, 0xC0, 0x07, NULL);
 			}

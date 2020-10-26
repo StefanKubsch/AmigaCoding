@@ -4,10 +4,10 @@
 struct lwmf_Image
 {
 	struct BitMap* Image;
-	int Width;
-	int Height;
-	int Depth;
-	ULONG NumberOfColors;
+	ULONG Width;
+	ULONG Height;
+	ULONG Depth;
+	UBYTE NumberOfColors;
 };
 
 struct BitMap* lwmf_BitmapCopy(struct BitMap* SourceBM);
@@ -17,8 +17,8 @@ void lwmf_DeleteImage(struct lwmf_Image* Image);
 struct BitMap* lwmf_BitmapCopy(struct BitMap* SourceBM)
 {
 	struct BitMap* TargetBM = NULL;
-	long Width = 0;
-	long Height = 0;
+	ULONG Width = 0;
+	ULONG Height = 0;
 
 	if (!(TargetBM = AllocBitMap(Width = GetBitMapAttr(SourceBM, BMA_WIDTH), Height = GetBitMapAttr(SourceBM, BMA_HEIGHT), GetBitMapAttr(SourceBM, BMA_DEPTH), GetBitMapAttr(SourceBM, BMA_FLAGS), NULL)))
 	{
@@ -38,7 +38,7 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 	ULONG NumberOfColors = 0;
 	Object* dtObject = NULL;
 
-	if (!(dtObject = NewDTObject(Filename, DTA_GroupID, GID_PICTURE, PDTA_Remap, FALSE, PDTA_Screen, Screen, TAG_END)))
+	if (!(dtObject = NewDTObject(Filename, DTA_GroupID, GID_PICTURE, PDTA_Remap, FALSE, TAG_END)))
 	{
 		lwmf_CleanupAll();
 		return NULL;

@@ -10,7 +10,7 @@ BOOL FastCPUFlag = FALSE;
 
 ULONG lwmf_GetSystemTime(void);
 void lwmf_FPSCounter(void);
-void lwmf_DisplayFPSCounter(const int PosX, const int PosY, const int Color);
+void lwmf_DisplayFPSCounter(const UWORD PosX, const UWORD PosY, const UBYTE Color);
 void lwmf_CheckCPU(void);
 
 ULONG lwmf_GetSystemTime(void)
@@ -32,7 +32,7 @@ void lwmf_FPSCounter(void)
 	const ULONG SystemTime = lwmf_GetSystemTime();
 	
 	// Calculate fps
-	static WORD FPSFrames = 0;
+	static UWORD FPSFrames = 0;
 	static ULONG FPSUpdate = 0;
 
 	FPSUpdate += SystemTime;
@@ -47,7 +47,7 @@ void lwmf_FPSCounter(void)
 	++FPSFrames;
 }
 
-void lwmf_DisplayFPSCounter(const int PosX, const int PosY, const int Color)
+void lwmf_DisplayFPSCounter(const UWORD PosX, const UWORD PosY, const UBYTE Color)
 {
 	UBYTE FPSStr[4];
 	sprintf(FPSStr, "%d", FPS);

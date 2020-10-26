@@ -13,34 +13,34 @@
 BOOL Init_FilledVectorCube(void);
 void Draw_FilledVectorCube(void);
 
-struct IntPointStruct
+struct PointStruct
 {
-	int x;
-	int y;
+	UWORD x;
+	UWORD y;
 };
 
 struct OrderPair
 {
-	int first;
+	UWORD first;
 	float second;
 };
 
 struct CubeFaceStruct
 {
-	int p0;
-	int p1;
-	int p2;
-	int p3;
+	UBYTE p0;
+	UBYTE p1;
+	UBYTE p2;
+	UBYTE p3;
 } CubeFaces[] = { {0,1,3,2}, {4,0,2,6}, {5,4,6,7}, {1,5,7,3}, {0,1,5,4}, {2,3,7,6} };
 
 struct CubeStruct
 {
 	struct OrderPair Order[6];
-	struct IntPointStruct Cube[8];
+	struct PointStruct Cube[8];
 } CubePreCalc[90];
 
-int CubeSinTabY[64];
-int CubeSinTabX[64];
+UWORD CubeSinTabY[64];
+UWORD CubeSinTabX[64];
 
 BOOL Init_FilledVectorCube(void)
 {
@@ -57,8 +57,8 @@ BOOL Init_FilledVectorCube(void)
 	// Create two sintabs for a lissajous figure
 	for (int i = 0; i < 64; ++i)
 	{
-		CubeSinTabY[i] = (int)(sin(0.2f * i) * 40.0f);
-		CubeSinTabX[i] = (int)(sin(0.1f * i) * 60.0f);
+		CubeSinTabY[i] = (UWORD)(sin(0.2f * i) * 40.0f);
+		CubeSinTabX[i] = (UWORD)(sin(0.1f * i) * 60.0f);
 	}
 
 	for (int Pre = 0; Pre < 90; ++Pre)
@@ -113,9 +113,9 @@ BOOL Init_FilledVectorCube(void)
 
 void Draw_FilledVectorCube(void)
 {
-	const int CubeFacesColors[] = { 1, 2, 3, 4, 5, 6 };
-	static int VCCount = 0;
-	static int CubeSinTabCount = 0;
+	const UBYTE CubeFacesColors[] = { 1, 2, 3, 4, 5, 6 };
+	static UBYTE VCCount = 0;
+	static UBYTE CubeSinTabCount = 0;
 
 	RenderPort.Mask = 0x07;
 

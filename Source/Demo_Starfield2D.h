@@ -14,9 +14,9 @@ void Draw_2DStarfield(void);
 
 struct StarStruct2D
 {
-    int x;
-    int y;
-    int z;
+    UWORD x;
+    UWORD y;
+    UWORD z;
 } *Stars2D;
 
 int NumberOf2DStars;
