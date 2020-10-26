@@ -20,7 +20,7 @@ struct BitMap* lwmf_BitmapCopy(struct BitMap* SourceBM)
 	ULONG Width = 0;
 	ULONG Height = 0;
 
-	if (!(TargetBM = AllocBitMap(Width = GetBitMapAttr(SourceBM, BMA_WIDTH), Height = GetBitMapAttr(SourceBM, BMA_HEIGHT), GetBitMapAttr(SourceBM, BMA_DEPTH), GetBitMapAttr(SourceBM, BMA_FLAGS), NULL)))
+	if (!(TargetBM = AllocBitMap(Width = GetBitMapAttr(SourceBM, BMA_WIDTH), Height = GetBitMapAttr(SourceBM, BMA_HEIGHT), GetBitMapAttr(SourceBM, BMA_DEPTH), BMF_INTERLEAVED | BMF_CLEAR, NULL)))
 	{
 		return NULL;
 	}

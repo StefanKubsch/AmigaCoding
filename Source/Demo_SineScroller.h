@@ -39,7 +39,7 @@ BOOL Init_SineScroller(void)
 
 	for (int i = 0; i < 320; ++i)
 	{
-		ScrollSinTab[i] = HScreenPos + (UWORD)(sin(0.03f * i) * 70.0f);
+		ScrollSinTab[i] = HScreenPos + (UWORD)(sin(0.03f * i) * 20.0f);
 	}
 
 	Font.Text = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
@@ -103,7 +103,7 @@ void Draw_SineScroller(void)
 {
 	for (int i = 0, XPos = Font.ScrollX; i < Font.TextLength; ++i)
 	{
-		for (int x1 = 0, x = Font.Map[i]; x < Font.Map[i] + Font.CharWidth; ++x1, ++x)
+		for (int x1 = 0, x = Font.Map[i]; x < Font.Map[i] + Font.CharWidth; x1 += 4, x += 4)
 		{
 			if (Font.Map[i] == -1)
 			{
@@ -114,19 +114,14 @@ void Draw_SineScroller(void)
 
 			if (TempPosX < WIDTH)
 			{
-				BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, ScrollSinTab[TempPosX], 1, Font.CharHeight, 0xC0, 0x07, NULL);
+				BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, ScrollSinTab[TempPosX], 4, Font.CharHeight, 0xC0, 0x07, NULL);
 			}
-		}
-
-		if (XPos >= WIDTH)
-		{
-			break;
 		}
 
 		XPos += Font.CharWidth + Font.CharSpacing;
 	}
 
-	Font.ScrollX -= 5;
+	Font.ScrollX -= 4;
 
 	if (Font.ScrollX < -Font.Length)
 	{

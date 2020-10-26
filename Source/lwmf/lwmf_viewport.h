@@ -3,16 +3,18 @@
 
 struct View view; 
 struct ViewPort viewPort;
-struct BitMap* BufferBitmap1;
-struct BitMap* BufferBitmap2;
+struct BitMap* BufferBitmap1 = NULL;
+struct BitMap* BufferBitmap2 = NULL;
 struct RastPort RastPort1;
 struct RastPort RastPort2;
 struct RasInfo rasInfo;
 
-struct cprlist *LOCpr1;
-struct cprlist *SHCpr1;
-struct cprlist *LOCpr2;
-struct cprlist *SHCpr2;
+struct cprlist* LOCpr1 = NULL;
+struct cprlist* SHCpr1 = NULL;
+struct cprlist* LOCpr2 = NULL;
+struct cprlist* SHCpr2 = NULL;
+
+struct ColorMap* colorMap = NULL;
 
 BOOL lwmf_CreateViewPort(const ULONG Width, const ULONG Height, const int NumberOfBitPlanes);
 void lwmf_UpdateViewPort(void);
@@ -52,7 +54,7 @@ BOOL lwmf_CreateViewPort(const ULONG Width, const ULONG Height, const int Number
 	viewPort.DWidth = Width;
 	viewPort.DHeight = Height;
 
-	struct ColorMap* colorMap = GetColorMap(lwmf_IntPow(2, NumberOfBitPlanes));
+	colorMap = GetColorMap(lwmf_IntPow(2, NumberOfBitPlanes));
 	viewPort.ColorMap = colorMap;
 
 	MakeVPort(&view, &viewPort);
@@ -97,8 +99,6 @@ void lwmf_UpdateViewPort(void)
 	
 	LOCpr2 = view.LOFCprList;
 	SHCpr2 = view.SHFCprList;
-
-	LoadView(&view);
 }
 
 void lwmf_CleanupViewPort(void)
@@ -109,6 +109,11 @@ void lwmf_CleanupViewPort(void)
 	FreeCprList(SHCpr2);
 	
 	FreeVPortCopLists(&viewPort); 
+
+	if (colorMap)
+	{
+		FreeColorMap(colorMap);
+	}
 
 	if (BufferBitmap1)
 	{

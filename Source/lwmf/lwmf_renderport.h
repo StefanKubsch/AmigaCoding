@@ -1,5 +1,5 @@
-#ifndef LWMF_RASTPORT_H
-#define LWMF_RASTPORT_H
+#ifndef LWMF_RENDERPORT_H
+#define LWMF_RENDERPORT_H
 
 struct RastPort RenderPort;
 
@@ -59,4 +59,4 @@ void lwmf_CleanupRenderPort(void)
 }
 
 
-#endif /* LWMF_RASTPORT_H */
+#endif /* LWMF_RENDERPORT_H */

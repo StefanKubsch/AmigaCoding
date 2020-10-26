@@ -29,10 +29,10 @@
 #define UPPERBORDERLINE		20
 #define LOWERBORDERLINE		235
 
-// Our timing/fps limit is targeted at 25fps
-// If you want to use 50fps instead, calc 1000000 / 50
+// Our timing/fps limit is targeted at 50fps
+// If you want to use 25fps instead, calc 1000000 / 25
 // Is used in function "DoubleBuffering()"
-#define FPS					25
+#define FPS					50
 #define FPSLIMIT			(1000000 / FPS)
 
 // Here we define, how many bitplanes we want to use...
@@ -158,8 +158,8 @@ void Cleanup_Demo(void)
 
 inline void DemoPart1(void)
 {
-	Draw_SineScroller();
 	Draw_2DStarfield();
+	Draw_SineScroller();
 }
 
 inline void DemoPart2(void)
@@ -225,7 +225,9 @@ int main(void)
 	UBYTE CurrentBuffer = 0;
 	UBYTE CurrentDemoPart = 0;
 	UWORD FrameCount = 0;
-	const UWORD PartDuration = 5 * FPS;
+
+	// Duration of each part in frames
+	const UWORD PartDuration = 150;
 
 	// Init Copper (Set background, disable mouse pointer)
 	if (!Init_CopperList())
@@ -254,7 +256,7 @@ int main(void)
 	// PRA_FIR0 = Bit 6 (0x40)
 	while (*CIAA_PRA & 0x40)
 	{
-		WaitTOF();
+		lwmf_WaitVBeam(0);
 
 		if (CurrentBuffer == 0) 
 		{
@@ -312,6 +314,10 @@ int main(void)
 	// After breaking the loop, we have to make sure that there are no more TickRequests to process
 	AbortIO((struct IORequest*)&TickRequest);
 
+	WaitBlit();
+	WaitTOF();
+	WaitTOF();
+	
 	// Cleanup everything
 	Cleanup_Demo();
 	lwmf_CleanupAll();

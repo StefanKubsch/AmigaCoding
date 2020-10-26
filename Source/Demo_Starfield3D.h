@@ -70,7 +70,7 @@ void Draw_3DStarfield(void)
 		
 		if (x < WIDTH && y > UPPERBORDERLINE && y < LOWERBORDERLINE)
 		{
-			SetAPen(&RenderPort, Stars3D[i].z / 300 + 1);
+			SetAPen(&RenderPort, (Stars3D[i].z >> 8) + 1);
 			WritePixel(&RenderPort, x, y);
 		}
 	}

@@ -27,7 +27,7 @@ void lwmf_TakeOverOS(void)
     WaitTOF();
     WaitTOF();
 
-	lwmf_WaitBlit();
+	WaitBlit();
 
 	Old_DMACON = *DMACONR;
 	Old_INTREQ = *INTREQR;
@@ -103,7 +103,7 @@ void lwmf_TakeOverOS(void)
 
 void lwmf_ReleaseOS(void)
 {
-	lwmf_WaitBlit();
+	WaitBlit();
 
 	// Restore custom registers
 	*DMACON = 0x7FFF;
