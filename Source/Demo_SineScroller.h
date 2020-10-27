@@ -114,7 +114,7 @@ void Draw_SineScroller(void)
 
 			if (TempPosX < WIDTH)
 			{
-				BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, ScrollSinTab[TempPosX], 4, Font.CharHeight, 0xC0, 0x07, NULL);
+				BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, ScrollSinTab[TempPosX], 4, Font.CharHeight, 0xC0, 0x0F, NULL);
 			}
 		}
 

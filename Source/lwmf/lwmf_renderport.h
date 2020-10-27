@@ -21,7 +21,6 @@ BOOL lwmf_CreateRenderPort(const UWORD NumberOfVertices, const UWORD AreaWidth, 
 
 	if (!(TmpRasBuffer = AllocVec(RasSize, MEMF_CHIP | MEMF_CLEAR)))
 	{
-		lwmf_CleanupRenderPort();
 		lwmf_CloseLibraries();
 		return FALSE;
 	}

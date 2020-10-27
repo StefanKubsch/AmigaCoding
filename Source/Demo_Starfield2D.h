@@ -58,8 +58,6 @@ void Draw_2DStarfield(void)
 		if (Stars2D[i].x >= WIDTH) 
 		{
 			Stars2D[i].x = 0;
-			Stars2D[i].y = lwmf_XorShift32() % (LOWERBORDERLINE - UPPERBORDERLINE) + UPPERBORDERLINE;
-			Stars2D[i].z = lwmf_XorShift32() % 3 + 1;
 		}
 		
 		SetAPen(&RenderPort, Stars2D[i].z + 7);

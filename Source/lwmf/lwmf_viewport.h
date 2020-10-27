@@ -9,10 +9,9 @@ struct RastPort RastPort1;
 struct RastPort RastPort2;
 struct RasInfo rasInfo;
 
+// Only long frame copperlists (only non-interlaced mode!)
 struct cprlist* LOCpr1 = NULL;
-struct cprlist* SHCpr1 = NULL;
 struct cprlist* LOCpr2 = NULL;
-struct cprlist* SHCpr2 = NULL;
 
 struct ColorMap* colorMap = NULL;
 
@@ -37,13 +36,10 @@ BOOL lwmf_CreateViewPort(const ULONG Width, const ULONG Height, const int Number
 
 	InitRastPort(&RastPort1);
 	RastPort1.BitMap = BufferBitmap1;
-	SetRast(&RastPort1, 0);
 	
 	InitRastPort(&RastPort2);
 	RastPort2.BitMap = BufferBitmap2;
-	SetRast(&RastPort2, 0);
 	
-	rasInfo.BitMap = BufferBitmap1;
 	rasInfo.RxOffset = 0;
 	rasInfo.RyOffset = 0;
 	rasInfo.Next = NULL;
@@ -57,23 +53,7 @@ BOOL lwmf_CreateViewPort(const ULONG Width, const ULONG Height, const int Number
 	colorMap = GetColorMap(lwmf_IntPow(2, NumberOfBitPlanes));
 	viewPort.ColorMap = colorMap;
 
-	MakeVPort(&view, &viewPort);
-	MrgCop(&view);
-	
-	LOCpr1 = view.LOFCprList;
-	SHCpr1 = view.SHFCprList;
-		
-	view.LOFCprList = 0;
-	view.SHFCprList = 0;
-	
-	rasInfo.BitMap = BufferBitmap2;
-	
-	MakeVPort(&view, &viewPort);
-	MrgCop(&view);
-	
-	LOCpr2 = view.LOFCprList;
-	SHCpr2 = view.SHFCprList;
-	
+	lwmf_UpdateViewPort();	
 	LoadView(&view);
 
 	return TRUE;
@@ -87,10 +67,8 @@ void lwmf_UpdateViewPort(void)
 	MrgCop(&view);
 	
 	LOCpr1 = view.LOFCprList;
-	SHCpr1 = view.SHFCprList;
 		
 	view.LOFCprList = 0;
-	view.SHFCprList = 0;
 	
 	rasInfo.BitMap = BufferBitmap2;
 	
@@ -98,15 +76,12 @@ void lwmf_UpdateViewPort(void)
 	MrgCop(&view);
 	
 	LOCpr2 = view.LOFCprList;
-	SHCpr2 = view.SHFCprList;
 }
 
 void lwmf_CleanupViewPort(void)
 {
 	FreeCprList(LOCpr1);
 	FreeCprList(LOCpr2);
-	FreeCprList(SHCpr1);
-	FreeCprList(SHCpr2);
 	
 	FreeVPortCopLists(&viewPort); 
 

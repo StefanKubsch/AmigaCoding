@@ -53,9 +53,6 @@ void Draw_3DStarfield(void)
 {
 	RenderPort.Mask = 0x03;
 	
-	const UWORD WidthMid = WIDTH >> 1;
-	const UWORD HeightMid = HEIGHT >> 1;
-
 	for (int i = 0; i < NumberOf3DStars; ++i)
 	{
 		Stars3D[i].z -= 15;
@@ -65,8 +62,8 @@ void Draw_3DStarfield(void)
 			Stars3D[i].z = 800;
 		}
 		
-		const UWORD x = Stars3D[i].x / Stars3D[i].z + WidthMid;
-		const UWORD y = Stars3D[i].y / Stars3D[i].z + HeightMid;
+		const UWORD x = Stars3D[i].x / Stars3D[i].z + WIDTHMID;
+		const UWORD y = Stars3D[i].y / Stars3D[i].z + HEIGHTMID;
 		
 		if (x < WIDTH && y > UPPERBORDERLINE && y < LOWERBORDERLINE)
 		{

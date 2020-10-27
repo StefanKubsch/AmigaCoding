@@ -17,23 +17,29 @@
 // Screen settings
 //
 
-const ULONG WIDTH = 320;
-const ULONG HEIGHT = 256;
+#define WIDTH				320
+#define HEIGHT 				256
+#define UPPERBORDERLINE		50
+#define LOWERBORDERLINE		255
 
-//***************************************************************
-// Demo stuff                                                   *
-//***************************************************************
-
-BOOL InitCopperList(void);
-void LoadCopperList(void);
-void CleanupCopperList(void);
+BOOL Init_CopperList(void);
+void Update_CopperList(void);
+void Cleanup_CopperList(void);
 
 UWORD* CopperList;
 
-BOOL InitCopperList(void)
+const UWORD Colors[] =
+{
+	0x0604, 0x0605, 0x0606, 0x0607, 0x0617, 0x0618, 0x0619,	0x0629, 
+	0x072A, 0x073B, 0x074B, 0x074C, 0x075D, 0x076E,	0x077E, 0x088F,
+	0x088F, 0x077E, 0x076E, 0x075D, 0x074C, 0x074B, 0x073B, 0x072A,
+	0x0629, 0x0619, 0x0618, 0x0617, 0x0607, 0x0606, 0x0605, 0x0604
+};
+
+BOOL Init_CopperList(void)
 {
 	// Number Of Colors * 2 + Init & End + some spare
-	const UWORD CopperListLength = 25 + (32 * 2);
+	const UWORD CopperListLength = 200;
 
 	if (!(CopperList = (UWORD *) AllocVec(CopperListLength * sizeof(UWORD), MEMF_CHIP | MEMF_CLEAR)))
 	{
@@ -43,15 +49,10 @@ BOOL InitCopperList(void)
 	return TRUE;
 }
 
-void LoadCopperList(void)
+void Update_CopperList(void)
 {
-	const UWORD Colors[] =
-	{
-		0x0604, 0x0605, 0x0606, 0x0607, 0x0617, 0x0618, 0x0619,	0x0629, 
-		0x072A, 0x073B, 0x074B, 0x074C, 0x075D, 0x076E,	0x077E, 0x088F, 
-		0x07AF, 0x06CF, 0x05FF, 0x04FB, 0x04F7,	0x03F3, 0x07F2, 0x0BF1, 
-		0x0FF0, 0x0FC0, 0x0EA0, 0x0E80,	0x0E60, 0x0D40, 0x0D20, 0x0D00
-	};
+	static int LineCount = UPPERBORDERLINE + 1;
+	static int LineAdd = 4;
 
 	// Copper init
 
@@ -59,27 +60,32 @@ void LoadCopperList(void)
 
 	// Slow fetch mode (needed for AGA compatibility)
 	CopperList[Index++] = 0x1FC;
-	CopperList[Index++] = 0;
-
-	// BPLCON0 Set 4 bitplanes (0100001000000000)
-	CopperList[Index++] = 0x100;
-	CopperList[Index++] = 0x4200;
-
-	// BPLCON1 no scrolling
-	CopperList[Index++] = 0x102;
 	CopperList[Index++] = 0x0000;
 
+	// BPLCON0
+	// 4 bitplanes
+	// Lores
+	// composite video color-burst enabled
+	// 0100001000000000 = 0x4200
+	CopperList[Index++] = 0x100;
+	CopperList[Index++] = 0x4200;
+	// BPLCON1
+	CopperList[Index++] = 0x102;
+	CopperList[Index++] = 0x0000;
 	// BPLCON2
 	CopperList[Index++] = 0x104;
-	CopperList[Index++] = 0x000F;
+	CopperList[Index++] = 0x0000;
+	// BPLCON3 (AGA sprites, palette and dualplayfield reset)
+	CopperList[Index++] = 0x106;
+	CopperList[Index++] = 0x0C00;
 
-	// BPL1MOD Two byte between bitplanes
+	// BPL1MOD
 	CopperList[Index++] = 0x108;
-	CopperList[Index++] = 0x0002;
+	CopperList[Index++] = 0x0000;
 
-	// BPL2MOD Two byte between bitplanes
+	// BPL2MOD
 	CopperList[Index++] = 0x10A;
-	CopperList[Index++] = 0x0002;
+	CopperList[Index++] = 0x0000;
 
 	// Display window top/left (PAL DIWSTRT)
 	CopperList[Index++] = 0x8E;
@@ -90,32 +96,76 @@ void LoadCopperList(void)
 	CopperList[Index++] = 0x2CC1;
 
 	// Display data fetch start (horizontal position)
-	CopperList[Index++] = 0x92;
-	CopperList[Index++] = 0x38;
+	// CopperList[Index++] = 0x92;
+	// CopperList[Index++] = 0x0038;
 
 	// Display data fetch stop (horizontal position)
-	CopperList[Index++] = 0x94;
-	CopperList[Index++] = 0xD0;
+	// CopperList[Index++] = 0x94;
+	// CopperList[Index++] = 0x00D0;
 
-	for (int i = 0, Temp = HEIGHT >> 5; i < 32; ++i)
+	// Black
+	CopperList[Index++] = 0x180;
+	CopperList[Index++] = 0x000;
+	// White Line
+	CopperList[Index++] = ((UPPERBORDERLINE - 1) << 8) + 7;
+	CopperList[Index++] = 0xFFFE;
+	CopperList[Index++] = 0x180;
+	CopperList[Index++] = 0xFFF;
+	// Blue
+	CopperList[Index++] = (UPPERBORDERLINE << 8) + 7;
+	CopperList[Index++] = 0xFFFE;
+	CopperList[Index++] = 0x180;
+	CopperList[Index++] = 0x003;
+
+	// Moving Copperbar
+	CopperList[Index++] = (LineCount << 8) + 7;
+	CopperList[Index++] = 0xFFFE;
+
+	for (int i = 0; i < 32; ++i)
 	{
-		// WAIT
-		CopperList[Index++] = ((i * Temp) << 8) + 7;
+		CopperList[Index++] = ((LineCount + i) << 8) + 7;
 		CopperList[Index++] = 0xFFFE;
-		// CMOVE
-		// Write Colors[i] into color register 0x180 (COLOR00)
+		
 		CopperList[Index++] = 0x180;
 		CopperList[Index++] = Colors[i];
 	}
+
+	// Blue
+	CopperList[Index++] = ((LineCount + 32) << 8) + 7;
+	CopperList[Index++] = 0xFFFE;
+	CopperList[Index++] = 0x180;
+	CopperList[Index++] = 0x003;
+	// White Line
+	CopperList[Index++] = ((LOWERBORDERLINE - 1) << 8) + 7;
+	CopperList[Index++] = 0xFFFE;
+	CopperList[Index++] = 0x180;
+	CopperList[Index++] = 0xFFF;
+	// Black
+	CopperList[Index++] = ((LOWERBORDERLINE) << 8) + 7;
+	CopperList[Index++] = 0xFFFE;
+	CopperList[Index++] = 0x180;
+	CopperList[Index++] = 0x000;
 
 	// Copper list end
 	CopperList[Index++] = 0xFFFF;
 	CopperList[Index++] = 0xFFFE;
 
 	*COP1LC = (ULONG)CopperList;
+
+	LineCount += LineAdd;
+
+	if (LineCount >= LOWERBORDERLINE - 32)
+	{
+		LineAdd *= -1;
+	}
+
+	if (LineCount <= UPPERBORDERLINE)
+	{
+		LineAdd *= -1;
+	}
 }
 
-void CleanupCopperList(void)
+void Cleanup_CopperList(void)
 {
  	*COP1LC = (ULONG) ((struct GfxBase*) GfxBase)->copinit;
 	
@@ -138,21 +188,23 @@ int main()
 	lwmf_TakeOverOS();
 	
 	// Init and load copperlist
-	if (!InitCopperList())
+	if (!Init_CopperList())
 	{
 		return 20;
 	}
 
-	LoadCopperList();
+	Update_CopperList();
 
     // Wait until mouse button is pressed...
 	// PRA_FIR0 = Bit 6 (0x40)
 	while (*CIAA_PRA & 0x40)
 	{
+		lwmf_WaitVBeam(255);
+		Update_CopperList();
 	}
 
 	// Cleanup everything
-	CleanupCopperList();
+	Cleanup_CopperList();
 	lwmf_CleanupAll();
 	return 0;
 }
