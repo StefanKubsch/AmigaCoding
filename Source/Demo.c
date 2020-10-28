@@ -32,8 +32,6 @@
 #define LOWERBORDERLINE		235
 
 // Our timing/fps limit is targeted at 50fps
-// If you want to use 25fps instead, calc 1000000 / 25
-// Is used in function "DoubleBuffering()"
 #define FPS					50
 #define FPSLIMIT			(1000000 / FPS)
 
@@ -275,7 +273,7 @@ int main(void)
 		// Start here with drawing                                      *
 		//***************************************************************
 
-		lwmf_WaitVBeam(LOWERBORDERLINE);
+		lwmf_WaitVertBlank();
 		SetRast(&RenderPort, 0);
 		(*DemoParts[CurrentDemoPart])();
 		// lwmf_DisplayFPSCounter() writes on the backbuffer, too - so we need to call it before blitting

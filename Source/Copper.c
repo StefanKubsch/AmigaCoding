@@ -22,37 +22,39 @@
 #define UPPERBORDERLINE		50
 #define LOWERBORDERLINE		255
 
-BOOL Init_CopperList(void);
-void Update_CopperList(void);
-void Cleanup_CopperList(void);
+#define NUMBEROFBITPLANES	4
+#define bpl					((WIDTH >> 4) << 1)
+#define bwid				(NUMBEROFBITPLANES * bpl)
+#define modulos				(bwid - bpl)
 
-UWORD* CopperList;
+// Our timing/fps limit is targeted at 50fps
+#define FPS					50
+#define FPSLIMIT			(1000000 / FPS)
 
-const UWORD Colors[] =
+UWORD* CopperList = NULL;
+UWORD CopperbarStart = 0;
+
+const UWORD CopperbarColors[] =
 {
-	0x0604, 0x0605, 0x0606, 0x0607, 0x0617, 0x0618, 0x0619,	0x0629, 
-	0x072A, 0x073B, 0x074B, 0x074C, 0x075D, 0x076E,	0x077E, 0x088F,
-	0x088F, 0x077E, 0x076E, 0x075D, 0x074C, 0x074B, 0x073B, 0x072A,
-	0x0629, 0x0619, 0x0618, 0x0617, 0x0607, 0x0606, 0x0605, 0x0604
+	0x604, 0x605, 0x606, 0x607, 0x617, 0x618, 0x619, 0x629, 
+	0x72A, 0x73B, 0x74B, 0x74C, 0x75D, 0x76E, 0x77E, 0x88F,
+	0x88F, 0x77E, 0x76E, 0x75D, 0x74C, 0x74B, 0x73B, 0x72A,
+	0x629, 0x619, 0x618, 0x617, 0x607, 0x606, 0x605, 0x604
 };
+
+BOOL Init_CopperList(void);
+void Update_Copperbar(void);
+void Cleanup_CopperList(void);
 
 BOOL Init_CopperList(void)
 {
-	// Number Of Colors * 2 + Init & End + some spare
-	const UWORD CopperListLength = 200;
+	// Number of CopperbarColors * 4 + init + end + spare
+	const UWORD CopperListLength = (32 << 2) + 70;
 
 	if (!(CopperList = (UWORD *) AllocVec(CopperListLength * sizeof(UWORD), MEMF_CHIP | MEMF_CLEAR)))
 	{
 		return FALSE;
 	}
-
-	return TRUE;
-}
-
-void Update_CopperList(void)
-{
-	static int LineCount = UPPERBORDERLINE + 1;
-	static int LineAdd = 4;
 
 	// Copper init
 
@@ -61,15 +63,19 @@ void Update_CopperList(void)
 	// Slow fetch mode (needed for AGA compatibility)
 	CopperList[Index++] = 0x1FC;
 	CopperList[Index++] = 0x0000;
-
-	// BPLCON0
-	// 4 bitplanes
-	// Lores
-	// composite video color-burst enabled
-	// 0100001000000000 = 0x4200
-	CopperList[Index++] = 0x100;
-	CopperList[Index++] = 0x4200;
-	// BPLCON1
+	// Display window top/left (PAL DIWSTRT)
+	CopperList[Index++] = 0x8E;
+	CopperList[Index++] = 0x2C81;
+	// Display window bottom/right (PAL DIWSTOP)
+	CopperList[Index++] = 0x90;
+	CopperList[Index++] = 0x2CC1;
+	// Display data fetch start (horizontal position)
+	// CopperList[Index++] = 0x92;
+	// CopperList[Index++] = 0x0038;
+	// Display data fetch stop (horizontal position)
+	// CopperList[Index++] = 0x94;
+	// CopperList[Index++] = 0x00D0;
+	// BPLCON1 Scroll register (and playfield pri)
 	CopperList[Index++] = 0x102;
 	CopperList[Index++] = 0x0000;
 	// BPLCON2
@@ -78,30 +84,40 @@ void Update_CopperList(void)
 	// BPLCON3 (AGA sprites, palette and dualplayfield reset)
 	CopperList[Index++] = 0x106;
 	CopperList[Index++] = 0x0C00;
-
 	// BPL1MOD
 	CopperList[Index++] = 0x108;
-	CopperList[Index++] = 0x0000;
-
+	CopperList[Index++] = modulos;
 	// BPL2MOD
 	CopperList[Index++] = 0x10A;
+	CopperList[Index++] = modulos;
+	// BPL Pointer
+	CopperList[Index++] = 0xE0;		// BPL1PTH
+	CopperList[Index++] = 0x0000;	
+	CopperList[Index++] = 0xE2;		// BPL1PTL
 	CopperList[Index++] = 0x0000;
+	CopperList[Index++] = 0xE4;		// 2
+	CopperList[Index++] = 0x0000;
+	CopperList[Index++] = 0xE6;
+	CopperList[Index++] = 0x0000;
+	CopperList[Index++] = 0xE8;		// 3
+	CopperList[Index++] = 0x0000;
+	CopperList[Index++] = 0xEA;
+	CopperList[Index++] = 0x0000;
+	CopperList[Index++] = 0xEC;		// 4
+	CopperList[Index++] = 0x0000;
+	CopperList[Index++] = 0xEE;
+	CopperList[Index++] = 0x0000;
+	// BPLCON0
+	// 4 bitplanes
+	// Lores
+	// composite video color-burst enabled
+	// 0100001000000000 = 0x4200
+	CopperList[Index++] = 0x100;
+	CopperList[Index++] = 0x4200;
 
-	// Display window top/left (PAL DIWSTRT)
-	CopperList[Index++] = 0x8E;
-	CopperList[Index++] = 0x2C81;
+	// Init background
 
-	// Display window bottom/right (PAL DIWSTOP)
-	CopperList[Index++] = 0x90;
-	CopperList[Index++] = 0x2CC1;
-
-	// Display data fetch start (horizontal position)
-	// CopperList[Index++] = 0x92;
-	// CopperList[Index++] = 0x0038;
-
-	// Display data fetch stop (horizontal position)
-	// CopperList[Index++] = 0x94;
-	// CopperList[Index++] = 0x00D0;
+	static int CopperbarPos = UPPERBORDERLINE + 1;
 
 	// Black
 	CopperList[Index++] = 0x180;
@@ -117,21 +133,23 @@ void Update_CopperList(void)
 	CopperList[Index++] = 0x180;
 	CopperList[Index++] = 0x003;
 
-	// Moving Copperbar
-	CopperList[Index++] = (LineCount << 8) + 7;
+	// Reserve space for Copperbar
+	CopperList[Index++] = (CopperbarPos << 8) + 7;
 	CopperList[Index++] = 0xFFFE;
+
+	CopperbarStart = Index;
 
 	for (int i = 0; i < 32; ++i)
 	{
-		CopperList[Index++] = ((LineCount + i) << 8) + 7;
+		CopperList[Index++] = ((CopperbarPos + i) << 8) + 7;
 		CopperList[Index++] = 0xFFFE;
 		
 		CopperList[Index++] = 0x180;
-		CopperList[Index++] = Colors[i];
+		CopperList[Index++] = 0x003;
 	}
 
 	// Blue
-	CopperList[Index++] = ((LineCount + 32) << 8) + 7;
+	CopperList[Index++] = ((CopperbarPos + 32) << 8) + 7;
 	CopperList[Index++] = 0xFFFE;
 	CopperList[Index++] = 0x180;
 	CopperList[Index++] = 0x003;
@@ -152,16 +170,34 @@ void Update_CopperList(void)
 
 	*COP1LC = (ULONG)CopperList;
 
-	LineCount += LineAdd;
+	return TRUE;
+}
 
-	if (LineCount >= LOWERBORDERLINE - 32)
+void Update_Copperbar(void)
+{
+	static int CopperbarPos = UPPERBORDERLINE + 1;
+	static int CopperbarSpeed = 4;
+	int Index = CopperbarStart;
+
+	for (int i = 0; i < 32; ++i)
 	{
-		LineAdd *= -1;
+		CopperList[Index++] = ((CopperbarPos + i) << 8) + 7;
+		CopperList[Index++] = 0xFFFE;
+		
+		CopperList[Index++] = 0x180;
+		CopperList[Index++] = CopperbarColors[i];
 	}
 
-	if (LineCount <= UPPERBORDERLINE)
+	CopperbarPos += CopperbarSpeed;
+
+	if (CopperbarPos >= LOWERBORDERLINE - 32)
 	{
-		LineAdd *= -1;
+		CopperbarSpeed *= -1;
+	}
+
+	if (CopperbarPos <= UPPERBORDERLINE)
+	{
+		CopperbarSpeed *= -1;
 	}
 }
 
@@ -193,17 +229,36 @@ int main()
 		return 20;
 	}
 
-	Update_CopperList();
+	// Start timer
+	struct timerequest TickRequest = *TimerIO;
+	TickRequest.tr_node.io_Command = TR_ADDREQUEST;
+	TickRequest.tr_time.tv_secs = 0;
+	TickRequest.tr_time.tv_micro = 0;
+	SendIO((struct IORequest*)&TickRequest);
+
+	OwnBlitter();
 
     // Wait until mouse button is pressed...
 	// PRA_FIR0 = Bit 6 (0x40)
 	while (*CIAA_PRA & 0x40)
 	{
-		lwmf_WaitVBeam(255);
-		Update_CopperList();
+		lwmf_WaitVertBlank();
+		Update_Copperbar();
+
+		if (Wait(1L << TimerPort->mp_SigBit) & (1L << TimerPort->mp_SigBit))
+		{
+			WaitIO((struct IORequest*)&TickRequest);
+			TickRequest.tr_time.tv_secs = 0;
+			TickRequest.tr_time.tv_micro = FPSLIMIT;
+			SendIO((struct IORequest*)&TickRequest);
+		}
 	}
 
+	// After breaking the loop, we have to make sure that there are no more TickRequests to process
+	AbortIO((struct IORequest*)&TickRequest);
+
 	// Cleanup everything
+	DisownBlitter();
 	Cleanup_CopperList();
 	lwmf_CleanupAll();
 	return 0;

@@ -36,18 +36,20 @@ __chip UWORD BlankMousePointer[4] =
     0x0000, 0x0000
 };
 
-void lwmf_WaitVBeam(ULONG Line);
+void lwmf_WaitVertBlank(void);
 
-void lwmf_WaitVBeam(ULONG Line)
+void lwmf_WaitVertBlank(void)
 {
-	ULONG VPOS = 0;
-
-	Line *= 0x100;
-
-	do 
-    {
-		VPOS = *(ULONG *)0xDFF004;
-	} while ((VPOS & 0x1FF00) != Line);
+	__asm (
+		"	.loop: move.l $DFF004, d0\n"\
+		"	and.l #$1FF00, d0\n"\
+		"	cmp.l #303 << 8, d0\n"\
+		"	bne.b .loop\n"\
+		"	.loop2: move.l $DFF004, d0\n"\
+		"	and.l #$1FF00, d0\n"\
+		"	cmp.l #303 << 8, d0\n"\
+		"	beq.b .loop2\n"\
+	);
 }
 
 
