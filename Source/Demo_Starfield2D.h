@@ -60,7 +60,7 @@ void Draw_2DStarfield(void)
 			Stars2D[i].x = 0;
 		}
 		
-		SetAPen(&RenderPort, Stars2D[i].z + 7);
+		SetAPen(&RenderPort, Stars2D[i].z + 1);
 		WritePixel(&RenderPort, Stars2D[i].x, Stars2D[i].y);
 	}
 }

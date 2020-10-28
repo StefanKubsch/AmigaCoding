@@ -30,18 +30,17 @@ struct Scrollfont
 	WORD ScrollX;
 } Font;
 
-UWORD ScrollSinTab[320];
+UWORD ScrollSinTab[WIDTH];
 
 BOOL Init_SineScroller(void)
 {
 	// Generate sinus table
-	const UBYTE HScreenPos = 120;
-
-	for (int i = 0; i < 320; ++i)
+	for (int i = 0; i < WIDTH; ++i)
 	{
-		ScrollSinTab[i] = HScreenPos + (UWORD)(sin(0.03f * i) * 20.0f);
+		ScrollSinTab[i] = 115 + (UWORD)(sin(0.03f * i) * 50.0f);
 	}
 
+	// Text & Font settings
 	Font.Text = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
 	Font.CharMap = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!-,+?*()";
 	Font.CharWidth = 15;
@@ -71,6 +70,7 @@ BOOL Init_SineScroller(void)
 			if (*(Font.Text + i) == *(Font.CharMap + j))
 			{
 				Font.Map[i] = MapPos;
+				break;
 			}
 
 			MapPos += Font.CharWidth + Font.CharSpacing;
@@ -103,7 +103,7 @@ void Draw_SineScroller(void)
 {
 	for (int i = 0, XPos = Font.ScrollX; i < Font.TextLength; ++i)
 	{
-		for (int x1 = 0, x = Font.Map[i]; x < Font.Map[i] + Font.CharWidth; x1 += 4, x += 4)
+		for (int x1 = 0, x = Font.Map[i]; x < Font.Map[i] + Font.CharWidth; ++x1, ++x)
 		{
 			if (Font.Map[i] == -1)
 			{
@@ -114,7 +114,7 @@ void Draw_SineScroller(void)
 
 			if (TempPosX < WIDTH)
 			{
-				BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, ScrollSinTab[TempPosX], 4, Font.CharHeight, 0xC0, 0x0F, NULL);
+				BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, ScrollSinTab[TempPosX], 1, Font.CharHeight, 0xC0, 0x01, NULL);
 			}
 		}
 

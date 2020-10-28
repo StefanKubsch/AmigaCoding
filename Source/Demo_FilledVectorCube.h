@@ -10,8 +10,16 @@
 
 #include <math.h>
 
-BOOL Init_FilledVectorCube(void);
+void Init_FilledVectorCube(void);
 void Draw_FilledVectorCube(void);
+
+struct CubeFaceStruct
+{
+	UBYTE p0;
+	UBYTE p1;
+	UBYTE p2;
+	UBYTE p3;
+} CubeFaces[] = { {0,1,3,2}, {4,0,2,6}, {5,4,6,7}, {1,5,7,3}, {0,1,5,4}, {2,3,7,6} };
 
 struct PointStruct
 {
@@ -25,14 +33,6 @@ struct OrderPair
 	float second;
 };
 
-struct CubeFaceStruct
-{
-	UBYTE p0;
-	UBYTE p1;
-	UBYTE p2;
-	UBYTE p3;
-} CubeFaces[] = { {0,1,3,2}, {4,0,2,6}, {5,4,6,7}, {1,5,7,3}, {0,1,5,4}, {2,3,7,6} };
-
 struct CubeStruct
 {
 	struct OrderPair Order[6];
@@ -42,7 +42,7 @@ struct CubeStruct
 UWORD CubeSinTabY[64];
 UWORD CubeSinTabX[64];
 
-BOOL Init_FilledVectorCube(void)
+void Init_FilledVectorCube(void)
 {
 	struct VertexStruct
 	{
@@ -51,15 +51,15 @@ BOOL Init_FilledVectorCube(void)
 		float z;
 	} CubeDef[8] = { { -50.0f, -50.0f, -50.0f }, { -50.0f, -50.0f, 50.0f }, { -50.0f, 50.0f, -50.0f }, { -50.0f, 50.0f, 50.0f }, { 50.0f, -50.0f, -50.0f }, { 50.0f, -50.0f, 50.0f }, { 50.0f, 50.0f, -50.0f }, { 50.0f, 50.0f, 50.0f } };
 
-	const float CosA = cos(0.04f);
-    const float SinA = sin(0.04f);
-
 	// Create two sintabs for a lissajous figure
 	for (int i = 0; i < 64; ++i)
 	{
 		CubeSinTabY[i] = (UWORD)(sin(0.2f * i) * 40.0f);
 		CubeSinTabX[i] = (UWORD)(sin(0.1f * i) * 60.0f);
 	}
+
+	const float CosA = cos(0.04f);
+    const float SinA = sin(0.04f);
 
 	for (int Pre = 0; Pre < 90; ++Pre)
 	{
@@ -107,8 +107,6 @@ BOOL Init_FilledVectorCube(void)
 			CubePreCalc[Pre].Order[i] = Temp;
 		}
 	}
-
-	return TRUE;
 }
 
 void Draw_FilledVectorCube(void)

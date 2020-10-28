@@ -31,8 +31,8 @@
 #define UPPERBORDERLINE		20
 #define LOWERBORDERLINE		235
 
-// Our timing/fps limit is targeted at 50fps
-#define FPS					50
+// Our timing/fps limit is targeted at 25fps
+#define FPS					25
 #define FPSLIMIT			(1000000 / FPS)
 
 // Here we define, how many bitplanes we want to use...
@@ -43,7 +43,7 @@
 // 16 / 4
 // 32 / 5
 // 64 / 6 (Extra Halfbrite mode)
-#define NUMBEROFBITPLANES	4
+#define NUMBEROFBITPLANES	3
 
 // Include the demo effects
 #include "Demo_Colors.h"
@@ -136,16 +136,13 @@ BOOL Init_Demo(void)
 		return FALSE;
 	}
 
-	if (!Init_FilledVectorCube())
-	{
-		return FALSE;
-	}
-
 	if (!Init_SineScroller())
 	{
 		return FALSE;
 	}
-	
+
+	Init_FilledVectorCube();
+
 	return TRUE;
 }
 
@@ -241,7 +238,7 @@ int main(void)
 	Update_CopperList();
 
 	// Initial loading of colors
-	LoadRGB4(&viewPort, DemoColorTable[CurrentDemoPart], 16);
+	LoadRGB4(&viewPort, DemoColorTable[CurrentDemoPart], 8);
 	lwmf_UpdateViewPort();	
 
 	// Start timer
@@ -277,7 +274,7 @@ int main(void)
 		SetRast(&RenderPort, 0);
 		(*DemoParts[CurrentDemoPart])();
 		// lwmf_DisplayFPSCounter() writes on the backbuffer, too - so we need to call it before blitting
-		lwmf_DisplayFPSCounter(0, 10, 15);
+		lwmf_DisplayFPSCounter(0, 10, 7);
 
 		//***************************************************************
 		// Ends here ;-)                                                *
@@ -306,7 +303,7 @@ int main(void)
 			}
 
 			// Load colors & update viewport
-			LoadRGB4(&viewPort, DemoColorTable[CurrentDemoPart], 16);
+			LoadRGB4(&viewPort, DemoColorTable[CurrentDemoPart], 8);
 			lwmf_UpdateViewPort();
 		}
 	}

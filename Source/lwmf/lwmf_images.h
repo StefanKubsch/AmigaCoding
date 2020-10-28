@@ -36,7 +36,7 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 	struct BitMapHeader* Header = NULL;
 	struct BitMap* TempBitmap = NULL;
 	ULONG NumberOfColors = 0;
-	Object* dtObject = NULL;
+	APTR dtObject = NULL;
 
 	if (!(dtObject = NewDTObject(Filename, DTA_GroupID, GID_PICTURE, PDTA_Remap, FALSE, TAG_END)))
 	{

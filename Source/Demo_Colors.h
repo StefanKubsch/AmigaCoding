@@ -8,24 +8,16 @@
 //* (C) 2020 by Stefan Kubsch      *
 //**********************************
 
-UWORD DemoColorTable[3][16] = 
+UWORD DemoColorTable[3][8] = 
 {
 	// Sine scroller & 2D Starfield
 	{ 
 		0x000, // Clear color
-		0x606, // Bitmap font
-		0xA0A,
-		0xB0B,
-		0xC0C,
-		0xD0D,
-		0xE0E,
-		0xF0F,
+		0x2AF, // Bitmap font
 		0x444, // Starfield
 		0x999,
 		0xDDD,
 		0x000, // Empty
-		0x000,
-		0x000,
 		0x000,
 		0xFFF  // FPS Counter
 	},
@@ -38,31 +30,15 @@ UWORD DemoColorTable[3][16] =
 		0x0D0,
 		0x0E0,
 		0x0F0,
-		0x000, // Empty
-		0x000,
-		0x000,
-		0x000,
-		0x000,
-		0x000,
-		0x000,
-		0x000,
 		0xFFF  // FPS Counter
 	},
-	// Starfield
+	// 3D Starfield
 	{
 		0x000, // Clear color
 		0xDDD, // Starfield
 		0x888,
 		0x444,
 		0x000, // Empty
-		0x000,
-		0x000,
-		0x000,
-		0x000,
-		0x000,
-		0x000,
-		0x000,
-		0x000,
 		0x000,
 		0x000,
 		0xFFF  // FPS Counter

@@ -117,9 +117,9 @@ void lwmf_ReleaseOS(void)
 
 	// Restore previously saved view
 	LoadView(OldView);
-	OldView = NULL;
 	WaitTOF();
 	WaitTOF();
+   	OldView = NULL;
 
 	// Enable task rescheduling
 	Permit();
