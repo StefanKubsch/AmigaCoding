@@ -1,7 +1,8 @@
 #ifndef LWMF_HARDWARE_H
 #define LWMF_HARDWARE_H
 
-void lwmf_WaitVertBlank(void);
+static inline void lwmf_ClearScreen(__reg("a1") long Screen);
+static inline void lwmf_WaitVertBlank(void);
 
 //
 // Define required registers
@@ -38,7 +39,17 @@ __chip UWORD BlankMousePointer[4] =
     0x0000, 0x0000
 };
 
-void lwmf_WaitVertBlank(void)
+static inline void lwmf_ClearScreen(__reg("a1") long Screen)
+{
+	__asm (
+		"	clr.w $66(a6)\n"\
+		"	move.l #$01000000,$40(a6)\n"\
+		"	move.l a1,$54(a6)\n"\
+		"	move.w #256*3*64+40/2,$58(a6)\n"\
+	);
+}
+
+static inline void lwmf_WaitVertBlank(void)
 {
 	__asm (
 		"	.loop: move.l $DFF004, d0\n"\

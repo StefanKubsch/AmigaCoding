@@ -5,7 +5,7 @@
 //* Project for vbcc	                                 			   *
 //*                                                      			   *
 //* Compile & link with:                                 			   *
-//* vc -O4 Copper.c -o Copper -lamiga           	     			   *
+//* vc -O4 -speed Copper.c -o Copper -lamiga           	     		   *
 //*                                                      			   *
 //* Quit with mouse click                                  			   *
 //**********************************************************************
@@ -22,7 +22,7 @@
 #define UPPERBORDERLINE		50
 #define LOWERBORDERLINE		255
 
-#define NUMBEROFBITPLANES	4
+#define NUMBEROFBITPLANES	3
 #define bpl					((WIDTH >> 4) << 1)
 #define bwid				(NUMBEROFBITPLANES * bpl)
 #define modulos				(bwid - bpl)
@@ -32,6 +32,7 @@
 #define FPSLIMIT			(1000000 / FPS)
 
 UWORD* CopperList = NULL;
+long* MyScreen = NULL;
 UWORD CopperbarStart = 0;
 
 const UWORD CopperbarColors[] =
@@ -42,14 +43,35 @@ const UWORD CopperbarColors[] =
 	0x629, 0x619, 0x618, 0x617, 0x607, 0x606, 0x605, 0x604
 };
 
+BOOL Init_Screen(void);
+void Cleanup_Screen(void);
 BOOL Init_CopperList(void);
 void Update_Copperbar(void);
 void Cleanup_CopperList(void);
 
+BOOL Init_Screen(void)
+{
+	// Reserve memory for screen
+	if (!(MyScreen = (long*)AllocVec((HEIGHT * bwid) * sizeof(long), MEMF_CHIP | MEMF_CLEAR)))
+	{
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+void Cleanup_Screen(void)
+{
+	if (MyScreen)
+	{
+		FreeVec(MyScreen);
+	}
+}
+
 BOOL Init_CopperList(void)
 {
 	// Number of CopperbarColors * 4 + init + end + spare
-	const UWORD CopperListLength = (32 << 2) + 70;
+	const UWORD CopperListLength = (32 << 2) + 100;
 
 	if (!(CopperList = (UWORD *) AllocVec(CopperListLength * sizeof(UWORD), MEMF_CHIP | MEMF_CLEAR)))
 	{
@@ -70,11 +92,11 @@ BOOL Init_CopperList(void)
 	CopperList[Index++] = 0x90;
 	CopperList[Index++] = 0x2CC1;
 	// Display data fetch start (horizontal position)
-	// CopperList[Index++] = 0x92;
-	// CopperList[Index++] = 0x0038;
+	CopperList[Index++] = 0x92;
+	CopperList[Index++] = 0x0038;
 	// Display data fetch stop (horizontal position)
-	// CopperList[Index++] = 0x94;
-	// CopperList[Index++] = 0x00D0;
+	CopperList[Index++] = 0x94;
+	CopperList[Index++] = 0x00D0;
 	// BPLCON1 Scroll register (and playfield pri)
 	CopperList[Index++] = 0x102;
 	CopperList[Index++] = 0x0000;
@@ -164,6 +186,10 @@ BOOL Init_CopperList(void)
 	CopperList[Index++] = 0x180;
 	CopperList[Index++] = 0x000;
 
+	// VPOS can be > 255
+	CopperList[Index++] = 0xFFDF;
+	CopperList[Index++] = 0xFFFE;
+
 	// Copper list end
 	CopperList[Index++] = 0xFFFF;
 	CopperList[Index++] = 0xFFFE;
@@ -223,7 +249,23 @@ int main()
 	// Gain control over the OS
 	lwmf_TakeOverOS();
 	
-	// Init and load copperlist
+	// Init our screen
+	if (!Init_Screen())
+	{
+		return 20;
+	}
+
+	OwnBlitter();
+
+	// Test for lwmf_ClearScreen
+	for (int i = 0; i < 32; ++i)
+	{
+		WaitTOF();
+		*COLOR00 = CopperbarColors[i];
+		lwmf_ClearScreen(*MyScreen);
+	}
+
+	// Init and load copperlist & screen
 	if (!Init_CopperList())
 	{
 		return 20;
@@ -235,8 +277,6 @@ int main()
 	TickRequest.tr_time.tv_secs = 0;
 	TickRequest.tr_time.tv_micro = 0;
 	SendIO((struct IORequest*)&TickRequest);
-
-	OwnBlitter();
 
     // Wait until mouse button is pressed...
 	// PRA_FIR0 = Bit 6 (0x40)
@@ -260,6 +300,7 @@ int main()
 	// Cleanup everything
 	DisownBlitter();
 	Cleanup_CopperList();
+	Cleanup_Screen();
 	lwmf_CleanupAll();
 	return 0;
 }
