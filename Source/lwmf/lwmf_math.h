@@ -2,7 +2,7 @@
 #define LWMF_MATH_H
 
 ULONG lwmf_XorShift32(void);
-int lwmf_IntPow(int Base, int Exp);
+LONG lwmf_IntPow(LONG Base, LONG Exp);
 
 // Simple random number generator based on XorShift
 // https://en.wikipedia.org/wiki/Xorshift
@@ -15,9 +15,9 @@ ULONG lwmf_XorShift32(void)
 	return Seed ^= Seed << 5;
 }
 
-int lwmf_IntPow(int Base, int Exp)
+LONG lwmf_IntPow(LONG Base, LONG Exp)
 {
-    int Result = 1;
+    LONG Result = 1;
 
     for (;;)
     {

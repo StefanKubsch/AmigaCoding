@@ -31,7 +31,7 @@ BOOL Init_3DStarfield(void)
 		return FALSE;
 	}
 
-    for (int i = 0; i < NumberOf3DStars; ++i) 
+    for (UWORD i = 0; i < NumberOf3DStars; ++i) 
     {
         Stars3D[i].x = (lwmf_XorShift32() % WIDTH - (WIDTH >> 1)) << 8;
         Stars3D[i].y = (lwmf_XorShift32() % HEIGHT - (HEIGHT >> 1)) << 8;
@@ -53,7 +53,7 @@ void Draw_3DStarfield(void)
 {
 	RenderPort.Mask = 0x03;
 	
-	for (int i = 0; i < NumberOf3DStars; ++i)
+	for (UWORD i = 0; i < NumberOf3DStars; ++i)
 	{
 		Stars3D[i].z -= 15;
 	

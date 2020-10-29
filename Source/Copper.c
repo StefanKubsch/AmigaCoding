@@ -58,7 +58,7 @@ BOOL Init_CopperList(void)
 
 	// Copper init
 
-	int Index = 0;
+	UWORD Index = 0;
 
 	// Slow fetch mode (needed for AGA compatibility)
 	CopperList[Index++] = 0x1FC;
@@ -117,7 +117,7 @@ BOOL Init_CopperList(void)
 
 	// Init background
 
-	static int CopperbarPos = UPPERBORDERLINE + 1;
+	static UWORD CopperbarPos = UPPERBORDERLINE + 1;
 
 	// Black
 	CopperList[Index++] = 0x180;
@@ -139,7 +139,7 @@ BOOL Init_CopperList(void)
 
 	CopperbarStart = Index;
 
-	for (int i = 0; i < 32; ++i)
+	for (UBYTE i = 0; i < 32; ++i)
 	{
 		CopperList[Index++] = ((CopperbarPos + i) << 8) + 7;
 		CopperList[Index++] = 0xFFFE;
@@ -175,11 +175,11 @@ BOOL Init_CopperList(void)
 
 void Update_Copperbar(void)
 {
-	static int CopperbarPos = UPPERBORDERLINE + 1;
-	static int CopperbarSpeed = 4;
-	int Index = CopperbarStart;
+	static UWORD CopperbarPos = UPPERBORDERLINE + 1;
+	static BYTE CopperbarSpeed = 4;
+	UWORD Index = CopperbarStart;
 
-	for (int i = 0; i < 32; ++i)
+	for (UBYTE i = 0; i < 32; ++i)
 	{
 		CopperList[Index++] = ((CopperbarPos + i) << 8) + 7;
 		CopperList[Index++] = 0xFFFE;

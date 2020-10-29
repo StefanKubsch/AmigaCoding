@@ -52,18 +52,18 @@ void Init_FilledVectorCube(void)
 	} CubeDef[8] = { { -50.0f, -50.0f, -50.0f }, { -50.0f, -50.0f, 50.0f }, { -50.0f, 50.0f, -50.0f }, { -50.0f, 50.0f, 50.0f }, { 50.0f, -50.0f, -50.0f }, { 50.0f, -50.0f, 50.0f }, { 50.0f, 50.0f, -50.0f }, { 50.0f, 50.0f, 50.0f } };
 
 	// Create two sintabs for a lissajous figure
-	for (int i = 0; i < 64; ++i)
+	for (UBYTE i = 0; i < 64; ++i)
 	{
-		CubeSinTabY[i] = (UWORD)(sin(0.2f * i) * 40.0f);
-		CubeSinTabX[i] = (UWORD)(sin(0.1f * i) * 60.0f);
+		CubeSinTabY[i] = (UWORD)(sin(0.2f * (float)i) * 40.0f);
+		CubeSinTabX[i] = (UWORD)(sin(0.1f * (float)i) * 60.0f);
 	}
 
 	const float CosA = cos(0.04f);
     const float SinA = sin(0.04f);
 
-	for (int Pre = 0; Pre < 90; ++Pre)
+	for (UBYTE Pre = 0; Pre < 90; ++Pre)
 	{
-		for (int i = 0; i < 8; ++i)
+		for (UBYTE i = 0; i < 8; ++i)
 		{
 			// x - rotation
 			const float y = CubeDef[i].y;
@@ -79,22 +79,22 @@ void Init_FilledVectorCube(void)
 			CubeDef[i].y = CubeDef[i].y * CosA + x * SinA;
 
 			// 2D projection & translate
-			CubePreCalc[Pre].Cube[i].x = (WIDTH >> 1) + (int)CubeDef[i].x;
-			CubePreCalc[Pre].Cube[i].y = (HEIGHT >> 1) + (int)CubeDef[i].y - 5;
+			CubePreCalc[Pre].Cube[i].x = (WIDTH >> 1) + (UWORD)CubeDef[i].x;
+			CubePreCalc[Pre].Cube[i].y = (HEIGHT >> 1) + (UWORD)CubeDef[i].y - 5;
 		}
 
 		// selection-sort of depth/faces
-		for (int i = 0; i < 6; ++i)
+		for (UBYTE i = 0; i < 6; ++i)
 		{
 			CubePreCalc[Pre].Order[i].second = (CubeDef[CubeFaces[i].p0].z + CubeDef[CubeFaces[i].p1].z + CubeDef[CubeFaces[i].p2].z + CubeDef[CubeFaces[i].p3].z) * 0.25f;
 			CubePreCalc[Pre].Order[i].first = i;
 		}
 
-		for (int i = 0; i < 5; ++i)
+		for (UBYTE i = 0; i < 5; ++i)
 		{
-			int Min = i;
+			UWORD Min = i;
 
-			for (int j = i + 1; j <= 5; ++j)
+			for (UBYTE j = i + 1; j <= 5; ++j)
 			{
 				if (CubePreCalc[Pre].Order[j].second < CubePreCalc[Pre].Order[Min].second)
 				{
@@ -118,7 +118,7 @@ void Draw_FilledVectorCube(void)
 	RenderPort.Mask = 0x07;
 
 	// Since we see only the three faces on top, we only need to render these (3, 4 and 5)
-	for (int i = 3; i < 6; ++i)
+	for (UBYTE i = 3; i < 6; ++i)
 	{
 		SetAPen(&RenderPort, CubeFacesColors[CubePreCalc[VCCount].Order[i].first]);
 

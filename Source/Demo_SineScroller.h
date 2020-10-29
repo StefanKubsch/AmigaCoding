@@ -36,9 +36,9 @@ UWORD ScrollSinTab[WIDTH];
 BOOL Init_SineScroller(void)
 {
 	// Generate sinus table
-	for (int i = 0; i < WIDTH; ++i)
+	for (UWORD i = 0; i < WIDTH; ++i)
 	{
-		ScrollSinTab[i] = 115 + (UWORD)(sin(0.03f * i) * 50.0f);
+		ScrollSinTab[i] = 115 + (UWORD)(sin(0.03f * (float)i) * 50.0f);
 	}
 
 	// Text & Font settings
@@ -67,11 +67,11 @@ BOOL Init_SineScroller(void)
 	}
 
 	// Pre-calc char positions in map
-	for (int i = 0; i < Font.TextLength; ++i)
+	for (UWORD i = 0; i < Font.TextLength; ++i)
 	{
 		Font.Map[i] = 0;
 
-		for (int j = 0, MapPos = 0; j < Font.CharMapLength; ++j)
+		for (UWORD j = 0, MapPos = 0; j < Font.CharMapLength; ++j)
 		{
 			if (*(Font.Text + i) == *(Font.CharMap + j))
 			{
@@ -107,7 +107,7 @@ void Cleanup_SineScroller(void)
 
 void Draw_SineScroller(void)
 {
-	for (int i = 0, XPos = Font.ScrollX; i < Font.TextLength; ++i)
+	for (UWORD i = 0, XPos = Font.ScrollX; i < Font.TextLength; ++i)
 	{
 		if (Font.Map[i] == -1)
 		{
@@ -115,7 +115,7 @@ void Draw_SineScroller(void)
 			continue;
 		}
 
-		for (int x1 = 0, x = Font.Map[i]; x < Font.Map[i] + Font.CharWidth; ++x1, ++x)
+		for (UWORD x1 = 0, x = Font.Map[i]; x < Font.Map[i] + Font.CharWidth; ++x1, ++x)
 		{
 			const UWORD TempPosX = XPos + x1;
 

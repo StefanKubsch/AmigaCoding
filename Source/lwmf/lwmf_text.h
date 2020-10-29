@@ -3,7 +3,7 @@
 
 #include <string.h>
 
-void lwmf_Text(char* Text, UBYTE PosX, const UBYTE PosY, const UBYTE Color);
+void lwmf_Text(char* Text, UWORD PosX, const UWORD PosY, const UBYTE Color);
 
 // Font characters
 //
@@ -11,7 +11,7 @@ void lwmf_Text(char* Text, UBYTE PosX, const UBYTE PosY, const UBYTE Color);
 // International Business Machines (public domain VGA fonts)
 // License: Public Domain
 
-const UWORD ASCIIFont8x8[128][8] =
+const UBYTE ASCIIFont8x8[128][8] =
 {
     { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},   // U+0000 (nul)
     { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},   // U+0001
@@ -143,20 +143,20 @@ const UWORD ASCIIFont8x8[128][8] =
     { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}    // U+007F
 };
 
-void lwmf_Text(char* Text, UBYTE PosX, const UBYTE PosY, const UBYTE Color)
+void lwmf_Text(char* Text, UWORD PosX, const UWORD PosY, const UBYTE Color)
 {
     SetAPen(&RenderPort, Color);
 
     const UWORD TextLength = strlen(Text);
 
-    for (int i = 0; i < TextLength; ++i)
+    for (UWORD i = 0; i < TextLength; ++i)
     {
-        for (int y = 0; y < 8; ++y)
+        for (UBYTE y = 0; y < 8; ++y)
         {
             const UWORD TempY = PosY + y;
-            const UWORD TempChar = ASCIIFont8x8[Text[i]][y];
+            const UBYTE TempChar = ASCIIFont8x8[Text[i]][y];
 
-            for (int x = 0; x < 8; ++x)
+            for (UBYTE x = 0; x < 8; ++x)
             {
                 if ((TempChar & 1 << x) != 0)
                 {

@@ -19,7 +19,7 @@ struct StarStruct2D
     UWORD z;
 } *Stars2D;
 
-int NumberOf2DStars;
+UWORD NumberOf2DStars;
 
 BOOL Init_2DStarfield(void)
 {
@@ -31,7 +31,7 @@ BOOL Init_2DStarfield(void)
 		return FALSE;
 	}
 
-    for (int i = 0; i < NumberOf2DStars; ++i) 
+    for (UWORD i = 0; i < NumberOf2DStars; ++i) 
     {
         Stars2D[i].x = lwmf_XorShift32() % WIDTH;
         Stars2D[i].y = lwmf_XorShift32() % (LOWERBORDERLINE - UPPERBORDERLINE) + UPPERBORDERLINE;
@@ -51,7 +51,7 @@ void Cleanup_2DStarfield(void)
 
 void Draw_2DStarfield(void)
 {
-	for (int i = 0; i < NumberOf2DStars; ++i)
+	for (UWORD i = 0; i < NumberOf2DStars; ++i)
 	{
 		Stars2D[i].x += Stars2D[i].z << 1;
 	
