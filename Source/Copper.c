@@ -18,21 +18,19 @@
 //
 
 #define WIDTH				320
-#define HEIGHT 				256
+#define HEIGHT 				255
 #define UPPERBORDERLINE		50
 #define LOWERBORDERLINE		255
 
-#define NUMBEROFBITPLANES	3
+#define NUMBEROFBITPLANES	4
 #define bpl					((WIDTH >> 4) << 1)
 #define bwid				(NUMBEROFBITPLANES * bpl)
 #define modulos				(bwid - bpl)
 
 // Our timing/fps limit is targeted at 50fps
-#define FPS					50
-#define FPSLIMIT			(1000000 / FPS)
+#define FPSLIMIT			(1000000 / 50)
 
 UWORD* CopperList = NULL;
-long* MyScreen = NULL;
 UWORD CopperbarStart = 0;
 
 const UWORD CopperbarColors[] =
@@ -43,30 +41,9 @@ const UWORD CopperbarColors[] =
 	0x629, 0x619, 0x618, 0x617, 0x607, 0x606, 0x605, 0x604
 };
 
-BOOL Init_Screen(void);
-void Cleanup_Screen(void);
 BOOL Init_CopperList(void);
 void Update_Copperbar(void);
 void Cleanup_CopperList(void);
-
-BOOL Init_Screen(void)
-{
-	// Reserve memory for screen
-	if (!(MyScreen = (long*)AllocVec((HEIGHT * bwid) * sizeof(long), MEMF_CHIP | MEMF_CLEAR)))
-	{
-		return FALSE;
-	}
-
-	return TRUE;
-}
-
-void Cleanup_Screen(void)
-{
-	if (MyScreen)
-	{
-		FreeVec(MyScreen);
-	}
-}
 
 BOOL Init_CopperList(void)
 {
@@ -108,26 +85,9 @@ BOOL Init_CopperList(void)
 	CopperList[Index++] = 0x0C00;
 	// BPL1MOD
 	CopperList[Index++] = 0x108;
-	CopperList[Index++] = modulos;
+	CopperList[Index++] = 0x0000;
 	// BPL2MOD
 	CopperList[Index++] = 0x10A;
-	CopperList[Index++] = modulos;
-	// BPL Pointer
-	CopperList[Index++] = 0xE0;		// BPL1PTH
-	CopperList[Index++] = 0x0000;	
-	CopperList[Index++] = 0xE2;		// BPL1PTL
-	CopperList[Index++] = 0x0000;
-	CopperList[Index++] = 0xE4;		// 2
-	CopperList[Index++] = 0x0000;
-	CopperList[Index++] = 0xE6;
-	CopperList[Index++] = 0x0000;
-	CopperList[Index++] = 0xE8;		// 3
-	CopperList[Index++] = 0x0000;
-	CopperList[Index++] = 0xEA;
-	CopperList[Index++] = 0x0000;
-	CopperList[Index++] = 0xEC;		// 4
-	CopperList[Index++] = 0x0000;
-	CopperList[Index++] = 0xEE;
 	CopperList[Index++] = 0x0000;
 	// BPLCON0
 	// 4 bitplanes
@@ -249,22 +209,6 @@ int main()
 	// Gain control over the OS
 	lwmf_TakeOverOS();
 	
-	// Init our screen
-	if (!Init_Screen())
-	{
-		return 20;
-	}
-
-	OwnBlitter();
-
-	// Test for lwmf_ClearScreen
-	for (int i = 0; i < 32; ++i)
-	{
-		WaitTOF();
-		*COLOR00 = CopperbarColors[i];
-		lwmf_ClearScreen(*MyScreen);
-	}
-
 	// Init and load copperlist & screen
 	if (!Init_CopperList())
 	{
@@ -277,6 +221,8 @@ int main()
 	TickRequest.tr_time.tv_secs = 0;
 	TickRequest.tr_time.tv_micro = 0;
 	SendIO((struct IORequest*)&TickRequest);
+
+	OwnBlitter();
 
     // Wait until mouse button is pressed...
 	// PRA_FIR0 = Bit 6 (0x40)
@@ -300,7 +246,6 @@ int main()
 	// Cleanup everything
 	DisownBlitter();
 	Cleanup_CopperList();
-	Cleanup_Screen();
 	lwmf_CleanupAll();
 	return 0;
 }

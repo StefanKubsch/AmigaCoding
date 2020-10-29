@@ -1,7 +1,10 @@
 #ifndef LWMF_HARDWARE_H
 #define LWMF_HARDWARE_H
 
-static inline void lwmf_ClearScreen(__reg("a1") long Screen);
+// A nice little macro for inserting variables into inline assembly!
+#define STR(x) #x
+#define XSTR(s) STR(s)
+
 static inline void lwmf_WaitVertBlank(void);
 
 //
@@ -39,27 +42,17 @@ __chip UWORD BlankMousePointer[4] =
     0x0000, 0x0000
 };
 
-static inline void lwmf_ClearScreen(__reg("a1") long Screen)
-{
-	__asm (
-		"	clr.w $66(a6)\n"\
-		"	move.l #$01000000,$40(a6)\n"\
-		"	move.l a1,$54(a6)\n"\
-		"	move.w #256*3*64+40/2,$58(a6)\n"\
-	);
-}
-
 static inline void lwmf_WaitVertBlank(void)
 {
 	__asm (
-		"	.loop: move.l $DFF004, d0\n"\
-		"	and.l #$1FF00, d0\n"\
-		"	cmp.l #303 << 8, d0\n"\
-		"	bne.b .loop\n"\
-		"	.loop2: move.l $DFF004, d0\n"\
-		"	and.l #$1FF00, d0\n"\
-		"	cmp.l #303 << 8, d0\n"\
-		"	beq.b .loop2\n"\
+		".loop: move.l $DFF004,d0\n"
+		"	and.l #$1FF00,d0\n"
+		"	cmp.l #303<<8,d0\n"
+		"	bne.b .loop\n"
+		".loop2: move.l $DFF004,d0\n"
+		"	and.l #$1FF00,d0\n"
+		"	cmp.l #303<<8,d0\n"
+		"	beq.b .loop2\n"
 	);
 }
 
