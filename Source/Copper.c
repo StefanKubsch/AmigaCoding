@@ -5,7 +5,7 @@
 //* Project for vbcc	                                 			   *
 //*                                                      			   *
 //* Compile & link with:                                 			   *
-//* vc -O4 -speed Copper.c -o Copper -lamiga           	     		   *
+//* vc -O4 Copper.c -o Copper -lamiga           	     		   *
 //*                                                      			   *
 //* Quit with mouse click                                  			   *
 //**********************************************************************
