@@ -38,7 +38,7 @@ BOOL Init_SineScroller(void)
 	// Generate sinus table
 	for (UWORD i = 0; i < WIDTH; ++i)
 	{
-		ScrollSinTab[i] = 115 + (UWORD)(sin(0.03f * (float)i) * 50.0f);
+		ScrollSinTab[i] = 115 + (UWORD)(sin(0.03f * (float)i) * 30.0f);
 	}
 
 	// Text & Font settings
@@ -115,13 +115,13 @@ void Draw_SineScroller(void)
 			continue;
 		}
 
-		for (UWORD x1 = 0, x = Font.Map[i]; x < Font.Map[i] + Font.CharWidth; ++x1, ++x)
+		for (UWORD x1 = 0, x = Font.Map[i]; x < Font.Map[i] + Font.CharWidth; x1 += 2, x += 2)
 		{
 			const UWORD TempPosX = XPos + x1;
 
 			if (TempPosX < WIDTH)
 			{
-				BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, ScrollSinTab[TempPosX], 1, Font.CharHeight, 0xC0, 0x01, NULL);
+				BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, ScrollSinTab[TempPosX], 2, Font.CharHeight, 0xC0, 0x01, NULL);
 			}
 		}
 
