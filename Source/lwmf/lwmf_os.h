@@ -1,15 +1,15 @@
 #ifndef LWMF_OS_H
 #define LWMF_OS_H
 
+void lwmf_TakeOverOS(void);
+void lwmf_ReleaseOS(void);
+
 // Some stuff needed for OS takeover
 struct View* OldView = NULL;
 UWORD Old_DMACON = 0;
 UWORD Old_INTREQ = 0;
 UWORD Old_INTENA = 0;
 UWORD Old_ADKCON = 0;
-
-void lwmf_TakeOverOS(void);
-void lwmf_ReleaseOS(void);
 
 void lwmf_TakeOverOS(void)
 {

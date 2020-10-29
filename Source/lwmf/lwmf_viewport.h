@@ -1,6 +1,10 @@
 #ifndef LWMF_VIEWPORT_H
 #define LWMF_VIEWPORT_H
 
+BOOL lwmf_CreateViewPort(const ULONG Width, const ULONG Height, const int NumberOfBitPlanes);
+void lwmf_UpdateViewPort(void);
+void lwmf_CleanupViewPort(void);
+
 struct View view; 
 struct ViewPort viewPort;
 struct BitMap* BufferBitmap1 = NULL;
@@ -14,10 +18,6 @@ struct cprlist* LOCpr1 = NULL;
 struct cprlist* LOCpr2 = NULL;
 
 struct ColorMap* colorMap = NULL;
-
-BOOL lwmf_CreateViewPort(const ULONG Width, const ULONG Height, const int NumberOfBitPlanes);
-void lwmf_UpdateViewPort(void);
-void lwmf_CleanupViewPort(void);
 
 BOOL lwmf_CreateViewPort(const ULONG Width, const ULONG Height, const int NumberOfBitPlanes)
 {

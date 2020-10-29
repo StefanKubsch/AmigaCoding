@@ -4,13 +4,13 @@
 #include <stdio.h>
 #include <string.h>
 
-// Some global variables for our statistics...
-WORD FPS = 0;
-BOOL FastCPUFlag = FALSE;
-
 void lwmf_FPSCounter(void);
 void lwmf_DisplayFPSCounter(const UWORD PosX, const UWORD PosY, const UBYTE Color);
 void lwmf_CheckCPU(void);
+
+// Some global variables for our statistics...
+WORD FPS = 0;
+BOOL FastCPUFlag = FALSE;
 
 void lwmf_FPSCounter(void)
 {
@@ -43,12 +43,9 @@ void lwmf_FPSCounter(void)
 
 void lwmf_DisplayFPSCounter(const UWORD PosX, const UWORD PosY, const UBYTE Color)
 {
-	UBYTE FPSStr[4];
+	char* FPSStr = NULL;
 	sprintf(FPSStr, "%d", FPS);
-								
-	SetAPen(&RenderPort, Color);
-	Move(&RenderPort, PosX, PosY);
-	Text(&RenderPort, FPSStr, strlen(FPSStr));
+	lwmf_Text(FPSStr, PosX, PosY, Color);
 }
 
 void lwmf_CheckCPU(void)

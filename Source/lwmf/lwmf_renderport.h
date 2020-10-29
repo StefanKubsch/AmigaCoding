@@ -1,14 +1,14 @@
 #ifndef LWMF_RENDERPORT_H
 #define LWMF_RENDERPORT_H
 
+BOOL lwmf_CreateRenderPort(const UWORD NumberOfVertices, const UWORD AreaWidth, const UWORD AreaHeight);
+void lwmf_CleanupRenderPort(void);
+
 struct RastPort RenderPort;
 
 // Some needed buffers for Area operations
 UBYTE* TmpRasBuffer = NULL;
 UBYTE* AreaBuffer = NULL;
-
-BOOL lwmf_CreateRenderPort(const UWORD NumberOfVertices, const UWORD AreaWidth, const UWORD AreaHeight);
-void lwmf_CleanupRenderPort(void);
 
 BOOL lwmf_CreateRenderPort(const UWORD NumberOfVertices, const UWORD AreaWidth, const UWORD AreaHeight)
 {

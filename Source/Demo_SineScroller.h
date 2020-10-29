@@ -24,6 +24,7 @@ struct Scrollfont
 	UBYTE CharWidth;
 	UBYTE CharHeight;
 	UBYTE CharSpacing;
+	UBYTE CharOverallWidth;
 	UWORD TextLength;
 	UWORD CharMapLength;
 	UWORD Length;
@@ -46,12 +47,16 @@ BOOL Init_SineScroller(void)
 	Font.CharWidth = 15;
 	Font.CharHeight = 20;
 	Font.CharSpacing = 1;
+	Font.CharOverallWidth = Font.CharWidth + Font.CharSpacing;
 	Font.ScrollX = WIDTH;
 	Font.TextLength = strlen(Font.Text);
 	Font.CharMapLength = strlen(Font.CharMap);
-	Font.Length = Font.TextLength * (Font.CharWidth + Font.CharSpacing);
+	Font.Length = Font.TextLength * Font.CharOverallWidth;
 
-	if (!(Font.FontBitmap = lwmf_LoadImage("gfx/scrollfont.iff")))
+	// ScrollFont.bsh is an ILBM (IFF) file
+	// In this case it´s a "brush", made with Personal Paint on Amiga - a brush is smaller in size
+	// The original IFF ScrollFont.iff in included in gfx
+	if (!(Font.FontBitmap = lwmf_LoadImage("gfx/scrollfont.bsh")))
 	{
 		return FALSE;
 	}
@@ -61,6 +66,7 @@ BOOL Init_SineScroller(void)
 		return FALSE;
 	}
 
+	// Pre-calc char positions in map
 	for (int i = 0; i < Font.TextLength; ++i)
 	{
 		Font.Map[i] = 0;
@@ -73,7 +79,7 @@ BOOL Init_SineScroller(void)
 				break;
 			}
 
-			MapPos += Font.CharWidth + Font.CharSpacing;
+			MapPos += Font.CharOverallWidth;
 		}
 
 		// char not found, space
@@ -103,13 +109,14 @@ void Draw_SineScroller(void)
 {
 	for (int i = 0, XPos = Font.ScrollX; i < Font.TextLength; ++i)
 	{
+		if (Font.Map[i] == -1)
+		{
+			XPos += Font.CharOverallWidth;
+			continue;
+		}
+
 		for (int x1 = 0, x = Font.Map[i]; x < Font.Map[i] + Font.CharWidth; ++x1, ++x)
 		{
-			if (Font.Map[i] == -1)
-			{
-				break;
-			}
-
 			const UWORD TempPosX = XPos + x1;
 
 			if (TempPosX < WIDTH)
@@ -118,7 +125,7 @@ void Draw_SineScroller(void)
 			}
 		}
 
-		XPos += Font.CharWidth + Font.CharSpacing;
+		XPos += Font.CharOverallWidth;
 	}
 
 	Font.ScrollX -= 4;

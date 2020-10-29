@@ -6,7 +6,6 @@
 #include <graphics/gfxbase.h>
 #include <graphics/copper.h>
 #include <graphics/rastport.h>
-#include <graphics/text.h>
 #include <intuition/intuition.h>
 #include <datatypes/pictureclass.h>
 #include <devices/timer.h>
@@ -18,6 +17,9 @@
 #include <clib/alib_protos.h>
 #include <clib/datatypes_protos.h>
 
+BOOL lwmf_LoadLibraries(void);
+void lwmf_CloseLibraries(void);
+
 struct GfxBase* GfxBase = NULL;
 struct IntuitionBase* IntuitionBase = NULL;
 struct Library* DataTypesBase = NULL;
@@ -25,9 +27,6 @@ struct Library* DataTypesBase = NULL;
 struct Library* TimerBase = NULL;
 struct MsgPort* TimerPort = NULL;
 struct timerequest* TimerIO = NULL;
-
-BOOL lwmf_LoadLibraries(void);
-void lwmf_CloseLibraries(void);
 
 BOOL lwmf_LoadLibraries(void)
 {

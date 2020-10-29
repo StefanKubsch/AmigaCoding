@@ -31,8 +31,8 @@
 #define UPPERBORDERLINE		20
 #define LOWERBORDERLINE		235
 
-// Our timing/fps limit is targeted at 25fps
-#define FPS					25
+// Our timing/fps limit is targeted at 50fps
+#define FPS					50
 #define FPSLIMIT			(1000000 / FPS)
 
 // Here we define, how many bitplanes we want to use...
@@ -274,7 +274,7 @@ int main(void)
 		SetRast(&RenderPort, 0);
 		(*DemoParts[CurrentDemoPart])();
 		// lwmf_DisplayFPSCounter() writes on the backbuffer, too - so we need to call it before blitting
-		lwmf_DisplayFPSCounter(0, 10, 7);
+		lwmf_DisplayFPSCounter(0, 0, 7);
 
 		//***************************************************************
 		// Ends here ;-)                                                *

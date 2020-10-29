@@ -1,6 +1,8 @@
 #ifndef LWMF_HARDWARE_H
 #define LWMF_HARDWARE_H
 
+void lwmf_WaitVertBlank(void);
+
 //
 // Define required registers
 //
@@ -35,8 +37,6 @@ __chip UWORD BlankMousePointer[4] =
     0x0000, 0x0000,
     0x0000, 0x0000
 };
-
-void lwmf_WaitVertBlank(void);
 
 void lwmf_WaitVertBlank(void)
 {
