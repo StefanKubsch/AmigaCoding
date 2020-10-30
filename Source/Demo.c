@@ -26,14 +26,13 @@
 
 #define WIDTH				320
 #define HEIGHT				256
-#define WIDTHMID			160
-#define HEIGHTMID			128
+#define WIDTHMID			(WIDTH >> 1)
+#define HEIGHTMID			(HEIGHT >> 1)
 #define UPPERBORDERLINE		20
-#define LOWERBORDERLINE		235
+#define LOWERBORDERLINE		(HEIGHT - 20)
 
 // Our timing/fps limit is targeted at 50fps
-#define FPS					50
-#define FPSLIMIT			(1000000 / FPS)
+#define FPSLIMIT			(1000000 / 50)
 
 // Here we define, how many bitplanes we want to use...
 // Colors / number of required Bitplanes
@@ -44,6 +43,7 @@
 // 32 / 5
 // 64 / 6 (Extra Halfbrite mode)
 #define NUMBEROFBITPLANES	3
+#define NUMBEROFCOLORS		8
 
 // Include the demo effects
 #include "Demo_Colors.h"
@@ -187,7 +187,7 @@ int main(void)
 	lwmf_TakeOverOS();
 	
 	// Setup screen
-	if (!lwmf_CreateViewPort(WIDTH, HEIGHT, NUMBEROFBITPLANES))
+	if (!lwmf_CreateViewPort(WIDTH, HEIGHT, NUMBEROFBITPLANES, NUMBEROFCOLORS))
     {
         lwmf_CleanupAll();
 		return 20;
@@ -196,11 +196,24 @@ int main(void)
     // Init the RenderPort (=Rastport)
 	// We need to init some buffers for Area operations
 	// Since our demo part draws some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
-	if (!lwmf_CreateRenderPort(5, WIDTH, HEIGHT))
+	if (!lwmf_CreateRenderPort(5, 130, 130))
 	{
         lwmf_CleanupAll();
 		return 20;
 	}
+
+	// Init Copper (Set background, disable mouse pointer)
+	if (!Init_CopperList())
+	{
+		lwmf_CleanupAll();
+		return 20;
+	}
+
+	Update_CopperList();
+
+	// Initial loading of colors
+	LoadRGB4(&viewPort, DemoColorTable[0], NUMBEROFCOLORS);
+	lwmf_UpdateViewPort();	
 
 	//
 	// Init stuff for demo if needed
@@ -227,20 +240,6 @@ int main(void)
 	// Duration of each part in frames
 	const UWORD PartDuration = 150;
 
-	// Init Copper (Set background, disable mouse pointer)
-	if (!Init_CopperList())
-	{
-		Cleanup_Demo();
-		lwmf_CleanupAll();
-		return 20;
-	}
-
-	Update_CopperList();
-
-	// Initial loading of colors
-	LoadRGB4(&viewPort, DemoColorTable[CurrentDemoPart], 8);
-	lwmf_UpdateViewPort();	
-
 	// Start timer
 	struct timerequest TickRequest = *TimerIO;
 	TickRequest.tr_node.io_Command = TR_ADDREQUEST;
@@ -256,15 +255,8 @@ int main(void)
 	// PRA_FIR0 = Bit 6 (0x40)
 	while (*CIAA_PRA & 0x40)
 	{
-		CurrentBuffer == 0 ?
-		(
-			view.LOFCprList = LOCpr1,
-			RenderPort.BitMap = RastPort1.BitMap
-		): 
-		(
-			view.LOFCprList = LOCpr2,
-			RenderPort.BitMap = RastPort2.BitMap
-		);
+		view.LOFCprList = LOCpr[CurrentBuffer];
+		RenderPort.BitMap = Buffer[CurrentBuffer].BitMap;
 		
 		//***************************************************************
 		// Start here with drawing                                      *
@@ -303,7 +295,7 @@ int main(void)
 			}
 
 			// Load colors & update viewport
-			LoadRGB4(&viewPort, DemoColorTable[CurrentDemoPart], 8);
+			LoadRGB4(&viewPort, DemoColorTable[CurrentDemoPart], NUMBEROFCOLORS);
 			lwmf_UpdateViewPort();
 		}
 	}
