@@ -9,7 +9,7 @@
 //* Project for vbcc	                                 			   *
 //*                                                      			   *
 //* Compile & link with:                                 			   *
-//* make.bat														   *
+//* make_Demo.bat													   *
 //*                                                      			   *
 //* Quit with mouse click                                  			   *
 //**********************************************************************
