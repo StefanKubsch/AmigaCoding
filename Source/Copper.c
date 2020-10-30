@@ -230,6 +230,7 @@ int main()
 	{
 		lwmf_WaitVertBlank();
 		Update_Copperbar();
+		lwmf_WaitBlitter();
 
 		if (Wait(1L << TimerPort->mp_SigBit) & (1L << TimerPort->mp_SigBit))
 		{

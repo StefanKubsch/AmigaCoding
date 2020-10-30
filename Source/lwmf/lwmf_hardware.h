@@ -1,12 +1,9 @@
 #ifndef LWMF_HARDWARE_H
 #define LWMF_HARDWARE_H
 
-// A nice little macro for inserting variables into inline assembly!
-#define STR(x) #x
-#define XSTR(s) STR(s)
-
 // Global symbols for our assembler functions
 void lwmf_WaitVertBlank(void);
+void lwmf_WaitBlitter(void);
 
 //
 // Define required registers
