@@ -40,48 +40,33 @@ _lwmf_WaitVertBlank:
 	and.l   #$1FF00,d0
 	cmp.l   #303<<8,d0
 	bne.b   .loop
-.loop2:                             ; Second check for A4000 compatibility
+.loop2:                         ; Second check for A4000 compatibility
 	move.l  VPOSR,d0
 	and.l   #$1FF00,d0
 	cmp.l   #303<<8,d0
 	beq.b   .loop2
 	rts
 
-	public	_lwmf_WaitVertBlank
+	public _lwmf_WaitVertBlank
 	
 ;
-; void lwmf_ClearMem(__reg("a0") UBYTE* Address, __reg("d0") long NumberOfBytes);
+; void lwmf_ClearMem(__reg("a0") long* Address, __reg("d0") long NumberOfBytes);
 ;
 
 _lwmf_ClearMem:
-    move.l  a0,BLTDPTH  		; Set up the D pointer to the region to clear
-    clr.w   BLTDMOD   		    ; Clear the D modulo (don't skip no bytes)
-    asr.l   #1,d0           	; Get number of words from number of bytes
-    clr.w   BLTCON1     		; No special modes
-    move.w  #DEST,BLTCON0       ; only enable destination
-    moveq   #$3F,d1         	; Mask out mod 64 words
-    and.w   d0,d1
-    beq     .dorest          	; none?  good, do one blit
-    sub.l   d1,d0           	; otherwise remove remainder
-    or.l    #$40,d1         	; set the height to 1, width to n
-    move.w  d1,BLTSIZE  				
-.dorest:
-    move.w  #$ffc0,d1       	; look at some more upper bits
-    and.w   d0,d1           	; extract 10 more bits
-    beq     .dorest2         				
-    sub.l   d1,d0           	; pull of the ones we're doing here
-    bsr     _lwmf_WaitBlitter        		
-    move.w  d1,BLTSIZE  				
-.dorest2:
-    swap    d0              	; more?
-    beq     .ready            				
-    clr.w   d1              	; do a 1024x64 word blit (128K)
-.work:
-    bsr     _lwmf_WaitBlitter        		
-    move.w  d1,BLTSIZE  		; and again, blit
-    subq.w  #1,d0           				
-    bne     .work          				
-.ready:
+    lsr.l   #5,d0               ; Shift right by 5 -> Division by 32
+    sub.l   #1,d0
+    move.l  #0,d1
+.loop:
+    move.l  d1,(a0)+
+    move.l  d1,(a0)+
+    move.l  d1,(a0)+
+    move.l  d1,(a0)+
+    move.l  d1,(a0)+
+    move.l  d1,(a0)+
+    move.l  d1,(a0)+
+    move.l  d1,(a0)+
+    dbra    d0,.loop
     rts
 
-	public	_lwmf_ClearMem
+    public _lwmf_ClearMem

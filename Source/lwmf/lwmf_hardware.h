@@ -4,7 +4,7 @@
 // Global symbols for our assembler functions
 void lwmf_WaitVertBlank(void);
 void lwmf_WaitBlitter(void);
-void lwmf_ClearMem(__reg("a0") UBYTE* Address, __reg("d0") long NumberOfBytes);
+void lwmf_ClearMem(__reg("a0") long* Address, __reg("d0") long NumberOfBytes);
 
 //
 // Define required registers

@@ -264,9 +264,9 @@ int main(void)
 		// Start here with drawing                                      *
 		//***************************************************************
 
-		lwmf_WaitVertBlank();
-		lwmf_ClearMem((UBYTE *)Buffer[CurrentBuffer].BitMap->Planes[0], SizeOfBitplanes);
-
+		// Clear bitmap/bitplanes
+		lwmf_ClearMem((long*)Buffer[CurrentBuffer].BitMap->Planes[0], SizeOfBitplanes);
+		// Call actual demopart
 		(*DemoParts[CurrentDemoPart])();
 		// lwmf_DisplayFPSCounter() writes on the backbuffer, too - so we need to call it before blitting
 		lwmf_DisplayFPSCounter(0, 0, 7);
@@ -275,6 +275,7 @@ int main(void)
 		// Ends here ;-)                                                *
 		//***************************************************************
 
+		lwmf_WaitVertBlank();
 		LoadView(&view);
 		CurrentBuffer ^= 1;
 
