@@ -247,7 +247,9 @@ int main(void)
 	TickRequest.tr_time.tv_micro = 0;
 	SendIO((struct IORequest*)&TickRequest);
 
-    //
+	const long SizeOfBitplanes = (WIDTH >> 3) * HEIGHT * NUMBEROFBITPLANES;
+
+	//
 	// This is our main loop
 	//
 
@@ -263,7 +265,8 @@ int main(void)
 		//***************************************************************
 
 		lwmf_WaitVertBlank();
-		SetRast(&RenderPort, 0);
+		lwmf_ClearMem((UBYTE *)Buffer[CurrentBuffer].BitMap->Planes[0], SizeOfBitplanes);
+
 		(*DemoParts[CurrentDemoPart])();
 		// lwmf_DisplayFPSCounter() writes on the backbuffer, too - so we need to call it before blitting
 		lwmf_DisplayFPSCounter(0, 0, 7);
