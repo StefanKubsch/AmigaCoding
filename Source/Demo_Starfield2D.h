@@ -33,9 +33,9 @@ BOOL Init_2DStarfield(void)
 
     for (UWORD i = 0; i < NumberOf2DStars; ++i) 
     {
-        Stars2D[i].x = lwmf_XorShift32() % WIDTH;
-        Stars2D[i].y = lwmf_XorShift32() % (LOWERBORDERLINE - UPPERBORDERLINE) + UPPERBORDERLINE;
-        Stars2D[i].z = lwmf_XorShift32() % 3 + 1;
+        Stars2D[i].x = lwmf_Random() % WIDTH;
+        Stars2D[i].y = lwmf_Random() % (LOWERBORDERLINE - UPPERBORDERLINE) + UPPERBORDERLINE;
+        Stars2D[i].z = lwmf_Random() % 3 + 1;
     }
 
 	return TRUE;

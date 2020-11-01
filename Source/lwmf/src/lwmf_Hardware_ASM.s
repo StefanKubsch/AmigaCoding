@@ -23,9 +23,9 @@ DMAB_BLTDONE    = 14        ; DMACONR bit 14 - blitter busy flag
 
 _lwmf_WaitBlitter:
     btst.b  #DMAB_BLTDONE-8,DMACONR 		; check against DMACONR
-.waitblit:                                  ; check twice, bug in A1000
+.loop:                                      ; check twice, bug in A1000
     btst.b 	#DMAB_BLTDONE-8,DMACONR 		
-    bne 	.waitblit
+    bne 	.loop
     rts
 
 	public _lwmf_WaitBlitter
@@ -35,15 +35,16 @@ _lwmf_WaitBlitter:
 ;
 
 _lwmf_WaitVertBlank:
+    move.l  #303<<8,d1
 .loop: 
     move.l  VPOSR,d0
 	and.l   #$1FF00,d0
-	cmp.l   #303<<8,d0
+	cmp.l   d1,d0
 	bne.b   .loop
 .loop2:                         ; Second check for A4000 compatibility
 	move.l  VPOSR,d0
 	and.l   #$1FF00,d0
-	cmp.l   #303<<8,d0
+	cmp.l   d1,d0
 	beq.b   .loop2
 	rts
 
@@ -55,8 +56,8 @@ _lwmf_WaitVertBlank:
 
 _lwmf_ClearMem:
     lsr.l   #5,d0               ; Shift right by 5 -> Division by 32
-    sub.l   #1,d0
-    move.l  #0,d1
+    subq    #1,d0               ; Subtract 1
+    moveq   #0,d1               ; Fill d1 with zero
 .loop:
     move.l  d1,(a0)+
     move.l  d1,(a0)+

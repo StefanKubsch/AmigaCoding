@@ -5,6 +5,7 @@
 void lwmf_WaitVertBlank(void);
 void lwmf_WaitBlitter(void);
 void lwmf_ClearMem(__reg("a0") long* Address, __reg("d0") long NumberOfBytes);
+__reg("d0") ULONG lwmf_Random(void);
 
 //
 // Define required registers

@@ -33,9 +33,9 @@ BOOL Init_3DStarfield(void)
 
     for (UWORD i = 0; i < NumberOf3DStars; ++i) 
     {
-        Stars3D[i].x = (lwmf_XorShift32() % WIDTH - (WIDTH >> 1)) << 8;
-        Stars3D[i].y = (lwmf_XorShift32() % HEIGHT - (HEIGHT >> 1)) << 8;
-        Stars3D[i].z = lwmf_XorShift32() % 800;
+        Stars3D[i].x = (lwmf_Random() % WIDTH - (WIDTH >> 1)) << 8;
+        Stars3D[i].y = (lwmf_Random() % HEIGHT - (HEIGHT >> 1)) << 8;
+        Stars3D[i].z = lwmf_Random() % 800;
     }
 
 	return TRUE;
