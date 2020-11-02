@@ -2,6 +2,8 @@
 #define LWMF_HARDWARE_H
 
 // Global symbols for our assembler functions
+void lwmf_TakeOverOS(void);
+void lwmf_ReleaseOS(void);
 void lwmf_WaitVertBlank(void);
 void lwmf_WaitBlitter(void);
 void lwmf_ClearMem(__reg("a0") long* Address, __reg("d0") long NumberOfBytes);
@@ -14,18 +16,6 @@ __reg("d0") ULONG lwmf_Random(void);
 // CIA
 // https://www.amigacoding.com/index.php/CIA_Memory_Map
 volatile UBYTE* const CIAA_PRA 		= (volatile UBYTE* const) 0xBFE001;
-// DMA control register
-volatile UWORD* const DMACON 		= (volatile UWORD* const) 0xDFF096;
-volatile UWORD* const DMACONR 		= (volatile UWORD* const) 0xDFF002;
-// Interrupt request register
-volatile UWORD* const INTREQ 		= (volatile UWORD* const) 0xDFF09C;
-volatile UWORD* const INTREQR 		= (volatile UWORD* const) 0xDFF01E;
-// Interrupt enable register
-volatile UWORD* const INTENA 		= (volatile UWORD* const) 0xDFF09A;
-volatile UWORD* const INTENAR 		= (volatile UWORD* const) 0xDFF01C;
-// Audio/Disk control register
-volatile UWORD* const ADKCON 		= (volatile UWORD* const) 0xDFF09E;
-volatile UWORD* const ADKCONR 		= (volatile UWORD* const) 0xDFF010;
 // Copper
 volatile ULONG* const COP1LC 		= (volatile ULONG* const) 0xDFF080;
 // Mouse pointer (Sprite 0 DMA pointer)
