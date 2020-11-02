@@ -106,27 +106,27 @@ _lwmf_CloseLibraries:
     move.l  EXECBASE,a6             ; Use exec base address
     move.l  _DataTypesBase,d0       ; Use _DataTypesBase address in a1 for CloseLibrary     
     tst.l   d0
-    bne.s   .cleardatatypelib
+    bne.s   .closedatatypelib
 
     move.l  _IntuitionBase,d0       ; Use _IntuitionBase address in a1 for CloseLibrary      
     tst.l   d0  
-    bne.s   .clearintuitionlib
+    bne.s   .closeintuitionlib
 
     move.l  _GfxBase,d0             ; Use _GfxBase address in a1 for CloseLibrary                         
     tst.l   d0
-    bne.s   .cleargraphicslib
+    bne.s   .closegraphicslib
     rts
-.cleardatatypelib:
+.closedatatypelib:
     move.l  d0,a1                           
     jsr     LVOCloseLibrary(a6) 
     move.l  #0,_DataTypesBase
     rts
-.clearintuitionlib:
+.closeintuitionlib:
     move.l  d0,a1                           
     jsr     LVOCloseLibrary(a6)    
     move.l  #0,_IntuitionBase
     rts
-.cleargraphicslib:
+.closegraphicslib:
     move.l  d0,a1                           
     jsr     LVOCloseLibrary(a6)    
     move.l  #0,_GfxBase
