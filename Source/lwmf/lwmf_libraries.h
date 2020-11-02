@@ -5,14 +5,12 @@
 #include <exec/types.h>
 #include <graphics/copper.h>
 #include <graphics/rastport.h>
-#include <intuition/intuition.h>
 #include <datatypes/pictureclass.h>
 #include <devices/timer.h>
 #include <clib/timer_protos.h>  
 #include <clib/exec_protos.h>
 #include <clib/dos_protos.h>
 #include <clib/graphics_protos.h>
-#include <clib/intuition_protos.h>
 #include <clib/alib_protos.h>
 #include <clib/datatypes_protos.h>
 
@@ -20,6 +18,10 @@
 // Global symbols for our assembler functions
 //
 
+__reg("d0") ULONG lwmf_LoadGraphicsLibrary(void);
+__reg("d0") ULONG lwmf_LoadIntuitionLibrary(void);
+__reg("d0") ULONG lwmf_LoadDatatypesLibrary(void);
+void lwmf_CloseLibraries();
 void lwmf_TakeOverOS(void);
 void lwmf_ReleaseOS(void);
 void lwmf_WaitVertBlank(void);
@@ -32,16 +34,15 @@ __reg("d0") ULONG lwmf_Random(void);
 //
 
 extern long GfxBase;
+extern long IntuitionBase;
+extern long DataTypesBase;
 
 //
 //
 //
 
 BOOL lwmf_LoadLibraries(void);
-void lwmf_CloseLibraries(void);
-
-struct IntuitionBase* IntuitionBase = NULL;
-struct Library* DataTypesBase = NULL;
+void lwmf_CloseLibs(void);
 
 struct Library* TimerBase = NULL;
 struct MsgPort* TimerPort = NULL;
@@ -74,28 +75,28 @@ BOOL lwmf_LoadLibraries(void)
    		lwmf_CloseLibraries();
 		return FALSE;
 	}
-	
-	//
-	// Since we use functions that require at least OS 3.0, we must use "39" as minimum library version!
-    //
 
-    if (!(IntuitionBase = (struct IntuitionBase*)OpenLibrary("intuition.library", 39)))
-    {
-        lwmf_CloseLibraries();
-        return FALSE;
-    }
+	if (lwmf_LoadGraphicsLibrary() != 0)
+	{
+		return FALSE;
+	}
 
-	if (!(DataTypesBase = (struct Library*)OpenLibrary("datatypes.library", 39)))
-    {
-   		lwmf_CloseLibraries();
-    }
+	if (lwmf_LoadIntuitionLibrary() != 0)
+	{
+		return FALSE;
+	}
+
+	if (lwmf_LoadDatatypesLibrary() != 0)
+	{
+		return FALSE;
+	}
 
     return TRUE;
 }
 
-void lwmf_CloseLibraries(void)
+void lwmf_CloseLibs(void)
 {
-    if (TimerBase)
+	if (TimerBase)
 	{
 		CloseDevice((struct IORequest*)TimerIO);
 		TimerBase = NULL;
@@ -113,18 +114,7 @@ void lwmf_CloseLibraries(void)
 		TimerPort = NULL;
 	}
 
-	if (DataTypesBase)
-	{
-		CloseLibrary(DataTypesBase);
-		DataTypesBase = NULL;
-	}
-
-    if (IntuitionBase)
-    {
-        CloseLibrary((struct Library*)IntuitionBase);
-		IntuitionBase = NULL;
-    }
-	
+    lwmf_CloseLibraries();
 }
 
 

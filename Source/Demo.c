@@ -179,12 +179,12 @@ int main(void)
         return 20;
     }
 
+	// Gain control over the OS
+	lwmf_TakeOverOS();
+	
 	// Check which CPU is used in your Amiga (or UAE...)
 	// Depening on this, we use more or less stars (or effects in the near future...)
 	lwmf_CheckCPU();
-
-	// Gain control over the OS
-	lwmf_TakeOverOS();
 	
 	// Setup screen
 	if (!lwmf_CreateViewPort(WIDTH, HEIGHT, NUMBEROFBITPLANES, NUMBEROFCOLORS))

@@ -8,7 +8,7 @@ void lwmf_CleanupAll(void)
 	lwmf_ReleaseOS();
 	lwmf_CleanupRenderPort();
 	lwmf_CleanupViewPort();
-	lwmf_CloseLibraries();
+	lwmf_CloseLibs();
 }
 
 

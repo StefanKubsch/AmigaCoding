@@ -41,14 +41,108 @@ LVOWaitTOF      = -270
 LVOForbid       = -132
 LVOPermit       = -138
 LVOOpenLibrary  = -552
+LVOCloseLibrary = -414
 
 ; Declare external variables
 
     XDEF _GfxBase
+    XDEF _IntuitionBase
+    XDEF _DataTypesBase
+
+; Constants
+
+MINVERSION      = 39        ; Set required version (39 -> Amiga OS 3.0 and higher)
 
 ; ***************************************************************************************************
 ; * Functions                                                                                       *
 ; ***************************************************************************************************
+
+; **************************************************************************
+; * Library handling                                                       *
+; **************************************************************************
+
+;
+; __reg("d0") ULONG lwmf_LoadGraphicsLibrary(void);
+;
+
+_lwmf_LoadGraphicsLibrary:
+    move.l	EXECBASE,a6             ; Use exec base address
+    lea     gfxlibname,a1
+    moveq   #MINVERSION,d0
+    jsr     LVOOpenLibrary(a6)      ; Load graphics.library
+    tst.l   d0                      ; Check if loading was successful
+    bne.s   .open_ok
+    moveq   #20,d0                  ; return with error
+    rts
+.open_ok:
+    move.l  d0,_GfxBase             ; Store adress of GfxBase in variable
+    moveq   #0,d0                   ; return with success
+    rts
+
+    public _lwmf_LoadGraphicsLibrary
+
+;
+; __reg("d0") ULONG lwmf_LoadIntuitionLibrary(void);
+;
+
+_lwmf_LoadIntuitionLibrary:
+    move.l	EXECBASE,a6             ; Use exec base address
+    lea     intuitionlibname,a1
+    moveq   #MINVERSION,d0
+    jsr     LVOOpenLibrary(a6)      ; Load intuition.library
+    tst.l   d0                      ; Check if loading was successful
+    bne.s   .open_ok
+    moveq   #20,d0                  ; return with error
+    rts
+.open_ok:
+    move.l  d0,_IntuitionBase       ; Store adress of IntuitionBase in variable
+    moveq   #0,d0                   ; return with success
+    rts
+
+    public _lwmf_LoadIntuitionLibrary
+
+;
+; __reg("d0") ULONG lwmf_LoadDatatypesLibrary(void);
+;
+
+_lwmf_LoadDatatypesLibrary:
+    move.l	EXECBASE,a6             ; Use exec base address
+    lea     datatypeslibname,a1
+    moveq   #MINVERSION,d0
+    jsr     LVOOpenLibrary(a6)      ; Load datatypes.library
+    tst.l   d0                      ; Check if loading was successful
+    bne.s   .open_ok
+    moveq   #20,d0                  ; return with error
+    rts
+.open_ok:
+    move.l  d0,_DataTypesBase       ; Store adress of DataTypesBase in variable
+    moveq   #0,d0                   ; return with success
+    rts
+
+    public _lwmf_LoadDatatypesLibrary
+
+;
+; void lwmf_CloseLibraries(void);
+;
+
+_lwmf_CloseLibraries:
+    move.l  EXECBASE,a6             ; Use exec base address
+    move.l  _DataTypesBase,a1       ; Use _DataTypesBase address in a1 for CloseLibrary             
+    jsr     LVOCloseLibrary(a6)    
+    move.l  #0,_DataTypesBase
+    move.l  _IntuitionBase,a1       ; Use _IntuitionBase address in a1 for CloseLibrary             
+    jsr     LVOCloseLibrary(a6)    
+    move.l  #0,_IntuitionBase
+    move.l  _GfxBase,a1             ; Use _GfxBase address in a1 for CloseLibrary             
+    jsr     LVOCloseLibrary(a6)    
+    move.l  #0,_GfxBase
+    rts
+
+    public _lwmf_CloseLibraries
+
+; **************************************************************************
+; * System take over                                                       *
+; **************************************************************************
 
 ;
 ; void lwmf_TakeOverOS(void);
@@ -68,23 +162,17 @@ _lwmf_TakeOverOS:
     or.w    #$8000,d0
     move.w  d0,oldadkcon
 
-    move.l	EXECBASE,a6             ; Use exex base address
-    lea     gfxlibname,a1
-    moveq   #39,d0                  ; Set required version (39 -> Amiga OS 3.0 and higher)
-    jsr     LVOOpenLibrary(a6)      ; Load graphics.library   
-    move.l  d0,_GfxBase             ; Store adress of GfxBase in variable
-    move.l  d0,a6
-    move.l  34(a6),oldview
-    move.l  38(a6),oldcopper
-
-    suba.l  a1,a1                   ; Use graphics.library base address
+    move.l  _GfxBase,a6
+    move.l  34(a6),oldview          ; Store current view
+    move.l  38(a6),oldcopper        ; Store current copperlist
+    move.l  #0,a1
     jsr     LVOLoadView(a6)	        ; LoadView(NULL)
-    jsr     LVOWaitTOF(a6)          ; WaitTOF
-    jsr     LVOWaitTOF(a6)          ; WaitTOF
-    move.l	$4,a6
-    jsr     LVOForbid(a6)           ; Forbid
+    jsr     LVOWaitTOF(a6)
+    jsr     LVOWaitTOF(a6)
+    move.l	EXECBASE,a6
+    jsr     LVOForbid(a6)
     rts
-
+    
    	public _lwmf_TakeOverOS
 
 ;
@@ -92,26 +180,30 @@ _lwmf_TakeOverOS:
 ;
 
 _lwmf_ReleaseOS:
-    move.w  #$7fff,DMACON
+    move.w  #$7FFF,DMACON
     move.w  olddma,DMACON
-    move.w  #$7fff,INTENA
+    move.w  #$7FFF,INTENA
     move.w  oldintena,INTENA
-    move.w  #$7fff,INTREQ
+    move.w  #$7FFF,INTREQ
     move.w  oldintreq,INTREQ
-    move.w  #$7fff,ADKCON
+    move.w  #$7FFF,ADKCON
     move.w  oldadkcon,ADKCON
 
-    move.l  oldcopper,COP1LCH
-    move.l  _GfxBase,a6              ; Use graphics.library base address
-    move.l  oldview,a1
+    move.l  oldcopper,COP1LCH       ; Restore system copperlist
+    move.l  _GfxBase,a6             ; Use graphics.library base address
+    move.l  oldview,a1              ; Restore saved view
     jsr     LVOLoadView(a6)         ; LoadView(oldview)
-    jsr     LVOWaitTOF(a6)          ; WaitTOF
-    jsr     LVOWaitTOF(a6)          ; WaitTOF
-    move.l  EXECBASE,a6             ; Use exex base address
-    jsr     LVOPermit(a6)           ; Permit
+    jsr     LVOWaitTOF(a6)          
+    jsr     LVOWaitTOF(a6)         
+    move.l  EXECBASE,a6             ; Use exec base address
+    jsr     LVOPermit(a6)
    	rts
 
     public _lwmf_ReleaseOS
+
+; **************************************************************************
+; * System functions                                                       *
+; **************************************************************************
 
 ;
 ; void _lwmf_WaitBlitter(void)
@@ -133,7 +225,7 @@ _lwmf_WaitBlitter:
 _lwmf_WaitVertBlank:
 .loop: 
     move.l  VPOSR,d0
-	and.l   #$0001FF00,d0
+	and.l   #$1FF00,d0
 	cmp.l   #303<<8,d0          ; Check if line 303 is reached
 	bne.s   .loop
 .loop2:                         ; Second check for A4000 compatibility
@@ -199,6 +291,18 @@ oldcopper:
 
 gfxlibname:
     dc.b "graphics.library",0
-
+    even
 _GfxBase:
+    dc.l    0
+
+intuitionlibname:
+    dc.b "intuition.library",0
+    even
+_IntuitionBase:
+    dc.l    0
+
+datatypeslibname:
+    dc.b "datatypes.library",0
+    even
+_DataTypesBase:
     dc.l    0
