@@ -1,7 +1,13 @@
 ; Various assembler functions for lwmf
 ; Code is compatible with Motorola syntax as provided by vbcc
 
-; Defines
+; ***************************************************************************************************
+; * Global                                                                                          *
+; ***************************************************************************************************
+
+; Labels
+
+EXECBASE        = $4
 
 ADKCON          = $DFF09E   ; Audio/Disk control read/write
 ADKCONR         = $DFF010   ; Audio/Disk control read
@@ -26,12 +32,30 @@ DEST 		    = $100      ; Blitter control register / destination
 
 DMAB_BLTDONE    = 14        ; DMACONR bit 14 - blitter busy flag
 
+; Library vector offsets (LVO)
+
+; graphics.library
+LVOLoadView     = -222
+LVOWaitTOF      = -270
+; exec.library
+LVOForbid       = -132
+LVOPermit       = -138
+LVOOpenLibrary  = -552
+
+; Declare external variables
+
+    XDEF _GfxBase
+
+; ***************************************************************************************************
+; * Functions                                                                                       *
+; ***************************************************************************************************
+
 ;
 ; void lwmf_TakeOverOS(void);
 ;
 
 _lwmf_TakeOverOS:
-    move.w  DMACONR,d0
+    move.w  DMACONR,d0              ; Store current custom registers for later restore
     or.w    #$8000,d0
     move.w  d0,olddma
     move.w  INTENAR,d0
@@ -44,21 +68,21 @@ _lwmf_TakeOverOS:
     or.w    #$8000,d0
     move.w  d0,oldadkcon
 
-    move.l	$4,a6                   ; Get exex base address
-    move.l  #gfxname,a1
-    moveq   #39,d0                  ; Set required version
-    jsr     -552(a6)
-    move.l  d0,gfxbase
+    move.l	EXECBASE,a6             ; Use exex base address
+    lea     gfxlibname,a1
+    moveq   #39,d0                  ; Set required version (39 -> Amiga OS 3.0 and higher)
+    jsr     LVOOpenLibrary(a6)      ; Load graphics.library   
+    move.l  d0,_GfxBase             ; Store adress of GfxBase in variable
     move.l  d0,a6
     move.l  34(a6),oldview
     move.l  38(a6),oldcopper
 
-    move.l  #0,a1
-    jsr     -222(a6)	            ; LoadView(NULL)
-    jsr     -270(a6)                ; WaitTOF
-    jsr     -270(a6)                ; WaitTOF
+    suba.l  a1,a1                   ; Use graphics.library base address
+    jsr     LVOLoadView(a6)	        ; LoadView(NULL)
+    jsr     LVOWaitTOF(a6)          ; WaitTOF
+    jsr     LVOWaitTOF(a6)          ; WaitTOF
     move.l	$4,a6
-    jsr     -132(a6)                ; Forbid
+    jsr     LVOForbid(a6)           ; Forbid
     rts
 
    	public _lwmf_TakeOverOS
@@ -78,13 +102,13 @@ _lwmf_ReleaseOS:
     move.w  oldadkcon,ADKCON
 
     move.l  oldcopper,COP1LCH
-    move.l  gfxbase,a6
+    move.l  _GfxBase,a6              ; Use graphics.library base address
     move.l  oldview,a1
-    jsr     -222(a6)                ; LoadView
-    jsr     -270(a6)                ; WaitTOF
-    jsr     -270(a6)                ; WaitTOF
-    move.l  $4,a6
-    jsr     -138(a6)                ; Permit
+    jsr     LVOLoadView(a6)         ; LoadView(oldview)
+    jsr     LVOWaitTOF(a6)          ; WaitTOF
+    jsr     LVOWaitTOF(a6)          ; WaitTOF
+    move.l  EXECBASE,a6             ; Use exex base address
+    jsr     LVOPermit(a6)           ; Permit
    	rts
 
     public _lwmf_ReleaseOS
@@ -143,8 +167,12 @@ _lwmf_ClearMem:
 
     public _lwmf_ClearMem
 
+; ***************************************************************************************************
+; * Variables                                                                                       *
+; ***************************************************************************************************
+
 ;
-; Variables
+; System take over
 ;
 
 olddma:
@@ -165,8 +193,12 @@ oldview:
 oldcopper:
     dc.l    0
 
-gfxname:
+;
+; Libraries
+;
+
+gfxlibname:
     dc.b "graphics.library",0
 
-gfxbase:
+_GfxBase:
     dc.l    0

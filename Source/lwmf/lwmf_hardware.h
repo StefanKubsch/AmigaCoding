@@ -1,14 +1,6 @@
 #ifndef LWMF_HARDWARE_H
 #define LWMF_HARDWARE_H
 
-// Global symbols for our assembler functions
-void lwmf_TakeOverOS(void);
-void lwmf_ReleaseOS(void);
-void lwmf_WaitVertBlank(void);
-void lwmf_WaitBlitter(void);
-void lwmf_ClearMem(__reg("a0") long* Address, __reg("d0") long NumberOfBytes);
-__reg("d0") ULONG lwmf_Random(void);
-
 //
 // Define required registers
 //

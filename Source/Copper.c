@@ -43,7 +43,6 @@ const UWORD CopperbarColors[] =
 
 BOOL Init_CopperList(void);
 void Update_Copperbar(void);
-void Cleanup_CopperList(void);
 
 BOOL Init_CopperList(void)
 {
@@ -187,16 +186,6 @@ void Update_Copperbar(void)
 	}
 }
 
-void Cleanup_CopperList(void)
-{
- 	*COP1LC = (ULONG) ((struct GfxBase*) GfxBase)->copinit;
-	
-	if (CopperList)
-	{
-		FreeVec(CopperList);
-	}
-}
-
 int main()
 {
     // Load libraries
@@ -246,7 +235,6 @@ int main()
 
 	// Cleanup everything
 	DisownBlitter();
-	Cleanup_CopperList();
 	lwmf_CleanupAll();
 	return 0;
 }

@@ -3,7 +3,6 @@
 
 #include <exec/exec.h>
 #include <exec/types.h>
-#include <graphics/gfxbase.h>
 #include <graphics/copper.h>
 #include <graphics/rastport.h>
 #include <intuition/intuition.h>
@@ -17,10 +16,30 @@
 #include <clib/alib_protos.h>
 #include <clib/datatypes_protos.h>
 
+//
+// Global symbols for our assembler functions
+//
+
+void lwmf_TakeOverOS(void);
+void lwmf_ReleaseOS(void);
+void lwmf_WaitVertBlank(void);
+void lwmf_WaitBlitter(void);
+void lwmf_ClearMem(__reg("a0") long* Address, __reg("d0") long NumberOfBytes);
+__reg("d0") ULONG lwmf_Random(void);
+
+//
+// External variables as defined in asm sources
+//
+
+extern long GfxBase;
+
+//
+//
+//
+
 BOOL lwmf_LoadLibraries(void);
 void lwmf_CloseLibraries(void);
 
-struct GfxBase* GfxBase = NULL;
 struct IntuitionBase* IntuitionBase = NULL;
 struct Library* DataTypesBase = NULL;
 
@@ -59,11 +78,6 @@ BOOL lwmf_LoadLibraries(void)
 	//
 	// Since we use functions that require at least OS 3.0, we must use "39" as minimum library version!
     //
-
-	if (!(GfxBase = (struct GfxBase*)OpenLibrary("graphics.library", 39)))
-    {
-   		lwmf_CloseLibraries();
-    }
 
     if (!(IntuitionBase = (struct IntuitionBase*)OpenLibrary("intuition.library", 39)))
     {
@@ -111,11 +125,6 @@ void lwmf_CloseLibraries(void)
 		IntuitionBase = NULL;
     }
 	
-    if (GfxBase)
-    {
-       CloseLibrary((struct Library*)GfxBase);
-	   GfxBase = NULL;
-    }     
 }
 
 
