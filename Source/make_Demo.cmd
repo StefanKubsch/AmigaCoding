@@ -1,4 +1,4 @@
-vasmm68k_mot -Fhunk -showopt -o ".\lwmf\include\lwmf_hardware_asm.o" ".\lwmf\src\lwmf_hardware_asm.s"
-vasmm68k_mot -Fhunk -showopt -o ".\lwmf\include\lwmf_math_asm.o" ".\lwmf\src\lwmf_math_asm.s"
+vasmm68k_mot -Fhunk -showopt -o ".\lwmf\include\lwmf_hardware_vasm.o" ".\lwmf\src\lwmf_hardware_vasm.s"
+vasmm68k_mot -Fhunk -showopt -o ".\lwmf\include\lwmf_math_vasm.o" ".\lwmf\src\lwmf_math_vasm.s"
 
-vc -O4 Demo.c ".\lwmf\include\lwmf_hardware_asm.o" ".\lwmf\include\lwmf_math_asm.o" -o Demo -lmieee -lamiga
+vc -O4 Demo.c ".\lwmf\include\lwmf_hardware_vasm.o" ".\lwmf\include\lwmf_math_vasm.o" -o Demo -lmieee -lamiga
