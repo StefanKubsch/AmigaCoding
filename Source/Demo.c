@@ -174,14 +174,33 @@ int main(void)
 {
     // Load libraries
     // Exit with SEVERE Error (20) if something goes wrong
-	if (!lwmf_LoadLibraries())
-    {
-        return 20;
-    }
+	if (lwmf_LoadGraphicsLibrary() != 0)
+	{
+        lwmf_CleanupAll();
+		return 20;
+	}
+
+	if (lwmf_LoadIntuitionLibrary() != 0)
+	{
+        lwmf_CleanupAll();
+		return 20;
+	}
+
+	if (lwmf_LoadDatatypesLibrary() != 0)
+	{
+        lwmf_CleanupAll();
+		return 20;
+	}
+
+	if (!lwmf_InitTimer())
+	{
+        lwmf_CleanupAll();
+		return 20;
+	}
 
 	// Gain control over the OS
 	lwmf_TakeOverOS();
-	
+
 	// Check which CPU is used in your Amiga (or UAE...)
 	// Depening on this, we use more or less stars (or effects in the near future...)
 	lwmf_CheckCPU();

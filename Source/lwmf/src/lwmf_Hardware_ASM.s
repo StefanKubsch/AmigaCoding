@@ -67,7 +67,7 @@ MINVERSION      = 39        ; Set required version (39 -> Amiga OS 3.0 and highe
 
 _lwmf_LoadGraphicsLibrary:
     move.l	EXECBASE,a6             ; Use exec base address
-    lea     gfxlibname,a1
+    lea     gfxlib,a1
     moveq   #MINVERSION,d0
     jsr     LVOOpenLibrary(a6)      ; Load graphics.library
     tst.l   d0                      ; Check if loading was successful
@@ -87,7 +87,7 @@ _lwmf_LoadGraphicsLibrary:
 
 _lwmf_LoadIntuitionLibrary:
     move.l	EXECBASE,a6             ; Use exec base address
-    lea     intuitionlibname,a1
+    lea     intuitionlib,a1
     moveq   #MINVERSION,d0
     jsr     LVOOpenLibrary(a6)      ; Load intuition.library
     tst.l   d0                      ; Check if loading was successful
@@ -107,7 +107,7 @@ _lwmf_LoadIntuitionLibrary:
 
 _lwmf_LoadDatatypesLibrary:
     move.l	EXECBASE,a6             ; Use exec base address
-    lea     datatypeslibname,a1
+    lea     datatypeslib,a1
     moveq   #MINVERSION,d0
     jsr     LVOOpenLibrary(a6)      ; Load datatypes.library
     tst.l   d0                      ; Check if loading was successful
@@ -172,7 +172,7 @@ _lwmf_TakeOverOS:
     move.l	EXECBASE,a6
     jsr     LVOForbid(a6)
     rts
-    
+
    	public _lwmf_TakeOverOS
 
 ;
@@ -289,19 +289,19 @@ oldcopper:
 ; Libraries
 ;
 
-gfxlibname:
+gfxlib:
     dc.b "graphics.library",0
     even
 _GfxBase:
     dc.l    0
 
-intuitionlibname:
+intuitionlib:
     dc.b "intuition.library",0
     even
 _IntuitionBase:
     dc.l    0
 
-datatypeslibname:
+datatypeslib:
     dc.b "datatypes.library",0
     even
 _DataTypesBase:

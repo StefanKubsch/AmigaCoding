@@ -30,92 +30,12 @@ void lwmf_ClearMem(__reg("a0") long* Address, __reg("d0") long NumberOfBytes);
 __reg("d0") ULONG lwmf_Random(void);
 
 //
-// External variables as defined in asm sources
+// External variables as defined in assembler sources
 //
 
 extern long GfxBase;
 extern long IntuitionBase;
 extern long DataTypesBase;
-
-//
-//
-//
-
-BOOL lwmf_LoadLibraries(void);
-void lwmf_CloseLibs(void);
-
-struct Library* TimerBase = NULL;
-struct MsgPort* TimerPort = NULL;
-struct timerequest* TimerIO = NULL;
-
-BOOL lwmf_LoadLibraries(void)
-{
-	if (TimerPort = CreatePort(0, 0))
-	{
-		if (TimerIO = (struct timerequest*)CreateExtIO(TimerPort, sizeof(struct timerequest)))
-		{
-			if (OpenDevice(TIMERNAME, UNIT_MICROHZ, (struct IORequest*)TimerIO, 0) == 0)
-			{
-				TimerBase = (struct Library*)TimerIO->tr_node.io_Device;
-			}
-			else
-			{
-		   		lwmf_CloseLibraries();
-				return FALSE;
-			}
-		}
-		else
-		{
-	   		lwmf_CloseLibraries();
-			return FALSE;
-		}
-	}
-	else
-	{
-   		lwmf_CloseLibraries();
-		return FALSE;
-	}
-
-	if (lwmf_LoadGraphicsLibrary() != 0)
-	{
-		return FALSE;
-	}
-
-	if (lwmf_LoadIntuitionLibrary() != 0)
-	{
-		return FALSE;
-	}
-
-	if (lwmf_LoadDatatypesLibrary() != 0)
-	{
-		return FALSE;
-	}
-
-    return TRUE;
-}
-
-void lwmf_CloseLibs(void)
-{
-	if (TimerBase)
-	{
-		CloseDevice((struct IORequest*)TimerIO);
-		TimerBase = NULL;
-	}
-
-	if (TimerIO)
-	{
-		DeleteExtIO((struct IORequest*)TimerIO);
-		TimerIO = NULL;
-	}
-
-	if (TimerPort)
-	{
-		DeletePort(TimerPort);
-		TimerPort = NULL;
-	}
-
-    lwmf_CloseLibraries();
-}
 
 
 #endif /* LWMF_LIBRARIRIES_H */

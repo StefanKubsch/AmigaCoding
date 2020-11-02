@@ -190,10 +190,29 @@ int main()
 {
     // Load libraries
     // Exit with SEVERE Error (20) if something goes wrong
-	if (!lwmf_LoadLibraries())
-    {
-        return 20;
-    }
+	if (lwmf_LoadGraphicsLibrary() != 0)
+	{
+        lwmf_CleanupAll();
+		return 20;
+	}
+
+	if (lwmf_LoadIntuitionLibrary() != 0)
+	{
+        lwmf_CleanupAll();
+		return 20;
+	}
+
+	if (lwmf_LoadDatatypesLibrary() != 0)
+	{
+        lwmf_CleanupAll();
+		return 20;
+	}
+
+	if (!lwmf_InitTimer())
+	{
+        lwmf_CleanupAll();
+		return 20;
+	}
 
 	// Gain control over the OS
 	lwmf_TakeOverOS();
@@ -201,6 +220,7 @@ int main()
 	// Init and load copperlist & screen
 	if (!Init_CopperList())
 	{
+        lwmf_CleanupAll();
 		return 20;
 	}
 
