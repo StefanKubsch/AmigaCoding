@@ -62,64 +62,41 @@ MINVERSION      = 39        ; Set required version (39 -> Amiga OS 3.0 and highe
 ; **************************************************************************
 
 ;
-; __reg("d0") ULONG lwmf_LoadGraphicsLibrary(void);
+; __reg("d0") ULONG lwmf_LoadLibraries(void);
 ;
 
-_lwmf_LoadGraphicsLibrary:
+_lwmf_LoadLibraries:
     move.l	EXECBASE,a6             ; Use exec base address
-    lea     gfxlib,a1
+    
+    lea     gfxlib,a1               ; Load graphics.library
     moveq   #MINVERSION,d0
-    jsr     LVOOpenLibrary(a6)      ; Load graphics.library
+    jsr     LVOOpenLibrary(a6)      
     tst.l   d0                      ; Check if loading was successful
-    bne.s   .open_ok
-    moveq   #20,d0                  ; return with error
-    rts
-.open_ok:
+    beq.s   .open_failed            ; If d0 == 0 then failed
     move.l  d0,_GfxBase             ; Store adress of GfxBase in variable
+    
+    lea     intuitionlib,a1         ; Load intuition.library
+    moveq   #MINVERSION,d0
+    jsr     LVOOpenLibrary(a6)      
+    tst.l   d0                      
+    beq.s   .open_failed
+    move.l  d0,_IntuitionBase       
+
+    lea     datatypeslib,a1         ; Load datatypes.library
+    moveq   #MINVERSION,d0
+    jsr     LVOOpenLibrary(a6)      
+    tst.l   d0                     
+    beq.s   .open_failed
+    move.l  d0,_DataTypesBase       
+    
     moveq   #0,d0                   ; return with success
     rts
-
-    public _lwmf_LoadGraphicsLibrary
-
-;
-; __reg("d0") ULONG lwmf_LoadIntuitionLibrary(void);
-;
-
-_lwmf_LoadIntuitionLibrary:
-    move.l	EXECBASE,a6             ; Use exec base address
-    lea     intuitionlib,a1
-    moveq   #MINVERSION,d0
-    jsr     LVOOpenLibrary(a6)      ; Load intuition.library
-    tst.l   d0                      ; Check if loading was successful
-    bne.s   .open_ok
+.open_failed:
+    jsr     _lwmf_CloseLibraries
     moveq   #20,d0                  ; return with error
     rts
-.open_ok:
-    move.l  d0,_IntuitionBase       ; Store adress of IntuitionBase in variable
-    moveq   #0,d0                   ; return with success
-    rts
 
-    public _lwmf_LoadIntuitionLibrary
-
-;
-; __reg("d0") ULONG lwmf_LoadDatatypesLibrary(void);
-;
-
-_lwmf_LoadDatatypesLibrary:
-    move.l	EXECBASE,a6             ; Use exec base address
-    lea     datatypeslib,a1
-    moveq   #MINVERSION,d0
-    jsr     LVOOpenLibrary(a6)      ; Load datatypes.library
-    tst.l   d0                      ; Check if loading was successful
-    bne.s   .open_ok
-    moveq   #20,d0                  ; return with error
-    rts
-.open_ok:
-    move.l  d0,_DataTypesBase       ; Store adress of DataTypesBase in variable
-    moveq   #0,d0                   ; return with success
-    rts
-
-    public _lwmf_LoadDatatypesLibrary
+    public _lwmf_LoadLibraries
 
 ;
 ; void lwmf_CloseLibraries(void);
@@ -127,13 +104,30 @@ _lwmf_LoadDatatypesLibrary:
 
 _lwmf_CloseLibraries:
     move.l  EXECBASE,a6             ; Use exec base address
-    move.l  _DataTypesBase,a1       ; Use _DataTypesBase address in a1 for CloseLibrary             
-    jsr     LVOCloseLibrary(a6)    
+    move.l  _DataTypesBase,d0       ; Use _DataTypesBase address in a1 for CloseLibrary     
+    tst.l   d0
+    bne.s   .cleardatatypelib
+
+    move.l  _IntuitionBase,d0       ; Use _IntuitionBase address in a1 for CloseLibrary      
+    tst.l   d0  
+    bne.s   .clearintuitionlib
+
+    move.l  _GfxBase,d0             ; Use _GfxBase address in a1 for CloseLibrary                         
+    tst.l   d0
+    bne.s   .cleargraphicslib
+    rts
+.cleardatatypelib:
+    move.l  d0,a1                           
+    jsr     LVOCloseLibrary(a6) 
     move.l  #0,_DataTypesBase
-    move.l  _IntuitionBase,a1       ; Use _IntuitionBase address in a1 for CloseLibrary             
+    rts
+.clearintuitionlib:
+    move.l  d0,a1                           
     jsr     LVOCloseLibrary(a6)    
     move.l  #0,_IntuitionBase
-    move.l  _GfxBase,a1             ; Use _GfxBase address in a1 for CloseLibrary             
+    rts
+.cleargraphicslib:
+    move.l  d0,a1                           
     jsr     LVOCloseLibrary(a6)    
     move.l  #0,_GfxBase
     rts

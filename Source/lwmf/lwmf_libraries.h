@@ -18,9 +18,7 @@
 // Global symbols for our assembler functions
 //
 
-__reg("d0") ULONG lwmf_LoadGraphicsLibrary(void);
-__reg("d0") ULONG lwmf_LoadIntuitionLibrary(void);
-__reg("d0") ULONG lwmf_LoadDatatypesLibrary(void);
+__reg("d0") ULONG lwmf_LoadLibraries(void);
 void lwmf_CloseLibraries();
 void lwmf_TakeOverOS(void);
 void lwmf_ReleaseOS(void);
