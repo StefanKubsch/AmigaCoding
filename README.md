@@ -2,11 +2,13 @@
  
 Coding for classic 68k Amigas in C99 and Assembler
 
-I uploaded some examples for oldschool demo scene effects, written in C99 and Assembler, which should run on all classic Amigas (A500, A600, A1200 etc).
+I uploaded some examples for oldschool demo scene effects, written in C99 and Assembler (vasm), which should run on all classic Amigas (A500, A600, A1200 etc.)
 
 Requierements: Amiga OS 3.0 and Kickstart 3.0.
 
 For better handling of reusable code, I am writing a framework called "lwmf" - lightweight media framework.
+
+Performance-critical parts are done in assembly, like memory clearing, setting pixels etc.
 
 Used compiler:
 
@@ -29,4 +31,4 @@ I test my code on:
 
 - a real Amiga 1200 with an iComp ACA1221 accelerator card and Amiga OS 3.1.4
 - a "stock" 14MHz A1200 in WinUA and Amiga OS 3.1.4
-- a "stock" Amiga 500 in WinUAE and Amiga OS 3.1
+- a "stock" Amiga 500 in WinUAE and Amiga OS 3.1 (still some bugs!)

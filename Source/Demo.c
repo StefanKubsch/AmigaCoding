@@ -1,8 +1,8 @@
 //**********************************************************************
 //* Simple combined demo for Amiga with at least OS 3.0    			   *
 //*														 			   *
-//* Effects: Copper background, 3D starfield, filled vector cube       *
-//* and a sine scroller	with 2D starfield   						   *
+//* Effects: Copper background, 3D starfield, filled vector cube,      *
+//* a sine scroller	and a 2D starfield   						       *
 //*														 			   *
 //*                                                      			   *
 //* (C) 2020 by Stefan Kubsch                            			   *
@@ -13,9 +13,6 @@
 //*                                                      			   *
 //* Quit with mouse click                                  			   *
 //**********************************************************************
-
-#include <math.h>
-#include <string.h>
 
 // Include our own header files
 #include "lwmf/lwmf.h"
@@ -32,7 +29,7 @@
 #define LOWERBORDERLINE		(HEIGHT - 20)
 
 // Our timing/fps limit is targeted at 50fps
-#define FPSLIMIT			(1000000 / 50)
+// #define FPSLIMIT			(1000000 / 50)
 
 // Here we define, how many bitplanes we want to use...
 // Colors / number of required Bitplanes
@@ -156,16 +153,20 @@ void Cleanup_Demo(void)
 
 inline void DemoPart1(void)
 {
-	Draw_2DStarfield();
 	Draw_SineScroller();
 }
 
 inline void DemoPart2(void)
 {
-	Draw_FilledVectorCube();
+	Draw_2DStarfield();
 }
 
 inline void DemoPart3(void)
+{
+	Draw_FilledVectorCube();
+}
+
+inline void DemoPart4(void)
 {
 	Draw_3DStarfield();
 }
@@ -234,9 +235,9 @@ int main(void)
 	}
 
 	// Our parts, packed into an array of function pointers
-	const void (*DemoParts[3])() =
+	const void (*DemoParts[4])() =
 	{
-		DemoPart1, DemoPart2, DemoPart3
+		DemoPart1, DemoPart2, DemoPart3, DemoPart4
 	};
 
 	// Loop control
@@ -245,14 +246,16 @@ int main(void)
 	UWORD FrameCount = 0;
 
 	// Duration of each part in frames
-	const UWORD PartDuration = 150;
+	const UWORD PartDuration = 250;
 
+	/*
 	// Start timer
 	struct timerequest TickRequest = *TimerIO;
 	TickRequest.tr_node.io_Command = TR_ADDREQUEST;
 	TickRequest.tr_time.tv_secs = 0;
 	TickRequest.tr_time.tv_micro = 0;
 	SendIO((struct IORequest*)&TickRequest);
+	*/
 
 	const long SizeOfBitplanes = (WIDTH >> 3) * HEIGHT * NUMBEROFBITPLANES;
 
@@ -272,11 +275,11 @@ int main(void)
 		//***************************************************************
 
 		// Clear bitmap/bitplanes
-		lwmf_ClearMemCPU2((long*)Buffer[CurrentBuffer].BitMap->Planes[0], SizeOfBitplanes);
+		lwmf_ClearMemCPU2((long*)RenderPort.BitMap->Planes[0], SizeOfBitplanes);
 		// Call actual demopart
 		(*DemoParts[CurrentDemoPart])();
 		// lwmf_DisplayFPSCounter() writes on the backbuffer, too - so we need to call it before blitting
-		// lwmf_DisplayFPSCounter(10, HEIGHT - 10, 7);
+		// lwmf_DisplayFPSCounter(0, 0, 7);
 
 		//***************************************************************
 		// Ends here ;-)                                                *
@@ -286,6 +289,7 @@ int main(void)
 		LoadView(&view);
 		CurrentBuffer ^= 1;
 
+		/*
 		if (Wait(1L << TimerPort->mp_SigBit) & (1L << TimerPort->mp_SigBit))
 		{
 			WaitIO((struct IORequest*)&TickRequest);
@@ -293,14 +297,15 @@ int main(void)
 			TickRequest.tr_time.tv_micro = FPSLIMIT;
 			SendIO((struct IORequest*)&TickRequest);
 		}
-
+		*/
+	
 		lwmf_FPSCounter();
 
 		if (++FrameCount >= PartDuration)
 		{
 			FrameCount = 0;
 
-			if (++CurrentDemoPart > 2)
+			if (++CurrentDemoPart > 3)
 			{
 				CurrentDemoPart = 0;
 			}
@@ -312,7 +317,7 @@ int main(void)
 	}
 
 	// After breaking the loop, we have to make sure that there are no more TickRequests to process
-	AbortIO((struct IORequest*)&TickRequest);
+	// AbortIO((struct IORequest*)&TickRequest);
 
 	// Cleanup everything
 	Cleanup_Demo();

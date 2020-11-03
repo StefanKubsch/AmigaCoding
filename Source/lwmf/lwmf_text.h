@@ -145,8 +145,6 @@ const UBYTE ASCIIFont8x8[128][8] =
 
 void lwmf_Text(char* Text, UWORD PosX, const UWORD PosY, const UBYTE Color)
 {
-    SetAPen(&RenderPort, Color);
-
     const UWORD TextLength = strlen(Text);
 
     for (UWORD i = 0; i < TextLength; ++i)
@@ -160,7 +158,7 @@ void lwmf_Text(char* Text, UWORD PosX, const UWORD PosY, const UBYTE Color)
             {
                 if ((TempChar & 1 << x) != 0)
                 {
-			        WritePixel(&RenderPort, PosX + x, TempY);
+               		lwmf_SetPixel(PosX + x, TempY, Color, (long*)RenderPort.BitMap->Planes[0]);
                 }
             }
         }

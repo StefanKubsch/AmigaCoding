@@ -51,8 +51,6 @@ void Cleanup_3DStarfield(void)
 
 void Draw_3DStarfield(void)
 {
-	RenderPort.Mask = 0x03;
-	
 	for (UWORD i = 0; i < NumberOf3DStars; ++i)
 	{
 		Stars3D[i].z -= 15;
@@ -67,12 +65,9 @@ void Draw_3DStarfield(void)
 		
 		if (x < WIDTH && y > UPPERBORDERLINE && y < LOWERBORDERLINE)
 		{
-			SetAPen(&RenderPort, (Stars3D[i].z >> 8) + 1);
-			WritePixel(&RenderPort, x, y);
+			lwmf_SetPixel(x, y, (Stars3D[i].z >> 8) + 1, (long*)RenderPort.BitMap->Planes[0]);
 		}
 	}
-
-	RenderPort.Mask = -1;
 }
 
 

@@ -5,6 +5,15 @@
 ; * Global                                                                                          *
 ; ***************************************************************************************************
 
+; Screen stuff
+; Needs to be changed according to your needs!
+
+WIDTH           = 320
+HEIGHT          = 256
+NUMBITPLANES    = 3
+BPLSIZE         = WIDTH/16*2
+MODULO          = BPLSIZE*NUMBITPLANES	
+
 ; Labels
 
 EXECBASE        = $4
@@ -49,7 +58,7 @@ LVOCloseLibrary = -414
 
 ; Constants
 
-MINVERSION      = 39        ; Set required version (39 -> Amiga OS 3.0 and higher)
+MINVERSION      = 39        ; set required version (39 -> Amiga OS 3.0 and higher)
 
 ; ***************************************************************************************************
 ; * Functions                                                                                       *
@@ -70,25 +79,25 @@ MINVERSION      = 39        ; Set required version (39 -> Amiga OS 3.0 and highe
 ;
 
 _lwmf_LoadLibraries:
-    movem.l a6,-(sp)                ; Save register on stack
+    movem.l a6,-(sp)                ; save register on stack
 
-    move.l	EXECBASE.w,a6           ; Use exec base address
+    move.l	EXECBASE.w,a6           ; use exec base address
     
-    lea     gfxlib,a1               ; Load graphics.library
+    lea     gfxlib,a1               ; load graphics.library
     moveq   #MINVERSION,d0
     jsr     LVOOpenLibrary(a6)      
-    tst.l   d0                      ; Check if loading was successful
-    beq.s   .open_failed            ; If d0 == 0 then failed
-    move.l  d0,_GfxBase             ; Store adress of GfxBase in variable
+    tst.l   d0                      ; check if loading was successful
+    beq.s   .open_failed            ; if d0 == 0 then failed
+    move.l  d0,_GfxBase             ; store adress of GfxBase in variable
     
-    lea     intuitionlib,a1         ; Load intuition.library
+    lea     intuitionlib,a1         ; load intuition.library
     moveq   #MINVERSION,d0
     jsr     LVOOpenLibrary(a6)      
     tst.l   d0                      
     beq.s   .open_failed
     move.l  d0,_IntuitionBase       
 
-    lea     datatypeslib,a1         ; Load datatypes.library
+    lea     datatypeslib,a1         ; load datatypes.library
     moveq   #MINVERSION,d0
     jsr     LVOOpenLibrary(a6)      
     tst.l   d0                     
@@ -96,12 +105,12 @@ _lwmf_LoadLibraries:
     move.l  d0,_DataTypesBase       
     
     moveq   #0,d0                   ; return with success
-    movea.l (sp)+,a6
+    movea.l (sp)+,a6                ; restore registers
     rts
 .open_failed:
     bsr.b   _lwmf_CloseLibraries
     moveq   #20,d0                  ; return with error
-    movea.l (sp)+,a6
+    movea.l (sp)+,a6                ; restore registers
     rts
 
     public _lwmf_LoadLibraries
@@ -111,16 +120,16 @@ _lwmf_LoadLibraries:
 ;
 
 _lwmf_CloseLibraries:
-    move.l  EXECBASE.w,a6           ; Use exec base address
-    move.l  _DataTypesBase,d0       ; Use _DataTypesBase address in a1 for CloseLibrary     
+    move.l  EXECBASE.w,a6           ; use exec base address
+    move.l  _DataTypesBase,d0       ; use _DataTypesBase address in a1 for CloseLibrary     
     tst.l   d0
     bne.s   .closedatatypelib
 
-    move.l  _IntuitionBase,d0       ; Use _IntuitionBase address in a1 for CloseLibrary      
+    move.l  _IntuitionBase,d0       ; use _IntuitionBase address in a1 for CloseLibrary      
     tst.l   d0  
     bne.s   .closeintuitionlib
 
-    move.l  _GfxBase,d0             ; Use _GfxBase address in a1 for CloseLibrary                         
+    move.l  _GfxBase,d0             ; use _GfxBase address in a1 for CloseLibrary                         
     tst.l   d0
     bne.s   .closegraphicslib
     rts
@@ -151,9 +160,9 @@ _lwmf_CloseLibraries:
 ;
 
 _lwmf_TakeOverOS:
-    movem.l a6,-(sp)                ; Save register on stack
+    movem.l a6,-(sp)                ; save register on stack
 
-    move.w  DMACONR,d0              ; Store current custom registers for later restore
+    move.w  DMACONR,d0              ; store current custom registers for later restore
     or.w    #$8000,d0
     move.w  d0,olddma
     move.w  INTENAR,d0
@@ -167,8 +176,8 @@ _lwmf_TakeOverOS:
     move.w  d0,oldadkcon
 
     move.l  _GfxBase,a6
-    move.l  34(a6),oldview          ; Store current view
-    move.l  38(a6),oldcopper        ; Store current copperlist
+    move.l  34(a6),oldview          ; store current view
+    move.l  38(a6),oldcopper        ; store current copperlist
     suba.l  a1,a1
     jsr     LVOLoadView(a6)	        ; LoadView(NULL)
     jsr     LVOWaitTOF(a6)
@@ -176,7 +185,7 @@ _lwmf_TakeOverOS:
     move.l	EXECBASE.w,a6
     jsr     LVOForbid(a6)
 
-    movea.l (sp)+,a6
+    movea.l (sp)+,a6                ; restore registers
     rts
 
    	public _lwmf_TakeOverOS
@@ -186,7 +195,7 @@ _lwmf_TakeOverOS:
 ;
 
 _lwmf_ReleaseOS:
-    movem.l a6,-(sp)                ; Save register on stack
+    movem.l a6,-(sp)                ; save register on stack
 
     move.w  #$7FFF,DMACON
     move.w  olddma,DMACON
@@ -197,16 +206,16 @@ _lwmf_ReleaseOS:
     move.w  #$7FFF,ADKCON
     move.w  oldadkcon,ADKCON
 
-    move.l  oldcopper,COP1LCH       ; Restore system copperlist
-    move.l  _GfxBase,a6             ; Use graphics.library base address
-    move.l  oldview,a1              ; Restore saved view
-    jsr     LVOLoadView(a6)         ; LoadView(oldview)
+    move.l  oldcopper,COP1LCH       ; restore system copperlist
+    move.l  _GfxBase,a6             ; use graphics.library base address
+    move.l  oldview,a1              ; restore saved view
+    jsr     LVOLoadView(a6)         ; loadView(oldview)
     jsr     LVOWaitTOF(a6)          
     jsr     LVOWaitTOF(a6)         
-    move.l  EXECBASE.w,a6           ; Use exec base address
+    move.l  EXECBASE.w,a6           ; use exec base address
     jsr     LVOPermit(a6)
 
-    movea.l (sp)+,a6
+    movea.l (sp)+,a6                ; restore registers
    	rts
 
     public _lwmf_ReleaseOS
@@ -236,9 +245,9 @@ _lwmf_WaitVertBlank:
 .loop: 
     move.l  VPOSR,d0
 	and.l   #$1FF00,d0
-	cmp.l   #303<<8,d0          ; Check if line 303 is reached
+	cmp.l   #303<<8,d0          ; check if line 303 is reached
 	bne.s   .loop
-.loop2:                         ; Check if line 303 is passed
+.loop2:                         ; check if line 303 is passed
 	move.l  VPOSR,d0
 	and.l   #$1FF00,d0
 	cmp.l   #303<<8,d0
@@ -252,8 +261,8 @@ _lwmf_WaitVertBlank:
 ;
 
 _lwmf_ClearMemCPU:
-    lsr.l   #5,d0               ; Shift right by 5 -> Division by 32
-    subq.l  #1,d0               ; Subtract 1
+    lsr.l   #5,d0               ; shift right by 5 -> division by 32
+    subq.l  #1,d0               ; subtract 1
     moveq   #0,d1
 .loop:
     move.l  d1,(a0)+
@@ -274,7 +283,7 @@ _lwmf_ClearMemCPU:
 ;
 
 _lwmf_ClearMemCPU2:
-    movem.l d2-d6/a2-a4,-(sp)   ; Save all registers
+    movem.l d2-d6/a2-a4,-(sp)   ; save all registers
     lea     zeros,a1
     add.l   d7,a0               ; we go top -> down
     lsr.l   #2,d7               ; divide by 4 for long words
@@ -282,7 +291,7 @@ _lwmf_ClearMemCPU2:
     lsr.l   #4,d6               ; number of 16 longword blocks 
     beq.s   .clear              ; branch if we have no block
     subq.l  #1,d6               ; one less to get loop working
-    movem.l (a1),d0-d4/a2-a4    ; We use eight registers -> equals 32 bytes
+    movem.l (a1),d0-d4/a2-a4    ; we use eight registers -> equals 32 bytes
 .clearblock:
     movem.l d0-d4/a2-a4,-(a0)   ; 8 registers -> clear 32 bytes at once
     movem.l d0-d4/a2-a4,-(a0)   ; and again
@@ -296,10 +305,38 @@ _lwmf_ClearMemCPU2:
     move.l  d0,-(a0)            ; set memory long word at a time
     dbra    d7,.setword
 .done:
-    movem.l (sp)+,d2-d6/a2-a4   ; Restore registers
+    movem.l (sp)+,d2-d6/a2-a4   ; restore registers
     rts
 
     public _lwmf_ClearMemCPU2
+
+;
+; void lwmf_SetPixel(__reg("d1") word PosX, __reg("d2") word PosY,  __reg("d3") word Color,  __reg("a1") long* Target);
+;
+
+_lwmf_SetPixel:
+	movem.l d2-d5,-(sp)             ; save all registers
+
+	muls    #MODULO,d2			    ; address offset for line
+	move.w  d1,d4			        ; calc x position
+	not.w   d4			       
+	asr.w   #3,d1			        ; byte offset for x position
+	ext.l   d1			       
+	add.l   d1,d2
+	moveq   #NUMBITPLANES,d5        ; loop through bitplanes
+    subq    #1,d5
+.loop:	
+    ror.b   #1,d3                   ; is bit already set?			       
+    bpl.s   .skipbpl
+	bset    d4,(a1,d2)	            ; if not -> set it
+.skipbpl:
+	lea     BPLSIZE(a1),a1		    ; next bitplane
+	dbf     d5,.loop
+
+	movem.l (sp)+,d2-d5             ; restore registers
+	rts
+
+    public _lwmf_SetPixel
 
 ; ***************************************************************************************************
 ; * Variables                                                                                       *

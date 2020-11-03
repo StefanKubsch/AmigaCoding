@@ -24,7 +24,7 @@ UWORD NumberOf2DStars;
 BOOL Init_2DStarfield(void)
 {
 	// Use more stars, if a fast CPU is available...
-	NumberOf2DStars = FastCPUFlag ? 200 : 100;
+	NumberOf2DStars = FastCPUFlag ? 150 : 50;
 
 	if (!(Stars2D = AllocVec(sizeof(struct StarStruct2D) * NumberOf2DStars, MEMF_ANY | MEMF_CLEAR)))
 	{
@@ -60,8 +60,7 @@ void Draw_2DStarfield(void)
 			Stars2D[i].x = 0;
 		}
 		
-		SetAPen(&RenderPort, Stars2D[i].z + 1);
-		WritePixel(&RenderPort, Stars2D[i].x, Stars2D[i].y);
+		lwmf_SetPixel(Stars2D[i].x, Stars2D[i].y, Stars2D[i].z, (long*)RenderPort.BitMap->Planes[0]);
 	}
 }
 
