@@ -24,7 +24,8 @@ void lwmf_TakeOverOS(void);
 void lwmf_ReleaseOS(void);
 void lwmf_WaitVertBlank(void);
 void lwmf_WaitBlitter(void);
-void lwmf_ClearMem(__reg("a0") long* Address, __reg("d0") long NumberOfBytes);
+void lwmf_ClearMemCPU(__reg("a0") long* Address, __reg("d0") long NumberOfBytes);
+void lwmf_ClearMemCPU2(__reg("a0") long* Address, __reg("d7") long NumberOfBytes);
 __reg("d0") ULONG lwmf_Random(void);
 
 //
