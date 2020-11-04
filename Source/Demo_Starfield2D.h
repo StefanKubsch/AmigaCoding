@@ -58,6 +58,8 @@ void Draw_2DStarfield(void)
 		if (Stars2D[i].x >= WIDTH) 
 		{
 			Stars2D[i].x = 0;
+		    Stars2D[i].y = lwmf_Random() % (LOWERBORDERLINE - UPPERBORDERLINE) + UPPERBORDERLINE;
+	        Stars2D[i].z = lwmf_Random() % 3 + 1;
 		}
 		
 		lwmf_SetPixel(Stars2D[i].x, Stars2D[i].y, Stars2D[i].z, (long*)RenderPort.BitMap->Planes[0]);

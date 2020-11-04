@@ -27,9 +27,6 @@
 #define bwid				(NUMBEROFBITPLANES * bpl)
 #define modulos				(bwid - bpl)
 
-// Our timing/fps limit is targeted at 50fps
-#define FPSLIMIT			(1000000 / 50)
-
 UWORD* CopperList = NULL;
 UWORD CopperbarStart = 0;
 
@@ -196,12 +193,6 @@ int main()
 		return 20;
 	}
 
-	if (!lwmf_InitTimer())
-	{
-        lwmf_CleanupAll();
-		return 20;
-	}
-
 	// Gain control over the OS
 	lwmf_TakeOverOS();
 	
@@ -212,13 +203,6 @@ int main()
 		return 20;
 	}
 
-	// Start timer
-	struct timerequest TickRequest = *TimerIO;
-	TickRequest.tr_node.io_Command = TR_ADDREQUEST;
-	TickRequest.tr_time.tv_secs = 0;
-	TickRequest.tr_time.tv_micro = 0;
-	SendIO((struct IORequest*)&TickRequest);
-
 	OwnBlitter();
 
     // Wait until mouse button is pressed...
@@ -228,18 +212,7 @@ int main()
 		lwmf_WaitVertBlank();
 		Update_Copperbar();
 		lwmf_WaitBlitter();
-
-		if (Wait(1L << TimerPort->mp_SigBit) & (1L << TimerPort->mp_SigBit))
-		{
-			WaitIO((struct IORequest*)&TickRequest);
-			TickRequest.tr_time.tv_secs = 0;
-			TickRequest.tr_time.tv_micro = FPSLIMIT;
-			SendIO((struct IORequest*)&TickRequest);
-		}
 	}
-
-	// After breaking the loop, we have to make sure that there are no more TickRequests to process
-	AbortIO((struct IORequest*)&TickRequest);
 
 	// Cleanup everything
 	DisownBlitter();

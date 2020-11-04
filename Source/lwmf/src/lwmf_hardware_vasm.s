@@ -8,51 +8,51 @@
 ; Screen stuff
 ; Needs to be changed according to your needs!
 
-WIDTH           =     320
-HEIGHT          =     256
-NUMBITPLANES    =     3
-BPLSIZE         =     WIDTH/16*2
-MODULO          =     BPLSIZE*NUMBITPLANES	
+WIDTH           equ     320
+HEIGHT          equ     256
+NUMBITPLANES    equ     3
+BPLSIZE         equ     WIDTH/16*2
+MODULO          equ     BPLSIZE*NUMBITPLANES	
 
 ; Custom registers
 
-EXECBASE        =     $4
-CUSTOM		    =     $00DFF000 ; Base address of custom registers
+EXECBASE        equ     $4
+CUSTOM		    equ     $00DFF000 ; Base address of custom registers
 
-ADKCON          =     $09E      ; Audio/Disk control read/write
-ADKCONR         =     $010      ; Audio/Disk control read
-BLTCON0 	    =     $040      ; Blitter control reg 0
-BLTCON1 	    =     $042      ; Blitter control reg 1
-BLTDPTH		    =     $054      ; Blitter pointer to destination D (high 5 bits)
-BLTDPTL         =     $056      ; Blitter pointer to destination D (low 15 bits)
-BLTDMOD 	    =     $066      ; Blitter modulo for destination D
-BLTSIZE 	    =     $058      ; Blitter start and size (win/width, height)
-COP1LCH         =     $080      ; Coprocessor first location register (high 5 bits)
-COP1LCL         =     $082      ; Coprocessor first location register (low 15 bits)
-DMACON          =     $096      ; DMA control (and blitter status) read/write
-DMACONR         =     $002      ; DMA control (and blitter status) read
-INTENA          =     $09A      ; Interrupt enable read/write
-INTENAR         =     $01C      ; Interrupt enable read
-INTREQ          =     $09C      ; Interrupt request read/write
-INTREQR         =     $01E      ; Interrupr request read
-VPOSR           =     $004      ; Read vert most sig. bits (and frame flop)
+ADKCON          equ     $09E      ; Audio/Disk control read/write
+ADKCONR         equ     $010      ; Audio/Disk control read
+BLTCON0 	    equ     $040      ; Blitter control reg 0
+BLTCON1 	    equ     $042      ; Blitter control reg 1
+BLTDPTH		    equ     $054      ; Blitter pointer to destination D (high 5 bits)
+BLTDPTL         equ     $056      ; Blitter pointer to destination D (low 15 bits)
+BLTDMOD 	    equ     $066      ; Blitter modulo for destination D
+BLTSIZE 	    equ     $058      ; Blitter start and size (win/width, height)
+COP1LCH         equ     $080      ; Coprocessor first location register (high 5 bits)
+COP1LCL         equ     $082      ; Coprocessor first location register (low 15 bits)
+DMACON          equ     $096      ; DMA control (and blitter status) read/write
+DMACONR         equ     $002      ; DMA control (and blitter status) read
+INTENA          equ     $09A      ; Interrupt enable read/write
+INTENAR         equ     $01C      ; Interrupt enable read
+INTREQ          equ     $09C      ; Interrupt request read/write
+INTREQR         equ     $01E      ; Interrupr request read
+VPOSR           equ     $004      ; Read vert most sig. bits (and frame flop)
 
-DMAB_BLTDONE    =     14        ; DMACONR bit 14 - blitter busy flag
+DMAB_BLTDONE    equ     14        ; DMACONR bit 14 - blitter busy flag
 
 ; Library vector offsets (LVO)
 
 ; graphics.library
-LVOLoadView     =     -222
-LVOWaitTOF      =     -270
+LVOLoadView     equ     -222
+LVOWaitTOF      equ     -270
 ; exec.library
-LVOForbid       =     -132
-LVOPermit       =     -138
-LVOOpenLibrary  =     -552
-LVOCloseLibrary =     -414
+LVOForbid       equ     -132
+LVOPermit       equ     -138
+LVOOpenLibrary  equ     -552
+LVOCloseLibrary equ     -414
 
 ; Constants
 
-MINVERSION      =     39        ; set required version (39 -> Amiga OS 3.0 and higher)
+MINVERSION      equ     39        ; set required version (39 -> Amiga OS 3.0 and higher)
 
 ; ***************************************************************************************************
 ; * Functions                                                                                       *
@@ -286,7 +286,7 @@ _lwmf_ClearMemCPU::
 _lwmf_SetPixel::
 	movem.l d4-d5,-(sp)             ; save all registers
 
-	muls.w  #MODULO,d2			    ; address offset for line
+	muls    #MODULO,d2			    ; address offset for line
 	move.w  d1,d4			        ; calc x position
 	not.w   d4			       
 	asr.w   #3,d1			        ; byte offset for x position
@@ -296,7 +296,7 @@ _lwmf_SetPixel::
 .loop:	
     ror.b   #1,d3                   ; is bit already set?			       
     bpl.s   .skipbpl
-	bset    d4,(a1,d2)	            ; if not -> set it
+	bset    d4,(a1,d2.l)	        ; if not -> set it
 .skipbpl:
 	lea     BPLSIZE(a1),a1		    ; next bitplane
 	dbra    d5,.loop
@@ -314,11 +314,9 @@ _lwmf_SetPixel::
 
 zeros:
     dc.l    0,0,0,0,0,0,0,0
-
 ;
 ; System take over
 ;
-
 olddma:
     dc.w    0
 
@@ -342,19 +340,19 @@ oldcopper:
 ;
 
 gfxlib:
-    dc.b "graphics.library",0
-    even
+    dc.b    "graphics.library",0
+
 _GfxBase::
     dc.l    0
 
 intuitionlib:
-    dc.b "intuition.library",0
-    even
+    dc.b    "intuition.library",0
+
 _IntuitionBase::
     dc.l    0
 
 datatypeslib:
-    dc.b "datatypes.library",0
-    even
+    dc.b    "datatypes.library",0
+
 _DataTypesBase::
     dc.l    0

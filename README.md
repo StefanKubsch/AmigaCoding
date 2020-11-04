@@ -2,7 +2,7 @@
  
 Coding for classic 68k Amigas in C99 and Assembler
 
-I uploaded some examples for oldschool demo scene effects, written in C99 and Assembler (vasm), which should run on all classic Amigas (A500, A600, A1200 etc.)
+I uploaded some examples for oldschool demo scene effects, written in C99 and Assembler (vasm), which should run on all classic Amigas (A500, A600, A1200 etc.). There are some bugs when running on an A500, but it´s fine with an A1200.
 
 Requierements: Amiga OS 3.0 and Kickstart 3.0.
 

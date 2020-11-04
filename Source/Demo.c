@@ -17,6 +17,10 @@
 // Include our own header files
 #include "lwmf/lwmf.h"
 
+// Enable (set to 1) for debugging
+// When enabled, copperlist is not executed and load per frame will be displayed via color changing of background
+#define DEBUG 				0
+
 //
 // Screen settings
 //
@@ -25,11 +29,9 @@
 #define HEIGHT				256
 #define WIDTHMID			(WIDTH >> 1)
 #define HEIGHTMID			(HEIGHT >> 1)
-#define UPPERBORDERLINE		20
-#define LOWERBORDERLINE		(HEIGHT - 20)
-
-// Our timing/fps limit is targeted at 50fps
-// #define FPSLIMIT			(1000000 / 50)
+#define LINEPOS				20
+#define UPPERBORDERLINE		LINEPOS
+#define LOWERBORDERLINE		(HEIGHT - LINEPOS)
 
 // Here we define, how many bitplanes we want to use...
 // Colors / number of required Bitplanes
@@ -181,12 +183,6 @@ int main(void)
 		return 20;
 	}
 
-	if (!lwmf_InitTimer())
-	{
-        lwmf_CleanupAll();
-		return 20;
-	}
-
 	// Gain control over the OS
 	lwmf_TakeOverOS();
 
@@ -217,7 +213,10 @@ int main(void)
 		return 20;
 	}
 
-	Update_CopperList();
+	if (DEBUG == 0)
+	{
+		Update_CopperList();
+	}
 
 	// Initial loading of colors
 	LoadRGB4(&viewPort, DemoColorTable[0], NUMBEROFCOLORS);
@@ -248,16 +247,11 @@ int main(void)
 	// Duration of each part in frames
 	const UWORD PartDuration = 250;
 
-	/*
-	// Start timer
-	struct timerequest TickRequest = *TimerIO;
-	TickRequest.tr_node.io_Command = TR_ADDREQUEST;
-	TickRequest.tr_time.tv_secs = 0;
-	TickRequest.tr_time.tv_micro = 0;
-	SendIO((struct IORequest*)&TickRequest);
-	*/
-
 	const long SizeOfBitplanes = (WIDTH >> 3) * HEIGHT * NUMBEROFBITPLANES;
+	const long ClearSize = SizeOfBitplanes - ((WIDTH >> 3) * (LINEPOS - 1) * NUMBEROFBITPLANES);
+
+	view.LOFCprList = LOCpr[CurrentBuffer];
+	RenderPort.BitMap = Buffer[CurrentBuffer].BitMap;
 
 	//
 	// This is our main loop
@@ -267,39 +261,35 @@ int main(void)
 	// PRA_FIR0 = Bit 6 (0x40)
 	while (*CIAA_PRA & 0x40)
 	{
-		view.LOFCprList = LOCpr[CurrentBuffer];
-		RenderPort.BitMap = Buffer[CurrentBuffer].BitMap;
-		
+		if (DEBUG == 1)
+		{
+			*COLOR00 = 0x000;
+		}
+
 		//***************************************************************
 		// Start here with drawing                                      *
 		//***************************************************************
 
 		// Clear bitmap/bitplanes
-		lwmf_ClearMemCPU((long*)RenderPort.BitMap->Planes[0], SizeOfBitplanes);
+		lwmf_ClearMemCPU((long*)RenderPort.BitMap->Planes[0], ClearSize);
 		// Call actual demopart
 		(*DemoParts[CurrentDemoPart])();
-		// lwmf_DisplayFPSCounter() writes on the backbuffer, too - so we need to call it before blitting
-		// lwmf_DisplayFPSCounter(0, 0, 7);
 
 		//***************************************************************
 		// Ends here ;-)                                                *
 		//***************************************************************
 
+		if (DEBUG == 1)
+		{
+			*COLOR00 = 0xF00;
+		}
+
 		lwmf_WaitVertBlank();
 		LoadView(&view);
+		
 		CurrentBuffer ^= 1;
-
-		/*
-		if (Wait(1L << TimerPort->mp_SigBit) & (1L << TimerPort->mp_SigBit))
-		{
-			WaitIO((struct IORequest*)&TickRequest);
-			TickRequest.tr_time.tv_secs = 0;
-			TickRequest.tr_time.tv_micro = FPSLIMIT;
-			SendIO((struct IORequest*)&TickRequest);
-		}
-		*/
-	
-		lwmf_FPSCounter();
+		view.LOFCprList = LOCpr[CurrentBuffer];
+		RenderPort.BitMap = Buffer[CurrentBuffer].BitMap;
 
 		if (++FrameCount >= PartDuration)
 		{
@@ -315,9 +305,6 @@ int main(void)
 			lwmf_UpdateViewPort();
 		}
 	}
-
-	// After breaking the loop, we have to make sure that there are no more TickRequests to process
-	// AbortIO((struct IORequest*)&TickRequest);
 
 	// Cleanup everything
 	Cleanup_Demo();

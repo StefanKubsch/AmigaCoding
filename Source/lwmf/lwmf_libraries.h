@@ -6,8 +6,6 @@
 #include <graphics/copper.h>
 #include <graphics/rastport.h>
 #include <datatypes/pictureclass.h>
-#include <devices/timer.h>
-#include <clib/timer_protos.h>  
 #include <clib/exec_protos.h>
 #include <clib/dos_protos.h>
 #include <clib/graphics_protos.h>

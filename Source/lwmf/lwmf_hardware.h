@@ -1,6 +1,8 @@
 #ifndef LWMF_HARDWARE_H
 #define LWMF_HARDWARE_H
 
+void lwmf_CheckCPU(void);
+
 //
 // Define required registers
 //
@@ -23,6 +25,20 @@ __chip UWORD BlankMousePointer[4] =
     0x0000, 0x0000,
     0x0000, 0x0000
 };
+
+BOOL FastCPUFlag = FALSE;
+
+void lwmf_CheckCPU(void)
+{
+	struct ExecBase *SysBase = *((struct ExecBase**)4L);
+
+	// Check if CPU is a 68020, 030, 040, 060 (this is the "0x80")
+	// If yes, we can calculate more stuff...
+	if (SysBase->AttnFlags & AFF_68020 || SysBase->AttnFlags & AFF_68030 || SysBase->AttnFlags & AFF_68040 || SysBase->AttnFlags & 0x80)
+	{
+		FastCPUFlag = TRUE;
+	}
+}
 
 
 #endif /* LWMF_HARDWARE_H */

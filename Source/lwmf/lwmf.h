@@ -5,11 +5,9 @@
 #include "lwmf_hardware.h"
 #include "lwmf_viewport.h"
 #include "lwmf_renderport.h"
-#include "lwmf_timer.h"
 #include "lwmf_cleanup.h"
 #include "lwmf_images.h"
 #include "lwmf_text.h"
-#include "lwmf_statistics.h"
 
 
 #endif /* LWMF_H */
