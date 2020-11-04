@@ -10,7 +10,7 @@
 ;
 
 _lwmf_Random:
-    move.l  seed,d0
+    move.l  seed(pc),d0
     addq.l  #5,d0
     rol.l   d0,d0
     move.l  d0,seed

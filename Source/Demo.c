@@ -275,7 +275,7 @@ int main(void)
 		//***************************************************************
 
 		// Clear bitmap/bitplanes
-		lwmf_ClearMemCPU2((long*)RenderPort.BitMap->Planes[0], SizeOfBitplanes);
+		lwmf_ClearMemCPU((long*)RenderPort.BitMap->Planes[0], SizeOfBitplanes);
 		// Call actual demopart
 		(*DemoParts[CurrentDemoPart])();
 		// lwmf_DisplayFPSCounter() writes on the backbuffer, too - so we need to call it before blitting
