@@ -54,7 +54,7 @@ void Init_FilledVectorCube(void)
 	// Create two sintabs for a lissajous figure
 	for (UBYTE i = 0; i < 64; ++i)
 	{
-		CubeSinTabY[i] = (UWORD)(sin(0.2f * (float)i) * 20.0f);
+		CubeSinTabY[i] = (UWORD)(sin(0.2f * (float)i) * 40.0f);
 		CubeSinTabX[i] = (UWORD)(sin(0.1f * (float)i) * 60.0f);
 	}
 
@@ -80,7 +80,7 @@ void Init_FilledVectorCube(void)
 
 			// 2D projection & translate
 			CubePreCalc[Pre].Cube[i].x = (WIDTH >> 1) + (UWORD)CubeDef[i].x;
-			CubePreCalc[Pre].Cube[i].y = (HEIGHT >> 1) + (UWORD)CubeDef[i].y;
+			CubePreCalc[Pre].Cube[i].y = (HEIGHT >> 1) + (UWORD)CubeDef[i].y - 5;
 		}
 
 		// selection-sort of depth/faces

@@ -11,8 +11,10 @@
 WIDTH           equ     320
 HEIGHT          equ     256
 NUMBITPLANES    equ     3
-BPLSIZE         equ     WIDTH/16*2
-MODULO          equ     BPLSIZE*NUMBITPLANES	
+BPLSIZE         equ     WIDTH/8
+MODULO          equ     BPLSIZE*NUMBITPLANES
+SCRCLEARSIZEBLT equ     HEIGHT*NUMBITPLANES*64+BPLSIZE/4    ; half screen size for blitter part of screen clear (top -> mid)
+SCRCLEARSIZECPU equ     MODULO*HEIGHT                       ; size for cpu part of screen clear ( bottom -> mid)
 
 ; Custom registers
 
@@ -250,33 +252,95 @@ _lwmf_WaitVertBlank::
 	rts
 
 ;
-; void lwmf_ClearMemCPU(__reg("a0") long* Address, __reg("d7") long NumberOfBytes);
+; void lwmf_ClearMemCPU(__reg("a1") long* StartAddress, __reg("d7") long NumberOfBytes);
 ;
 
 _lwmf_ClearMemCPU::
-    movem.l d2-d6/a2-a4,-(sp)       ; save all registers
-    lea     zeros(pc),a1
-    add.l   d7,a0                   ; we go top -> down
-    lsr.l   #2,d7                   ; divide by 4 for long words
+    movem.l d2-d6/a2-a6,-(sp)       ; save all registers
+
+    lea     zeros(pc),a0
+    add.l   d7,a1                   ; we go top -> down
+    lsr.l   #2,d7                   ; divide by 4
     move.l  d7,d6
-    lsr.l   #4,d6                   ; number of 16 long word blocks 
+    lsr.l   #7,d6                   ; get number of blocks of 128 long words 
     beq.s   .clear                  ; branch if we have no complete block
     subq.l  #1,d6                   ; one less to get loop working
-    movem.l (a1),d0-d4/a2-a4        ; we use eight registers -> equals 32 bytes
+    movem.l (a0),d0-d5/a2-a6        ; we use eight registers -> equals 32 bytes
 .clearblock:
-    movem.l d0-d4/a2-a4,-(a0)       ; 8 registers -> clear 32 bytes at once
-    movem.l d0-d4/a2-a4,-(a0)       ; and again
+    movem.l d0-d5/a2-a6,-(a1)       ; 11 registers -> clear 44 bytes at once
+    movem.l d0-d5/a2-a6,-(a1)
+    movem.l d0-d5/a2-a6,-(a1) 
+    movem.l d0-d5/a2-a6,-(a1) 
+    movem.l d0-d5/a2-a6,-(a1) 
+    movem.l d0-d5/a2-a6,-(a1) 
+    movem.l d0-d5/a2-a6,-(a1) 
+    movem.l d0-d5/a2-a6,-(a1) 
+    movem.l d0-d5/a2-a6,-(a1) 
+    movem.l d0-d5/a2-a6,-(a1) 
+    movem.l d0-d5/a2-a6,-(a1) 
+    movem.l d0-d5/a2,-(a1)          ; 7 registers
     dbra    d6,.clearblock
 .clear:
-    and.l   #$0F,d7                 ; check how many words we still have
+    and.l   #$0F,d7                 ; check how many long words we still have
     beq.s   .done
     subq.l  #1,d7                   ; one less to get loop working
-    move.l  (a1),a0
+    move.l  (a0),a1
 .setword:
-    move.l  d0,-(a0)                ; set memory by one long word at a time
+    move.l  d0,-(a1)                ; set memory by one long word at a time
     dbra    d7,.setword
 .done:
-    movem.l (sp)+,d2-d6/a2-a4       ; restore registers
+    movem.l (sp)+,d2-d6/a2-a6       ; restore registers
+    rts
+
+;
+; void lwmf_ClearScreen(__reg("a1") long* StartAddress);
+;
+
+_lwmf_ClearScreen::
+    movem.l d2-d7/a2-a6,-(sp)       ; save all registers
+
+    ; Clear first half of screen with blitter
+    lea     CUSTOM,a0
+    bsr     _lwmf_WaitBlitter
+	move.l  #MODULO,BLTDMOD(a0)			       
+	move.l  #$01000000,BLTCON0(a0)	  
+	move.l  a1,BLTDPTH(a0)		       
+	move.w  #SCRCLEARSIZEBLT,BLTSIZE(a0)
+
+    ; Clear rest of screen with cpu
+    lea     zeros(pc),a0
+    move.l  #SCRCLEARSIZECPU,d7
+    add.l   d7,a1                   ; we go top -> down
+    lsr.l   #3,d7                   ; divide by 8, we only need to clear half of the screen...
+    move.l  d7,d6
+    lsr.l   #7,d6                   ; get number of blocks of 128 long words 
+    beq.s   .clear                  ; branch if we have no complete block
+    subq.l  #1,d6                   ; one less to get loop working
+    movem.l (a0),d0-d5/a2-a6        ; we use eight registers -> equals 32 bytes
+.clearblock:
+    movem.l d0-d5/a2-a6,-(a1)       ; 11 registers -> clear 44 bytes at once
+    movem.l d0-d5/a2-a6,-(a1)
+    movem.l d0-d5/a2-a6,-(a1) 
+    movem.l d0-d5/a2-a6,-(a1) 
+    movem.l d0-d5/a2-a6,-(a1) 
+    movem.l d0-d5/a2-a6,-(a1) 
+    movem.l d0-d5/a2-a6,-(a1) 
+    movem.l d0-d5/a2-a6,-(a1) 
+    movem.l d0-d5/a2-a6,-(a1) 
+    movem.l d0-d5/a2-a6,-(a1) 
+    movem.l d0-d5/a2-a6,-(a1) 
+    movem.l d0-d5/a2,-(a1)          ; 7 registers
+    dbra    d6,.clearblock
+.clear:
+    and.l   #$0F,d7                 ; check how many long words we still have
+    beq.s   .done
+    subq.l  #1,d7                   ; one less to get loop working
+    move.l  (a0),a1
+.setword:
+    move.l  d0,-(a1)                ; set memory by one long word at a time
+    dbra    d7,.setword
+.done:
+    movem.l (sp)+,d2-d7/a2-a6       ; restore registers
     rts
 
 ;
@@ -309,11 +373,11 @@ _lwmf_SetPixel::
 ; ***************************************************************************************************
 
 ;
-; ClearMemCPU
+; Clear
 ;
 
 zeros:
-    dc.l    0,0,0,0,0,0,0,0
+    dc.l    0,0,0,0,0,0,0,0,0,0,0
 ;
 ; System take over
 ;

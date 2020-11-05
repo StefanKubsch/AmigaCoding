@@ -247,9 +247,6 @@ int main(void)
 	// Duration of each part in frames
 	const UWORD PartDuration = 250;
 
-	const long SizeOfBitplanes = (WIDTH >> 3) * HEIGHT * NUMBEROFBITPLANES;
-	const long ClearSize = SizeOfBitplanes - ((WIDTH >> 3) * (LINEPOS - 1) * NUMBEROFBITPLANES);
-
 	//
 	// This is our main loop
 	//
@@ -270,8 +267,8 @@ int main(void)
 		// Start here with drawing                                      *
 		//***************************************************************
 
-		// Clear bitmap/bitplanes
-		lwmf_ClearMemCPU((long*)RenderPort.BitMap->Planes[0], ClearSize);
+		// Clear bitmap/bitplanes/screen
+		lwmf_ClearScreen((long*)RenderPort.BitMap->Planes[0]);
 		// Call actual demopart
 		(*DemoParts[CurrentDemoPart])();
 
