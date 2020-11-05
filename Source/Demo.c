@@ -250,9 +250,6 @@ int main(void)
 	const long SizeOfBitplanes = (WIDTH >> 3) * HEIGHT * NUMBEROFBITPLANES;
 	const long ClearSize = SizeOfBitplanes - ((WIDTH >> 3) * (LINEPOS - 1) * NUMBEROFBITPLANES);
 
-	view.LOFCprList = LOCpr[CurrentBuffer];
-	RenderPort.BitMap = Buffer[CurrentBuffer].BitMap;
-
 	//
 	// This is our main loop
 	//
@@ -265,6 +262,9 @@ int main(void)
 		{
 			*COLOR00 = 0x000;
 		}
+
+		view.LOFCprList = LOCpr[CurrentBuffer];
+		RenderPort.BitMap = Buffer[CurrentBuffer].BitMap;
 
 		//***************************************************************
 		// Start here with drawing                                      *
@@ -286,10 +286,7 @@ int main(void)
 
 		lwmf_WaitVertBlank();
 		LoadView(&view);
-		
 		CurrentBuffer ^= 1;
-		view.LOFCprList = LOCpr[CurrentBuffer];
-		RenderPort.BitMap = Buffer[CurrentBuffer].BitMap;
 
 		if (++FrameCount >= PartDuration)
 		{
