@@ -27,8 +27,13 @@ ADKCON          equ     $09E      ; Audio/Disk control read/write
 ADKCONR         equ     $010      ; Audio/Disk control read
 BLTCON0 	    equ     $040      ; Blitter control reg 0
 BLTCON1 	    equ     $042      ; Blitter control reg 1
+BLTAFWM         equ     $044      ; Blitter first-word mask for source A
+BLTALWM         equ     $046      ; Blitter last-word mask for source A
+BLTAPTH         equ     $050      ; Blitter pointer to destination A (high 5 bits)
+BLTAPTL         equ     $052      ; Blitter pointer to destination A (low 15 bits)
 BLTDPTH		    equ     $054      ; Blitter pointer to destination D (high 5 bits)
 BLTDPTL         equ     $056      ; Blitter pointer to destination D (low 15 bits)
+BLTAMOD         equ     $064      ; Blitter modulo for destination A
 BLTDMOD 	    equ     $066      ; Blitter modulo for destination D
 BLTSIZE 	    equ     $058      ; Blitter start and size (win/width, height)
 COP1LCH         equ     $080      ; Coprocessor first location register (high 5 bits)
@@ -179,9 +184,6 @@ _lwmf_TakeOverOS::
     or.w    #$8000,d0
     move.w  d0,oldadkcon
 
-	move.w  #$7FFF,DMACON(a0)       ; clear DMACON / Description: http://amiga-dev.wikidot.com/hardware:dmaconr
-	move.w  #$83C0,DMACON(a0)       ; set DMACON to 1000001111000000 = $83C0
-
     move.l  _GfxBase(pc),a6
     move.l  34(a6),oldview          ; store current view
     move.l  38(a6),oldcopper        ; store current copperlist
@@ -189,12 +191,16 @@ _lwmf_TakeOverOS::
     jsr     LVOLoadView(a6)	        ; LoadView(NULL)
     jsr     LVOWaitTOF(a6)
     jsr     LVOWaitTOF(a6)
-    
+
+	bsr     _lwmf_WaitVertBlank
+    move.w  #$7FFF,DMACON(a0)       ; clear DMACON / Description: http://amiga-dev.wikidot.com/hardware:dmaconr
+    move.w  #$83C0,DMACON(a0)       ; set DMACON to 1000001111000000 = $83C0
+
     move.l	EXECBASE.w,a6
     sub.l   a1,a1                   ; find current task
     jsr     LVOFindTask(a6)
     move.l  d0,a1
-    moveq   #127,d0                 ; set task priority
+    moveq   #20,d0                  ; set task priority (20 should be enough!)
     jsr     LVOSetTaskPri(a6)
     
     jsr     LVOForbid(a6)
@@ -218,13 +224,14 @@ _lwmf_ReleaseOS::
     move.w  oldintreq(pc),INTREQ(a0)
     move.w  #$7FFF,ADKCON(a0)
     move.w  oldadkcon(pc),ADKCON(a0)
-
     move.l  oldcopper(pc),COP1LCH(a0)   ; restore system copperlist
+
     move.l  _GfxBase(pc),a6             ; use graphics.library base address
     move.l  oldview(pc),a1              ; restore saved view
     jsr     LVOLoadView(a6)             ; loadView(oldview)
     jsr     LVOWaitTOF(a6)          
     jsr     LVOWaitTOF(a6)         
+    
     move.l  EXECBASE.w,a6               ; use exec base address
     jsr     LVOPermit(a6)
 
@@ -254,9 +261,9 @@ _lwmf_WaitBlitter::
 _lwmf_WaitVertBlank::
     lea     CUSTOM,a0
 .loop: 
-    move.l  VPOSR(a0),d0        ; check if line 311 is reached
+    move.l  VPOSR(a0),d0
 	and.l   #$0001FF00,d0
-	cmp.l   #311<<8,d0          ; Line 311 = maximum PAL line          
+	cmp.l   #311<<8,d0          ; check if line 311 is reached (line 311 = maximum PAL line)
 	bne.s   .loop
 .loop2:                        
 	move.l  VPOSR(a0),d0
@@ -392,9 +399,11 @@ _lwmf_SetPixel::
 
 zeros:
     dc.l    0,0,0,0,0,0,0,0,0,0,0
+
 ;
 ; System take over
 ;
+
 olddma:
     dc.w    0
 
