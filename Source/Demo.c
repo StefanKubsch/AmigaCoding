@@ -268,7 +268,10 @@ int main(void)
 		//***************************************************************
 
 		// Clear bitmap/bitplanes/screen
+		OwnBlitter();
 		lwmf_ClearScreen((long*)RenderPort.BitMap->Planes[0]);
+		lwmf_WaitBlitter();
+		DisownBlitter();
 		// Call actual demopart
 		(*DemoParts[CurrentDemoPart])();
 
@@ -281,7 +284,6 @@ int main(void)
 			*COLOR00 = 0xF00;
 		}
 
-		lwmf_WaitVertBlank();
 		LoadView(&view);
 		CurrentBuffer ^= 1;
 
@@ -298,6 +300,8 @@ int main(void)
 			LoadRGB4(&viewPort, DemoColorTable[CurrentDemoPart], NUMBEROFCOLORS);
 			lwmf_UpdateViewPort();
 		}
+
+		lwmf_WaitVertBlank();
 	}
 
 	// Cleanup everything

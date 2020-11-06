@@ -1,5 +1,7 @@
 ; Various assembler functions for lwmf
 ; Code is compatible with Motorola syntax as provided by vbcc
+;
+; Coded in 2020 by Stefan Kubsch
 
 ; ***************************************************************************************************
 ; * Global                                                                                          *
@@ -12,9 +14,9 @@ WIDTH           equ     320
 HEIGHT          equ     256
 NUMBITPLANES    equ     3
 BPLSIZE         equ     WIDTH/8
-MODULO          equ     BPLSIZE*NUMBITPLANES
+MODULO          equ     WIDTH/8*NUMBITPLANES
 SCRCLEARSIZEBLT equ     HEIGHT*NUMBITPLANES*64+BPLSIZE/4    ; half screen size for blitter part of screen clear (top -> mid)
-SCRCLEARSIZECPU equ     MODULO*HEIGHT                       ; size for cpu part of screen clear ( bottom -> mid)
+SCRCLEARSIZECPU equ     WIDTH/8*HEIGHT*NUMBITPLANES         ; size for cpu part of screen clear ( bottom -> mid)
 
 ; Custom registers
 
@@ -49,6 +51,8 @@ LVOWaitTOF      equ     -270
 ; exec.library
 LVOForbid       equ     -132
 LVOPermit       equ     -138
+LVOFindTask     equ     -294
+LVOSetTaskPri   equ     -300
 LVOOpenLibrary  equ     -552
 LVOCloseLibrary equ     -414
 
@@ -175,6 +179,9 @@ _lwmf_TakeOverOS::
     or.w    #$8000,d0
     move.w  d0,oldadkcon
 
+	move.w  #$7FFF,DMACON(a0)       ; clear DMACON / Description: http://amiga-dev.wikidot.com/hardware:dmaconr
+	move.w  #$83C0,DMACON(a0)       ; set DMACON to 1000001111000000 = $83C0
+
     move.l  _GfxBase(pc),a6
     move.l  34(a6),oldview          ; store current view
     move.l  38(a6),oldcopper        ; store current copperlist
@@ -182,7 +189,14 @@ _lwmf_TakeOverOS::
     jsr     LVOLoadView(a6)	        ; LoadView(NULL)
     jsr     LVOWaitTOF(a6)
     jsr     LVOWaitTOF(a6)
+    
     move.l	EXECBASE.w,a6
+    sub.l   a1,a1                   ; find current task
+    jsr     LVOFindTask(a6)
+    move.l  d0,a1
+    moveq   #127,d0                 ; set task priority
+    jsr     LVOSetTaskPri(a6)
+    
     jsr     LVOForbid(a6)
 
     movea.l (sp)+,a6                ; restore register
@@ -240,14 +254,14 @@ _lwmf_WaitBlitter::
 _lwmf_WaitVertBlank::
     lea     CUSTOM,a0
 .loop: 
-    move.l  VPOSR(a0),d0        ; check if line 303 is reached
+    move.l  VPOSR(a0),d0        ; check if line 311 is reached
 	and.l   #$0001FF00,d0
-	cmp.l   #303<<8,d0          
+	cmp.l   #311<<8,d0          ; Line 311 = maximum PAL line          
 	bne.s   .loop
-.loop2:                         ; check if line 303 is passed
+.loop2:                        
 	move.l  VPOSR(a0),d0
 	and.l   #$0001FF00,d0
-	cmp.l   #303<<8,d0
+	cmp.l   #311<<8,d0
 	beq.s   .loop2
 	rts
 
