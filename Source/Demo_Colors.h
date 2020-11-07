@@ -19,7 +19,7 @@ UWORD DemoColorTable[4][8] =
 		0x000,
 		0x000,
 		0x000,
-		0xFFF  // FPS Counter
+		0x000
 	},
 	// 2D Starfield
 	{ 
@@ -30,7 +30,7 @@ UWORD DemoColorTable[4][8] =
 		0x000,
 		0x000,
 		0x000,
-		0xFFF  // FPS Counter
+		0x000
 	},
 
 	// Filled vector cube
@@ -42,7 +42,7 @@ UWORD DemoColorTable[4][8] =
 		0x0D0,
 		0x0E0,
 		0x0F0,
-		0xFFF  // FPS Counter
+		0x000
 	},
 	// 3D Starfield
 	{
@@ -53,7 +53,7 @@ UWORD DemoColorTable[4][8] =
 		0x000,
 		0x000,
 		0x000,
-		0xFFF  // FPS Counter
+		0x000
 	}
 };
 

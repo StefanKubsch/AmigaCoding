@@ -10,13 +10,13 @@
 ; Screen stuff
 ; Needs to be changed according to your needs!
 
-WIDTH           equ     320
-HEIGHT          equ     256
-NUMBITPLANES    equ     3
-BPLSIZE         equ     WIDTH/8
-MODULO          equ     WIDTH/8*NUMBITPLANES
-SCRCLEARSIZEBLT equ     HEIGHT*NUMBITPLANES*64+BPLSIZE/4    ; half screen size for blitter part of screen clear (top -> mid)
-SCRCLEARSIZECPU equ     WIDTH/8*HEIGHT*NUMBITPLANES         ; size for cpu part of screen clear ( bottom -> mid)
+SCREENWIDTH         equ     320
+SCREENHEIGHT        equ     256
+NUMBITPLANES        equ     3
+SCREEN_BROW         equ     SCREENWIDTH/8
+SCREENMODULO        equ     SCREENWIDTH/8*NUMBITPLANES
+SCREENCLRSIZEBLT    equ     128*NUMBITPLANES*64+SCREEN_BROW/2               ; half screen size for blitter part of screen clear (top -> mid)
+SCREENCLRSIZECPU    equ     SCREEN_BROW*SCREENHEIGHT*NUMBITPLANES           ; size for cpu part of screen clear ( bottom -> mid)
 
 ; Custom registers
 
@@ -33,9 +33,10 @@ BLTAPTH         equ     $050      ; Blitter pointer to destination A (high 5 bit
 BLTAPTL         equ     $052      ; Blitter pointer to destination A (low 15 bits)
 BLTDPTH		    equ     $054      ; Blitter pointer to destination D (high 5 bits)
 BLTDPTL         equ     $056      ; Blitter pointer to destination D (low 15 bits)
+BLTSIZE 	    equ     $058      ; Blitter start and size (win/width, height)
 BLTAMOD         equ     $064      ; Blitter modulo for destination A
 BLTDMOD 	    equ     $066      ; Blitter modulo for destination D
-BLTSIZE 	    equ     $058      ; Blitter start and size (win/width, height)
+BLTADAT         equ     $074      ; Blitter source A data register
 COP1LCH         equ     $080      ; Coprocessor first location register (high 5 bits)
 COP1LCL         equ     $082      ; Coprocessor first location register (low 15 bits)
 DMACON          equ     $096      ; DMA control (and blitter status) read/write
@@ -323,14 +324,15 @@ _lwmf_ClearScreen::
     ; Clear first half of screen with blitter
     lea     CUSTOM,a0
     bsr     _lwmf_WaitBlitter
-	move.l  #MODULO,BLTDMOD(a0)			       
+	moveq   #0,d0
+    move.l  d0,BLTDMOD(a0)			       
 	move.l  #$01000000,BLTCON0(a0)	  
 	move.l  a1,BLTDPTH(a0)		       
-	move.w  #SCRCLEARSIZEBLT,BLTSIZE(a0)
+	move.w  #SCREENCLRSIZEBLT,BLTSIZE(a0)
 
     ; Clear rest of screen with cpu
     lea     zeros(pc),a0
-    move.l  #SCRCLEARSIZECPU,d7
+    move.l  #SCREENCLRSIZECPU,d7
     add.l   d7,a1                   ; we go top -> down
     lsr.l   #3,d7                   ; divide by 8, we only need to clear half of the screen...
     move.l  d7,d6
@@ -371,7 +373,7 @@ _lwmf_ClearScreen::
 _lwmf_SetPixel::
 	movem.l d4-d5,-(sp)             ; save all registers
 
-	muls    #MODULO,d2			    ; address offset for line
+	muls    #SCREENMODULO,d2        ; address offset for line
 	move.w  d1,d4			        ; calc x position
 	not.w   d4			       
 	asr.w   #3,d1			        ; byte offset for x position
@@ -383,7 +385,7 @@ _lwmf_SetPixel::
     bpl.s   .skipbpl
 	bset    d4,(a1,d2.l)	        ; if not -> set it
 .skipbpl:
-	lea     BPLSIZE(a1),a1		    ; next bitplane
+	lea     SCREEN_BROW(a1),a1	    ; next bitplane
 	dbra    d5,.loop
 
 	movem.l (sp)+,d4-d5             ; restore registers
