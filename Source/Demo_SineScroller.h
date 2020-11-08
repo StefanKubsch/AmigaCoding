@@ -107,8 +107,16 @@ void Cleanup_SineScroller(void)
 
 void Draw_SineScroller(void)
 {
+	// Test for my own blitting routine!
+	// Just blit an "A" in top-left corner!
+	const WORD Modulo = (Font.FontBitmap->Width / 8) - 1;
+	const WORD Size = Font.CharHeight * 64 * NUMBEROFBITPLANES + (Font.CharOverallWidth / 16);
+	
+	lwmf_BlitTile((long*)Font.FontBitmap->Image->Planes[0], Modulo, (long*)RenderPort.BitMap->Planes[0], 0, Size);
+
 	for (UWORD i = 0, XPos = Font.ScrollX; i < Font.TextLength; ++i)
 	{
+
 		if (Font.Map[i] == -1)
 		{
 			XPos += Font.CharOverallWidth;

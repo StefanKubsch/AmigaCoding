@@ -26,7 +26,8 @@ void lwmf_WaitVertBlank(void);
 void lwmf_WaitBlitter(void);
 void lwmf_ClearMemCPU(__reg("a1") long* StartAddress, __reg("d7") long NumberOfBytes);
 void lwmf_ClearScreen(__reg("a1") long* StartAddress);
-void lwmf_SetPixel(__reg("d1") WORD PosX, __reg("d2") WORD PosY,  __reg("d3") WORD Color,  __reg("a1") long* Target);
+void lwmf_SetPixel(__reg("d0") WORD PosX, __reg("d1") WORD PosY,  __reg("d2") UBYTE Color,  __reg("a0") long* Target);
+void lwmf_BlitTile(__reg("a1") long* Src, __reg("d0") WORD Modulo, __reg("a2") long* Dst, __reg("d1") long DstOffset, __reg("d2") WORD Size);
 
 // Math
 
