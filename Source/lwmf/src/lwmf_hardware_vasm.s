@@ -399,13 +399,13 @@ _lwmf_BlitTile::
 
     move.w  d0,BLTAMOD(a0)              ; SOURCE_BITMAP_WIDTH/8 - WORDS
     move.w  d2,BLTDMOD(a0)              ; TARGET_BITMAP_WIDTH/8 * NUMBITPLANES - WORDS
-	move.l  #$09F00000,BLTCON0(a0)
+	move.l  #$09F00000,BLTCON0(a0)      ; D = A ($F0)
     move.l	#$FFFFFFFF,BLTAFWM(a0)	  
-    add.l   d1,a1                       ; Add source offset (in words)
+    add.l   d1,a1                       ; Add source offset (in bytes)
     move.l  a1,BLTAPTH(a0)
-    add.l   d3,a2                       ; Add destination offset (in words)
+    add.l   d3,a2                       ; Add destination offset (in bytes)
     move.l  a2,BLTDPTH(a0)		       
-    move.w  d4,BLTSIZE(a0)              ; Number of Lines * 64 * NUMBITPLANES + WORDS
+    move.w  d4,BLTSIZE(a0)              ; Number of Lines * 64 + WORDS
 
 	rts
 

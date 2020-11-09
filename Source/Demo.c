@@ -29,7 +29,7 @@
 #define SCREENHEIGHT		256
 #define SCREENWIDTHMID		(SCREENWIDTH >> 1)
 #define SCREENHEIGHTMID		(SCREENHEIGHT >> 1)
-#define LINEPOS				20
+#define LINEPOS				30
 #define UPPERBORDERLINE		LINEPOS
 #define LOWERBORDERLINE		(SCREENHEIGHT - LINEPOS)
 
@@ -50,6 +50,7 @@
 #include "Demo_FilledVectorCube.h"
 #include "Demo_Starfield3D.h"
 #include "Demo_Starfield2D.h"
+#include "Demo_TextLogo.h"
 
 struct UCopList* UserCopperList = NULL;
 
@@ -74,6 +75,14 @@ BOOL Init_CopperList(void)
 
 void Update_CopperList(void)
 {
+	const UWORD CopperColors[] =
+	{
+		0x0FF, 0x0EF, 0x0DF, 0x0CF, 0x0BF, 0x0AF, 0x09F, 0x08F,
+		0x07F, 0x06F, 0x05F, 0x04F, 0x03F, 0x02F, 0x01F, 0x00F,
+		0x00E, 0x00D, 0x00C, 0x00B, 0x00A, 0x009, 0x008, 0x007,
+		0x006, 0x005, 0x004, 0x003, 0x003, 0x003
+	};
+
 	// Needed memory: Init, Mouse, Background & End + some spare
 	UCopperListInit(UserCopperList, 100);
 
@@ -84,28 +93,32 @@ void Update_CopperList(void)
 	CBump(UserCopperList);
 
 	// Setup background
-	
+
 	// Black
 	CMove(UserCopperList, COLOR00, 0x000);
 	CBump(UserCopperList);
-	// White line
-	CWait(UserCopperList, UPPERBORDERLINE - 1, 0);
-	CBump(UserCopperList);
-	CMove(UserCopperList, COLOR00, 0xFFF);
-	CBump(UserCopperList);
+
+	for (int i = 0; i <= UPPERBORDERLINE; ++i)
+	{
+		CWait(UserCopperList, i, 0);
+		CBump(UserCopperList);
+		CMove(UserCopperList, COLOR00, CopperColors[i]);
+		CBump(UserCopperList);
+	}
+	
 	// Blue
-	CWait(UserCopperList, UPPERBORDERLINE, 0);
-	CBump(UserCopperList);
 	CMove(UserCopperList, COLOR00, 0x003);
 	CBump(UserCopperList);
-	// White line
-	CWait(UserCopperList, LOWERBORDERLINE, 0);
-	CBump(UserCopperList);
-	CMove(UserCopperList, COLOR00, 0xFFF);
-	CBump(UserCopperList);
+	
+	for (int i = LOWERBORDERLINE, j = 29; i < SCREENHEIGHT; ++i, --j)
+	{
+		CWait(UserCopperList, i, 0);
+		CBump(UserCopperList);
+		CMove(UserCopperList, COLOR00, CopperColors[j]);
+		CBump(UserCopperList);
+	}
+
 	// Black
-	CWait(UserCopperList, LOWERBORDERLINE + 1, 0);
-	CBump(UserCopperList);
 	CMove(UserCopperList, COLOR00, 0x000);
 	CBump(UserCopperList);
 
@@ -130,6 +143,11 @@ BOOL Init_Demo(void)
 		return FALSE;
 	}
 
+	if (!Init_TextLogo())
+	{
+		return FALSE;
+	}
+
 	if (!Init_3DStarfield())
 	{
 		return FALSE;
@@ -150,6 +168,7 @@ void Cleanup_Demo(void)
 	Cleanup_3DStarfield();
 	Cleanup_2DStarfield();
 	Cleanup_SineScroller();
+	Cleanup_TextLogo();
 	Cleanup_CopperList();
 }
 
@@ -270,7 +289,7 @@ int main(void)
 		// Clear bitmap/bitplanes/screen
 		OwnBlitter();
 		lwmf_ClearScreen((long*)RenderPort.BitMap->Planes[0]);
-		lwmf_WaitBlitter();
+		Draw_TextLogo();
 		DisownBlitter();
 		// Call actual demopart
 		(*DemoParts[CurrentDemoPart])();

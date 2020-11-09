@@ -69,7 +69,7 @@ BOOL Init_SineScroller(void)
 	// Pre-calc char positions in map
 	for (UWORD i = 0; i < Font.TextLength; ++i)
 	{
-		Font.Map[i] = 0;
+		Font.Map[i] = 9999;
 
 		for (UWORD j = 0, MapPos = 0; j < Font.CharMapLength; ++j)
 		{
@@ -83,7 +83,7 @@ BOOL Init_SineScroller(void)
 		}
 
 		// char not found, space
-		if (Font.Map[i] == 0)
+		if (Font.Map[i] == 9999)
 		{
 			Font.Map[i] = -1;
 		}
@@ -107,19 +107,8 @@ void Cleanup_SineScroller(void)
 
 void Draw_SineScroller(void)
 {
-	// Test for my own blitting routine!
-	// Just blit an "A" in top-left corner!
-	const WORD SrcModulo = (Font.FontBitmap->Width / 8) - (Font.CharOverallWidth / 16);
-	const long SrcOffset = 0;
-	const WORD DstModulo = SCREENWIDTH/8 * NUMBEROFBITPLANES - (Font.CharOverallWidth / 16);
-	const long DstOffset = 0;
-	const WORD BlitSize = Font.CharHeight * 64 * NUMBEROFBITPLANES + (Font.CharOverallWidth / 16);
-	
-	lwmf_BlitTile((long*)Font.FontBitmap->Image->Planes[0], SrcModulo, SrcOffset, (long*)RenderPort.BitMap->Planes[0], DstModulo, DstOffset, BlitSize);
-
 	for (UWORD i = 0, XPos = Font.ScrollX; i < Font.TextLength; ++i)
 	{
-
 		if (Font.Map[i] == -1)
 		{
 			XPos += Font.CharOverallWidth;
