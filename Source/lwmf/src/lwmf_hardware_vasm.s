@@ -14,7 +14,6 @@ SCREENWIDTH         equ     320
 SCREENHEIGHT        equ     256
 NUMBITPLANES        equ     3
 SCREEN_BROW         equ     SCREENWIDTH/8
-SCREENMODULO        equ     SCREENWIDTH/8*NUMBITPLANES
 SCREENCLRSIZEBLT    equ     128*NUMBITPLANES*64+SCREEN_BROW/2               ; half screen size for blitter part of screen clear (top -> mid)
 SCREENCLRSIZECPU    equ     SCREEN_BROW*SCREENHEIGHT*NUMBITPLANES           ; size for cpu part of screen clear ( bottom -> mid)
 
@@ -371,42 +370,42 @@ _lwmf_ClearScreen::
 ;
 
 _lwmf_SetPixel::
-	movem.l d3-d4,-(sp)             ; save registers
+	movem.l d3-d4,-(sp)                         ; save registers
 
-	muls.w  #SCREENMODULO,d1        ; address offset for line
-	move.w  d0,d3			        ; calc x position
+	muls.w  #SCREEN_BROW*NUMBITPLANES,d1        ; address offset for line
+	move.w  d0,d3			                    ; calc x position
 	not.w   d3			       
-	asr.w   #3,d0			        ; byte offset for x position
+	asr.w   #3,d0			                    ; byte offset for x position
 	add.l   d0,d1
-	moveq   #NUMBITPLANES-1,d4      ; loop through bitplanes
+	moveq   #NUMBITPLANES-1,d4                  ; loop through bitplanes
 .loop:	
-    ror.b   #1,d2                   ; is bit already set?			       
+    ror.b   #1,d2                               ; is bit already set?			       
     bpl.s   .skipbpl
-	bset    d3,(a0,d1.l)	        ; if not -> set it
+	bset    d3,(a0,d1.l)	                    ; if not -> set it
 .skipbpl:
-	lea     SCREEN_BROW(a0),a0	    ; next bitplane
+	lea     SCREEN_BROW(a0),a0	                ; next bitplane
 	dbra    d4,.loop
 
-	movem.l (sp)+,d3-d4             ; restore registers
+	movem.l (sp)+,d3-d4                         ; restore registers
 	rts
 
 ;
-; void lwmf_BlitTile(__reg("a1") long* Src, __reg("d0") WORD Modulo, __reg("a2") long* Dst, __reg("d1") long DstOffset, __reg("d2") WORD Size);
+; void lwmf_BlitTile(__reg("a1") long* SrcAddr, __reg("d0") WORD SrcModulo, __reg("d1") long SrcOffset, __reg("a2") long* DstAddr, __reg("d2") WORD DstModulo, __reg("d3") long DstOffset, __reg("d4") WORD BlitSize);
 ;
 
 _lwmf_BlitTile::
-
     lea     CUSTOM,a0
     bsr     _lwmf_WaitBlitter
-    move.w  d0,BLTAMOD(a0)                                  ; SOURCE_BITMAP_WIDTH/8 - WORDS
-    move.w  #SCREENWIDTH/8*NUMBITPLANES-1,BLTDMOD(a0)       ; TARGET_BITMAP_WIDTH/8 * NUMBITPLANES - WORDS
+
+    move.w  d0,BLTAMOD(a0)              ; SOURCE_BITMAP_WIDTH/8 - WORDS
+    move.w  d2,BLTDMOD(a0)              ; TARGET_BITMAP_WIDTH/8 * NUMBITPLANES - WORDS
 	move.l  #$09F00000,BLTCON0(a0)
     move.l	#$FFFFFFFF,BLTAFWM(a0)	  
+    add.l   d1,a1                       ; Add source offset (in words)
     move.l  a1,BLTAPTH(a0)
-
-    add.l   d1,a2                                           ; Add destination offset
+    add.l   d3,a2                       ; Add destination offset (in words)
     move.l  a2,BLTDPTH(a0)		       
-	move.w  d2,BLTSIZE(a0)                                  ; Number of Lines * 64 * NUMBITPLANES + WORDS
+    move.w  d4,BLTSIZE(a0)              ; Number of Lines * 64 * NUMBITPLANES + WORDS
 
 	rts
 

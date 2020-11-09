@@ -31,12 +31,12 @@ struct Scrollfont
 	WORD ScrollX;
 } Font;
 
-UWORD ScrollSinTab[WIDTH];
+UWORD ScrollSinTab[SCREENWIDTH];
 
 BOOL Init_SineScroller(void)
 {
 	// Generate sinus table
-	for (UWORD i = 0; i < WIDTH; ++i)
+	for (UWORD i = 0; i < SCREENWIDTH; ++i)
 	{
 		ScrollSinTab[i] = 115 + (UWORD)(sin(0.03f * (float)i) * 30.0f);
 	}
@@ -48,7 +48,7 @@ BOOL Init_SineScroller(void)
 	Font.CharHeight = 20;
 	Font.CharSpacing = 1;
 	Font.CharOverallWidth = Font.CharWidth + Font.CharSpacing;
-	Font.ScrollX = WIDTH;
+	Font.ScrollX = SCREENWIDTH;
 	Font.TextLength = strlen(Font.Text);
 	Font.CharMapLength = strlen(Font.CharMap);
 	Font.Length = Font.TextLength * Font.CharOverallWidth;
@@ -109,10 +109,13 @@ void Draw_SineScroller(void)
 {
 	// Test for my own blitting routine!
 	// Just blit an "A" in top-left corner!
-	const WORD Modulo = (Font.FontBitmap->Width / 8) - 1;
-	const WORD Size = Font.CharHeight * 64 * NUMBEROFBITPLANES + (Font.CharOverallWidth / 16);
+	const WORD SrcModulo = (Font.FontBitmap->Width / 8) - (Font.CharOverallWidth / 16);
+	const long SrcOffset = 0;
+	const WORD DstModulo = SCREENWIDTH/8 * NUMBEROFBITPLANES - (Font.CharOverallWidth / 16);
+	const long DstOffset = 0;
+	const WORD BlitSize = Font.CharHeight * 64 * NUMBEROFBITPLANES + (Font.CharOverallWidth / 16);
 	
-	lwmf_BlitTile((long*)Font.FontBitmap->Image->Planes[0], Modulo, (long*)RenderPort.BitMap->Planes[0], 0, Size);
+	lwmf_BlitTile((long*)Font.FontBitmap->Image->Planes[0], SrcModulo, SrcOffset, (long*)RenderPort.BitMap->Planes[0], DstModulo, DstOffset, BlitSize);
 
 	for (UWORD i = 0, XPos = Font.ScrollX; i < Font.TextLength; ++i)
 	{
@@ -127,7 +130,7 @@ void Draw_SineScroller(void)
 		{
 			const UWORD TempPosX = XPos + x1;
 
-			if (TempPosX < WIDTH)
+			if (TempPosX < SCREENWIDTH)
 			{
 				BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, ScrollSinTab[TempPosX], 2, Font.CharHeight, 0xC0, 0x01, NULL);
 			}
@@ -140,7 +143,7 @@ void Draw_SineScroller(void)
 
 	if (Font.ScrollX < -Font.Length)
 	{
-		Font.ScrollX = WIDTH;
+		Font.ScrollX = SCREENWIDTH;
 	}
 }
 

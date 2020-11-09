@@ -33,8 +33,8 @@ BOOL Init_3DStarfield(void)
 
     for (UWORD i = 0; i < NumberOf3DStars; ++i) 
     {
-        Stars3D[i].x = (lwmf_Random() % WIDTH - (WIDTH >> 1)) << 8;
-        Stars3D[i].y = (lwmf_Random() % HEIGHT - (HEIGHT >> 1)) << 8;
+        Stars3D[i].x = (lwmf_Random() % SCREENWIDTH - (SCREENWIDTH >> 1)) << 8;
+        Stars3D[i].y = (lwmf_Random() % SCREENHEIGHT - (SCREENHEIGHT >> 1)) << 8;
         Stars3D[i].z = lwmf_Random() % 800;
     }
 
@@ -60,10 +60,10 @@ void Draw_3DStarfield(void)
 			Stars3D[i].z = 800;
 		}
 		
-		const UWORD x = Stars3D[i].x / Stars3D[i].z + WIDTHMID;
-		const UWORD y = Stars3D[i].y / Stars3D[i].z + HEIGHTMID;
+		const UWORD x = Stars3D[i].x / Stars3D[i].z + SCREENWIDTHMID;
+		const UWORD y = Stars3D[i].y / Stars3D[i].z + SCREENHEIGHTMID;
 		
-		if (x < WIDTH && y > UPPERBORDERLINE && y < LOWERBORDERLINE)
+		if (x < SCREENWIDTH && y > UPPERBORDERLINE && y < LOWERBORDERLINE)
 		{
 			lwmf_SetPixel(x, y, (Stars3D[i].z >> 8) + 1, (long*)RenderPort.BitMap->Planes[0]);
 		}

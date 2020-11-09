@@ -79,8 +79,8 @@ void Init_FilledVectorCube(void)
 			CubeDef[i].y = CubeDef[i].y * CosA + x * SinA;
 
 			// 2D projection & translate
-			CubePreCalc[Pre].Cube[i].x = (WIDTH >> 1) + (UWORD)CubeDef[i].x;
-			CubePreCalc[Pre].Cube[i].y = (HEIGHT >> 1) + (UWORD)CubeDef[i].y - 5;
+			CubePreCalc[Pre].Cube[i].x = (SCREENWIDTH >> 1) + (UWORD)CubeDef[i].x;
+			CubePreCalc[Pre].Cube[i].y = (SCREENHEIGHT >> 1) + (UWORD)CubeDef[i].y - 5;
 		}
 
 		// selection-sort of depth/faces

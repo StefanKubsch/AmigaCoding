@@ -25,13 +25,13 @@
 // Screen settings
 //
 
-#define WIDTH				320
-#define HEIGHT				256
-#define WIDTHMID			(WIDTH >> 1)
-#define HEIGHTMID			(HEIGHT >> 1)
+#define SCREENWIDTH			320
+#define SCREENHEIGHT		256
+#define SCREENWIDTHMID		(SCREENWIDTH >> 1)
+#define SCREENHEIGHTMID		(SCREENHEIGHT >> 1)
 #define LINEPOS				20
 #define UPPERBORDERLINE		LINEPOS
-#define LOWERBORDERLINE		(HEIGHT - LINEPOS)
+#define LOWERBORDERLINE		(SCREENHEIGHT - LINEPOS)
 
 // Here we define, how many bitplanes we want to use...
 // Colors / number of required Bitplanes
@@ -191,7 +191,7 @@ int main(void)
 	lwmf_CheckCPU();
 	
 	// Setup screen
-	if (!lwmf_CreateViewPort(WIDTH, HEIGHT, NUMBEROFBITPLANES, NUMBEROFCOLORS))
+	if (!lwmf_CreateViewPort(SCREENWIDTH, SCREENHEIGHT, NUMBEROFBITPLANES, NUMBEROFCOLORS))
     {
         lwmf_CleanupAll();
 		return 20;
