@@ -10,17 +10,17 @@
 ;
 
 _lwmf_Random:
-    move.l  seed(pc),d0
-    addq.l  #5,d0
-    rol.l   d0,d0
-    move.l  d0,seed
-    rts    
+	move.l  seed(pc),d0
+	addq.l  #5,d0
+	rol.l   d0,d0
+	move.l  d0,seed
+	rts    
 
-    public _lwmf_Random
-    
+	public _lwmf_Random
+	
 ; ***************************************************************************************************
 ; * Variables                                                                                       *
 ; ***************************************************************************************************
 
 seed:
-    dc.l    $12345678
+	dc.l    $12345678
