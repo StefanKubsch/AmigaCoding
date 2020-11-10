@@ -89,7 +89,7 @@ void Update_CopperList(void)
 	// Set mouse pointer to blank sprite
 	CMove(UserCopperList, SPR0PTH, (LONG)&BlankMousePointer);
 	CBump(UserCopperList);
-    CMove(UserCopperList, SPR0PTL, (LONG)&BlankMousePointer);
+	CMove(UserCopperList, SPR0PTL, (LONG)&BlankMousePointer);
 	CBump(UserCopperList);
 
 	// Setup background
@@ -131,7 +131,7 @@ void Update_CopperList(void)
 void Cleanup_CopperList(void)
 {
 	if (viewPort.UCopIns)
-    {
+	{
 		FreeVPortCopLists(&viewPort);
 	}
 }
@@ -194,11 +194,11 @@ inline void DemoPart4(void)
 
 int main(void)
 {
-    // Load libraries
-    // Exit with SEVERE Error (20) if something goes wrong
+	// Load libraries
+	// Exit with SEVERE Error (20) if something goes wrong
 	if (lwmf_LoadLibraries() != 0)
 	{
-        lwmf_CleanupAll();
+		lwmf_CleanupAll();
 		return 20;
 	}
 
@@ -211,17 +211,17 @@ int main(void)
 	
 	// Setup screen
 	if (!lwmf_CreateViewPort(SCREENWIDTH, SCREENHEIGHT, NUMBEROFBITPLANES, NUMBEROFCOLORS))
-    {
-        lwmf_CleanupAll();
+	{
+		lwmf_CleanupAll();
 		return 20;
-    }
+	}
 
-    // Init the RenderPort (=Rastport)
+	// Init the RenderPort (=Rastport)
 	// We need to init some buffers for Area operations
 	// Since our demo part draws some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
 	if (!lwmf_CreateRenderPort(5, 130, 130))
 	{
-        lwmf_CleanupAll();
+		lwmf_CleanupAll();
 		return 20;
 	}
 

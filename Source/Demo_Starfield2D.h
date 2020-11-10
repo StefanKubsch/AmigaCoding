@@ -14,9 +14,9 @@ void Draw_2DStarfield(void);
 
 struct StarStruct2D
 {
-    UWORD x;
-    UWORD y;
-    UWORD z;
+	UWORD x;
+	UWORD y;
+	UWORD z;
 } *Stars2D;
 
 UWORD NumberOf2DStars;
@@ -31,12 +31,12 @@ BOOL Init_2DStarfield(void)
 		return FALSE;
 	}
 
-    for (UWORD i = 0; i < NumberOf2DStars; ++i) 
-    {
-        Stars2D[i].x = lwmf_Random() % SCREENWIDTH;
-        Stars2D[i].y = lwmf_Random() % (LOWERBORDERLINE - UPPERBORDERLINE) + UPPERBORDERLINE;
-        Stars2D[i].z = lwmf_Random() % 3 + 1;
-    }
+	for (UWORD i = 0; i < NumberOf2DStars; ++i) 
+	{
+		Stars2D[i].x = lwmf_Random() % SCREENWIDTH;
+		Stars2D[i].y = lwmf_Random() % (LOWERBORDERLINE - UPPERBORDERLINE) + UPPERBORDERLINE;
+		Stars2D[i].z = lwmf_Random() % 3 + 1;
+	}
 
 	return TRUE;
 }
@@ -58,8 +58,8 @@ void Draw_2DStarfield(void)
 		if (Stars2D[i].x >= SCREENWIDTH) 
 		{
 			Stars2D[i].x = 0;
-		    Stars2D[i].y = lwmf_Random() % (LOWERBORDERLINE - UPPERBORDERLINE) + UPPERBORDERLINE;
-	        Stars2D[i].z = lwmf_Random() % 3 + 1;
+			Stars2D[i].y = lwmf_Random() % (LOWERBORDERLINE - UPPERBORDERLINE) + UPPERBORDERLINE;
+			Stars2D[i].z = lwmf_Random() % 3 + 1;
 		}
 		
 		lwmf_SetPixel(Stars2D[i].x, Stars2D[i].y, Stars2D[i].z, (long*)RenderPort.BitMap->Planes[0]);

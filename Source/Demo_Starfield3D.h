@@ -14,9 +14,9 @@ void Draw_3DStarfield(void);
 
 struct StarStruct3D
 {
-    WORD x;
-    WORD y;
-    WORD z;
+	WORD x;
+	WORD y;
+	WORD z;
 } *Stars3D;
 
 UWORD NumberOf3DStars;
@@ -31,12 +31,12 @@ BOOL Init_3DStarfield(void)
 		return FALSE;
 	}
 
-    for (UWORD i = 0; i < NumberOf3DStars; ++i) 
-    {
-        Stars3D[i].x = (lwmf_Random() % SCREENWIDTH - (SCREENWIDTH >> 1)) << 8;
-        Stars3D[i].y = (lwmf_Random() % SCREENHEIGHT - (SCREENHEIGHT >> 1)) << 8;
-        Stars3D[i].z = lwmf_Random() % 800;
-    }
+	for (UWORD i = 0; i < NumberOf3DStars; ++i) 
+	{
+		Stars3D[i].x = (lwmf_Random() % SCREENWIDTH - (SCREENWIDTH >> 1)) << 8;
+		Stars3D[i].y = (lwmf_Random() % SCREENHEIGHT - (SCREENHEIGHT >> 1)) << 8;
+		Stars3D[i].z = lwmf_Random() % 800;
+	}
 
 	return TRUE;
 }

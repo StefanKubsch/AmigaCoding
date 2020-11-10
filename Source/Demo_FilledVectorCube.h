@@ -59,7 +59,7 @@ void Init_FilledVectorCube(void)
 	}
 
 	const float CosA = cos(0.04f);
-    const float SinA = sin(0.04f);
+	const float SinA = sin(0.04f);
 
 	for (UBYTE Pre = 0; Pre < 90; ++Pre)
 	{

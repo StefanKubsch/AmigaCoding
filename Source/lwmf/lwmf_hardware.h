@@ -22,8 +22,8 @@ volatile UWORD* const COLOR00		= (volatile UWORD* const) 0xDFF180;
 // "__chip" tells vbcc to store an array or variable in Chipmem!
 __chip UWORD BlankMousePointer[4] = 
 {
-    0x0000, 0x0000,
-    0x0000, 0x0000
+	0x0000, 0x0000,
+	0x0000, 0x0000
 };
 
 BOOL FastCPUFlag = FALSE;

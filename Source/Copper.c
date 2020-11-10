@@ -185,11 +185,11 @@ void Update_Copperbar(void)
 
 int main()
 {
-    // Load libraries
-    // Exit with SEVERE Error (20) if something goes wrong
+	// Load libraries
+	// Exit with SEVERE Error (20) if something goes wrong
 	if (lwmf_LoadLibraries() != 0)
 	{
-        lwmf_CleanupAll();
+		lwmf_CleanupAll();
 		return 20;
 	}
 
@@ -199,13 +199,13 @@ int main()
 	// Init and load copperlist & screen
 	if (!Init_CopperList())
 	{
-        lwmf_CleanupAll();
+		lwmf_CleanupAll();
 		return 20;
 	}
 
 	OwnBlitter();
 
-    // Wait until mouse button is pressed...
+	// Wait until mouse button is pressed...
 	// PRA_FIR0 = Bit 6 (0x40)
 	while (*CIAA_PRA & 0x40)
 	{
