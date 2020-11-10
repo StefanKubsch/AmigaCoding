@@ -20,33 +20,33 @@ SCREENCLRSIZECPU    equ     SCREEN_BROW*SCREENHEIGHT*NUMBITPLANES           ; si
 ; Custom registers
 
 EXECBASE            equ     $4
-CUSTOM		        equ     $00DFF000 ; Base address of custom registers
+CUSTOM		        equ     $00DFF000		; Base address of custom registers
 
-ADKCON              equ     $09E      ; Audio/Disk control read/write
-ADKCONR             equ     $010      ; Audio/Disk control read
-BLTCON0 	        equ     $040      ; Blitter control reg 0
-BLTCON1 	        equ     $042      ; Blitter control reg 1
-BLTAFWM             equ     $044      ; Blitter first-word mask for source A
-BLTALWM             equ     $046      ; Blitter last-word mask for source A
-BLTAPTH             equ     $050      ; Blitter pointer to destination A (high 5 bits)
-BLTAPTL             equ     $052      ; Blitter pointer to destination A (low 15 bits)
-BLTDPTH		        equ     $054      ; Blitter pointer to destination D (high 5 bits)
-BLTDPTL             equ     $056      ; Blitter pointer to destination D (low 15 bits)
-BLTSIZE 	        equ     $058      ; Blitter start and size (win/width, height)
-BLTAMOD             equ     $064      ; Blitter modulo for destination A
-BLTDMOD 	        equ     $066      ; Blitter modulo for destination D
-BLTADAT             equ     $074      ; Blitter source A data register
-COP1LCH             equ     $080      ; Coprocessor first location register (high 5 bits)
-COP1LCL             equ     $082      ; Coprocessor first location register (low 15 bits)
-DMACON              equ     $096      ; DMA control (and blitter status) read/write
-DMACONR             equ     $002      ; DMA control (and blitter status) read
-INTENA              equ     $09A      ; Interrupt enable read/write
-INTENAR             equ     $01C      ; Interrupt enable read
-INTREQ              equ     $09C      ; Interrupt request read/write
-INTREQR             equ     $01E      ; Interrupr request read
-VPOSR               equ     $004      ; Read vert most sig. bits (and frame flop)
+ADKCON              equ     $00DFF09E		; Audio/Disk control read/write
+ADKCONR             equ     $00DFF010		; Audio/Disk control read
+BLTCON0 	        equ     $00DFF040		; Blitter control reg 0
+BLTCON1 	        equ     $00DFF042		; Blitter control reg 1
+BLTAFWM             equ     $00DFF044		; Blitter first-word mask for source A
+BLTALWM             equ     $00DFF046		; Blitter last-word mask for source A
+BLTAPTH             equ     $00DFF050		; Blitter pointer to destination A (high 5 bits)
+BLTAPTL             equ     $00DFF052		; Blitter pointer to destination A (low 15 bits)
+BLTDPTH		        equ     $00DFF054		; Blitter pointer to destination D (high 5 bits)
+BLTDPTL             equ     $00DFF056		; Blitter pointer to destination D (low 15 bits)
+BLTSIZE 	        equ     $00DFF058		; Blitter start and size (win/width, height)
+BLTAMOD             equ     $00DFF064		; Blitter modulo for destination A
+BLTDMOD 	        equ     $00DFF066		; Blitter modulo for destination D
+BLTADAT             equ     $00DFF074		; Blitter source A data register
+COP1LCH             equ     $00DFF080		; Coprocessor first location register (high 5 bits)
+COP1LCL             equ     $00DFF082		; Coprocessor first location register (low 15 bits)
+DMACON              equ     $00DFF096		; DMA control (and blitter status) read/write
+DMACONR             equ     $00DFF002		; DMA control (and blitter status) read
+INTENA              equ     $00DFF09A		; Interrupt enable read/write
+INTENAR             equ     $00DFF01C		; Interrupt enable read
+INTREQ              equ     $00DFF09C		; Interrupt request read/write
+INTREQR             equ     $00DFF01E		; Interrupr request read
+VPOSR               equ     $00DFF004		; Read vert most sig. bits (and frame flop)
 
-DMAB_BLTDONE        equ     14        ; DMACONR bit 14 - blitter busy flag
+DMAB_BLTDONE        equ		6				; DMACONR bit 14 - blitter busy flag
 
 ; Library vector offsets (LVO)
 
@@ -170,17 +170,16 @@ _lwmf_CloseLibraries::
 _lwmf_TakeOverOS::
 	movem.l a6,-(sp)                ; save register on stack
 
-	lea     CUSTOM,a0
-	move.w  DMACONR(a0),d0          ; store current custom registers for later restore
+	move.w  DMACONR,d0          	; store current custom registers for later restore
 	or.w    #$8000,d0
 	move.w  d0,olddma
-	move.w  INTENAR(a0),d0
+	move.w  INTENAR,d0
 	or.w    #$8000,d0
 	move.w  d0,oldintena
-	move.w  INTREQR(a0),d0
+	move.w  INTREQR,d0
 	or.w    #$8000,d0
 	move.w  d0,oldintreq
-	move.w  ADKCONR(a0),d0
+	move.w  ADKCONR,d0
 	or.w    #$8000,d0
 	move.w  d0,oldadkcon
 
@@ -193,8 +192,8 @@ _lwmf_TakeOverOS::
 	jsr     LVOWaitTOF(a6)
 
 	bsr     _lwmf_WaitVertBlank
-	move.w  #$7FFF,DMACON(a0)       ; clear DMACON / Description: http://amiga-dev.wikidot.com/hardware:dmaconr
-	move.w  #$83C0,DMACON(a0)       ; set DMACON to 1000001111000000 = $83C0
+	move.w  #$7FFF,DMACON       	; clear DMACON / Description: http://amiga-dev.wikidot.com/hardware:dmaconr
+	move.w  #$83C0,DMACON       	; set DMACON to 1000001111000000 = $83C0
 
 	move.l	EXECBASE.w,a6
 	sub.l   a1,a1                   ; find current task
@@ -215,16 +214,15 @@ _lwmf_TakeOverOS::
 _lwmf_ReleaseOS::
 	movem.l a6,-(sp)                    ; save register on stack
 
-	lea     CUSTOM,a0
-	move.w  #$7FFF,DMACON(a0)
-	move.w  olddma(pc),DMACON(a0)
-	move.w  #$7FFF,INTENA(a0)
-	move.w  oldintena(pc),INTENA(a0)
-	move.w  #$7FFF,INTREQ(a0)
-	move.w  oldintreq(pc),INTREQ(a0)
-	move.w  #$7FFF,ADKCON(a0)
-	move.w  oldadkcon(pc),ADKCON(a0)
-	move.l  oldcopper(pc),COP1LCH(a0)   ; restore system copperlist
+	move.w  #$7FFF,DMACON
+	move.w  olddma(pc),DMACON
+	move.w  #$7FFF,INTENA
+	move.w  oldintena(pc),INTENA
+	move.w  #$7FFF,INTREQ
+	move.w  oldintreq(pc),INTREQ
+	move.w  #$7FFF,ADKCON
+	move.w  oldadkcon(pc),ADKCON
+	move.l  oldcopper(pc),COP1LCH		; restore system copperlist
 
 	move.l  _GfxBase(pc),a6             ; use graphics.library base address
 	move.l  oldview(pc),a1              ; restore saved view
@@ -247,11 +245,11 @@ _lwmf_ReleaseOS::
 ;
 
 _lwmf_WaitBlitter::
-	lea     CUSTOM,a0
-	btst.b  #DMAB_BLTDONE-8,DMACONR(a0) 	; check against DMACONR
-.loop:                                      ; check twice, bug in A1000
-	btst.b 	#DMAB_BLTDONE-8,DMACONR(a0) 		
+	move.w	#$8400,DMACON				; enable "blitter nasty"
+.loop:
+	btst.b 	#DMAB_BLTDONE,DMACONR 		; check blitter busy flag
 	bne.s 	.loop
+	move.w	#$0400,DMACON				; disable blitter nasty
 	rts
 
 ;
@@ -259,14 +257,13 @@ _lwmf_WaitBlitter::
 ;
 
 _lwmf_WaitVertBlank::
-	lea     CUSTOM,a0
 .loop: 
-	move.l  VPOSR(a0),d0
+	move.l  VPOSR,d0
 	and.l   #$0001FF00,d0
 	cmp.l   #311<<8,d0          ; check if line 311 is reached (line 311 = maximum PAL line)
 	bne.s   .loop
 .loop2:                        
-	move.l  VPOSR(a0),d0
+	move.l  VPOSR,d0
 	and.l   #$0001FF00,d0
 	cmp.l   #311<<8,d0
 	beq.s   .loop2
@@ -277,7 +274,7 @@ _lwmf_WaitVertBlank::
 ;
 
 _lwmf_ClearMemCPU::
-	movem.l d2-d6/a2-a6,-(sp)       ; save all registers
+	movem.l d2-d7/a2-a6,-(sp)       ; save all registers
 
 	lea     zeros(pc),a0
 	add.l   d7,a1                   ; we go top -> down
@@ -310,7 +307,7 @@ _lwmf_ClearMemCPU::
 	move.l  d0,-(a1)                ; set memory by one long word at a time
 	dbra    d7,.setword
 .done:
-	movem.l (sp)+,d2-d6/a2-a6       ; restore registers
+	movem.l (sp)+,d2-d7/a2-a6       ; restore registers
 	rts
 
 ;
@@ -321,13 +318,12 @@ _lwmf_ClearScreen::
 	movem.l d2-d7/a2-a6,-(sp)       ; save all registers
 
 	; Clear first half of screen with blitter
-	lea     CUSTOM,a0
 	bsr     _lwmf_WaitBlitter
 	moveq   #0,d0
-	move.w  d0,BLTDMOD(a0)			       
-	move.l  #$01000000,BLTCON0(a0)	  
-	move.l  a1,BLTDPTH(a0)		       
-	move.w  #SCREENCLRSIZEBLT,BLTSIZE(a0)
+	move.w  d0,BLTDMOD		       
+	move.l  #$01000000,BLTCON0	  
+	move.l  a1,BLTDPTH		       
+	move.w  #SCREENCLRSIZEBLT,BLTSIZE
 
 	; Clear rest of screen with cpu
 	lea     zeros(pc),a0
@@ -370,7 +366,7 @@ _lwmf_ClearScreen::
 ;
 
 _lwmf_SetPixel::
-	movem.l d3-d4,-(sp)                         ; save registers
+	movem.l d2-d4,-(sp)                         ; save registers
 
 	muls.w  #SCREEN_BROW*NUMBITPLANES,d1        ; address offset for line
 	move.w  d0,d3			                    ; calc x position
@@ -386,7 +382,7 @@ _lwmf_SetPixel::
 	lea     SCREEN_BROW(a0),a0	                ; next bitplane
 	dbra    d4,.loop
 
-	movem.l (sp)+,d3-d4                         ; restore registers
+	movem.l (sp)+,d2-d4                         ; restore registers
 	rts
 
 ;
@@ -394,19 +390,21 @@ _lwmf_SetPixel::
 ;
 
 _lwmf_BlitTile::
-	lea     CUSTOM,a0
+	movem.l d2-d4/a2,-(sp)				; save registers
+
 	bsr     _lwmf_WaitBlitter
 
-	move.w  d0,BLTAMOD(a0)              ; SOURCE_BITMAP_WIDTH/8 - WORDS
-	move.w  d2,BLTDMOD(a0)              ; TARGET_BITMAP_WIDTH/8 * NUMBITPLANES - WORDS
-	move.l  #$09F00000,BLTCON0(a0)      ; D = A ($F0)
-	move.l	#$FFFFFFFF,BLTAFWM(a0)	  
-	add.l   d1,a1                       ; Add source offset (in bytes)
-	move.l  a1,BLTAPTH(a0)
-	add.l   d3,a2                       ; Add destination offset (in bytes)
-	move.l  a2,BLTDPTH(a0)		       
-	move.w  d4,BLTSIZE(a0)              ; Number of Lines * 64 + WORDS
+	move.w  d0,BLTAMOD				; SOURCE_BITMAP_WIDTH/8 - WORDS
+	move.w  d2,BLTDMOD				; TARGET_BITMAP_WIDTH/8 * NUMBITPLANES - WORDS
+	move.l  #$09F00000,BLTCON0		; D = A ($F0)
+	move.l	#$FFFFFFFF,BLTAFWM	  
+	add.l   d1,a1                   ; Add source offset (in bytes)
+	move.l  a1,BLTAPTH
+	add.l   d3,a2                   ; Add destination offset (in bytes)
+	move.l  a2,BLTDPTH		       
+	move.w  d4,BLTSIZE              ; Number of Lines * 64 + WORDS
 
+	movem.l (sp)+,d2-d4/a2			; restore registers
 	rts
 
 ; ***************************************************************************************************

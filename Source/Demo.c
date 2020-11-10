@@ -59,9 +59,6 @@ void Update_CopperList(void);
 void Cleanup_CopperList(void);
 BOOL Init_Demo(void);
 void Cleanup_Demo(void);
-inline void DemoPart1(void);
-inline void DemoPart2(void);
-inline void DemoPart3(void);
 
 BOOL Init_CopperList(void)
 {
@@ -172,26 +169,6 @@ void Cleanup_Demo(void)
 	Cleanup_CopperList();
 }
 
-inline void DemoPart1(void)
-{
-	Draw_SineScroller();
-}
-
-inline void DemoPart2(void)
-{
-	Draw_2DStarfield();
-}
-
-inline void DemoPart3(void)
-{
-	Draw_FilledVectorCube();
-}
-
-inline void DemoPart4(void)
-{
-	Draw_3DStarfield();
-}
-
 int main(void)
 {
 	// Load libraries
@@ -255,7 +232,7 @@ int main(void)
 	// Our parts, packed into an array of function pointers
 	const void (*DemoParts[4])() =
 	{
-		DemoPart1, DemoPart2, DemoPart3, DemoPart4
+		Draw_SineScroller, Draw_2DStarfield, Draw_FilledVectorCube, Draw_3DStarfield
 	};
 
 	// Loop control
