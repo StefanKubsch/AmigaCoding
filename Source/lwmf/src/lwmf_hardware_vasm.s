@@ -390,7 +390,7 @@ _lwmf_SetPixel::
 ;
 
 _lwmf_BlitTile::
-	movem.l d2-d4/a2,-(sp)				; save registers
+	movem.l d2-d4/a2,-(sp)			; save registers
 
 	bsr     _lwmf_WaitBlitter
 
