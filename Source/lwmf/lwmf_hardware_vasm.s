@@ -115,11 +115,11 @@ _lwmf_LoadLibraries::
 	tst.l   d0                     
 	beq.s   .open_failed
 	move.l  d0,_DataTypesBase       
-	
+
 	moveq   #0,d0                   ; return with success
 	movea.l (sp)+,a6                ; restore registers
 	rts
-.open_failed:
+.open_failed
 	bsr.b   _lwmf_CloseLibraries
 	moveq   #20,d0                  ; return with error
 	movea.l (sp)+,a6                ; restore register
@@ -143,17 +143,17 @@ _lwmf_CloseLibraries::
 	tst.l   d0
 	bne.s   .closegraphicslib
 	rts
-.closedatatypelib:
+.closedatatypelib
 	move.l  d0,a1                           
 	jsr     LVOCloseLibrary(a6) 
 	move.l  #0,_DataTypesBase
 	rts
-.closeintuitionlib:
+.closeintuitionlib
 	move.l  d0,a1                           
 	jsr     LVOCloseLibrary(a6)    
 	move.l  #0,_IntuitionBase
 	rts
-.closegraphicslib:
+.closegraphicslib
 	move.l  d0,a1                           
 	jsr     LVOCloseLibrary(a6)    
 	move.l  #0,_GfxBase
@@ -246,7 +246,7 @@ _lwmf_ReleaseOS::
 
 _lwmf_WaitBlitter::
 	move.w	#$8400,DMACON				; enable "blitter nasty"
-.loop:
+.loop
 	btst.b 	#DMAB_BLTDONE,DMACONR 		; check blitter busy flag
 	bne.s 	.loop
 	move.w	#$0400,DMACON				; disable blitter nasty
@@ -257,17 +257,12 @@ _lwmf_WaitBlitter::
 ;
 
 _lwmf_WaitVertBlank::
-.loop: 
-	move.l  VPOSR,d0
-	and.l   #$0001FF00,d0
-	cmp.l   #311<<8,d0          ; check if line 311 is reached (line 311 = maximum PAL line)
-	bne.s   .loop
-.loop2:                        
-	move.l  VPOSR,d0
-	and.l   #$0001FF00,d0
-	cmp.l   #311<<8,d0
-	beq.s   .loop2
-	rts
+.wait  
+	move.l	VPOSR,d0
+    and.l	#$1FF00,d0
+    cmp.l	#303<<8,d0
+    bne.b	.wait						 
+    rts
 
 ;
 ; void lwmf_ClearMemCPU(__reg("a1") long* StartAddress, __reg("d7") long NumberOfBytes);
@@ -284,7 +279,7 @@ _lwmf_ClearMemCPU::
 	beq.s   .clear                  ; branch if we have no complete block
 	subq.l  #1,d6                   ; one less to get loop working
 	movem.l (a0),d0-d5/a2-a6        ; we use eight registers -> equals 32 bytes
-.clearblock:
+.clearblock
 	movem.l d0-d5/a2-a6,-(a1)       ; 11 registers -> clear 44 bytes at once
 	movem.l d0-d5/a2-a6,-(a1)
 	movem.l d0-d5/a2-a6,-(a1) 
@@ -298,15 +293,15 @@ _lwmf_ClearMemCPU::
 	movem.l d0-d5/a2-a6,-(a1) 
 	movem.l d0-d5/a2,-(a1)          ; 7 registers
 	dbra    d6,.clearblock
-.clear:
+.clear
 	and.l   #$0F,d7                 ; check how many long words we still have
 	beq.s   .done
 	subq.l  #1,d7                   ; one less to get loop working
 	move.l  (a0),a1
-.setword:
+.setword
 	move.l  d0,-(a1)                ; set memory by one long word at a time
 	dbra    d7,.setword
-.done:
+.done
 	movem.l (sp)+,d2-d7/a2-a6       ; restore registers
 	rts
 
@@ -335,7 +330,7 @@ _lwmf_ClearScreen::
 	beq.s   .clear                  ; branch if we have no complete block
 	subq.l  #1,d6                   ; one less to get loop working
 	movem.l (a0),d0-d5/a2-a6        ; we use eight registers -> equals 32 bytes
-.clearblock:
+.clearblock
 	movem.l d0-d5/a2-a6,-(a1)       ; 11 registers -> clear 44 bytes at once
 	movem.l d0-d5/a2-a6,-(a1)
 	movem.l d0-d5/a2-a6,-(a1) 
@@ -349,15 +344,15 @@ _lwmf_ClearScreen::
 	movem.l d0-d5/a2-a6,-(a1) 
 	movem.l d0-d5/a2,-(a1)          ; 7 registers
 	dbra    d6,.clearblock
-.clear:
+.clear
 	and.l   #$0F,d7                 ; check how many long words we still have
 	beq.s   .done
 	subq.l  #1,d7                   ; one less to get loop working
 	move.l  (a0),a1
-.setword:
+.setword
 	move.l  d0,-(a1)                ; set memory by one long word at a time
 	dbra    d7,.setword
-.done:
+.done
 	movem.l (sp)+,d2-d7/a2-a6       ; restore registers
 	rts
 
@@ -374,11 +369,11 @@ _lwmf_SetPixel::
 	asr.w   #3,d0			                    ; byte offset for x position
 	add.l   d0,d1
 	moveq   #NUMBITPLANES-1,d4                  ; loop through bitplanes
-.loop:	
+.loop
 	ror.b   #1,d2                               ; is bit already set?			       
 	bpl.s   .skipbpl
 	bset    d3,(a0,d1.l)	                    ; if not -> set it
-.skipbpl:
+.skipbpl
 	lea     SCREEN_BROW(a0),a0	                ; next bitplane
 	dbra    d4,.loop
 
@@ -439,6 +434,12 @@ oldview:
 
 oldcopper:
 	dc.l    0
+
+modfile:
+	dc.b	"sfx/hardwired2.mod",0
+
+ptrmod:
+	dc.l	0
 
 ;
 ; Libraries
