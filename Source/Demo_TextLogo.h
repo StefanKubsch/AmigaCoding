@@ -50,9 +50,9 @@ BOOL Init_TextLogo(void)
 	TextFont.CharOverallWidth = TextFont.CharWidth + TextFont.CharSpacing;
 	TextFont.TextLength = strlen(TextFont.Text);
 	TextFont.CharMapLength = strlen(TextFont.CharMap);
-	TextFont.SrcModulo = (TextFont.FontBitmap->Width >> 3) - (TextFont.CharOverallWidth >> 4);
-	TextFont.DstModulo = (SCREENWIDTH >> 3) * NUMBEROFBITPLANES - (TextFont.CharOverallWidth >> 4);
-	TextFont.BlitSize = (TextFont.CharHeight << 6) + (TextFont.CharOverallWidth >> 4);
+	TextFont.SrcModulo = (TextFont.FontBitmap->Width >> 3) - 1;
+	TextFont.DstModulo = ((SCREENWIDTH >> 3) * NUMBEROFBITPLANES) - 1;
+	TextFont.BlitSize = (TextFont.CharHeight << 6) + 1;
 
 	if (!(TextFont.Map = AllocVec(sizeof(WORD) * TextFont.TextLength, MEMF_ANY | MEMF_CLEAR)))
 	{
@@ -100,13 +100,12 @@ void Cleanup_TextLogo(void)
 
 void Draw_TextLogo(void)
 {
-	// Calc offset: Number of lines * (SCREENWIDTH/8) * NUMBEROFBITPLANES + x
-	WORD XPos = 234 * (SCREENWIDTH >> 3) * NUMBEROFBITPLANES + 30;
+	WORD XPos = 175;
 
 	for (UWORD i = 0; i < TextFont.TextLength; ++i)
 	{
-		lwmf_BlitTile((long*)TextFont.FontBitmap->Image->Planes[0], TextFont.SrcModulo, TextFont.Map[i], (long*)RenderPort.BitMap->Planes[0], TextFont.DstModulo, XPos, TextFont.BlitSize);
-		XPos += 2;
+		lwmf_BlitTile((long*)TextFont.FontBitmap->Image->Planes[0], TextFont.SrcModulo, TextFont.Map[i], (long*)RenderPort.BitMap->Planes[0], TextFont.DstModulo, XPos, 234, TextFont.BlitSize);
+		XPos += TextFont.CharOverallWidth << 1;
 	}
 }
 

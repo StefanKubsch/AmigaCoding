@@ -381,25 +381,43 @@ _lwmf_SetPixel::
 	rts
 
 ;
-; void lwmf_BlitTile(__reg("a1") long* SrcAddr, __reg("d0") WORD SrcModulo, __reg("d1") long SrcOffset, __reg("a2") long* DstAddr, __reg("d2") WORD DstModulo, __reg("d3") long DstOffset, __reg("d4") WORD BlitSize);
+; void lwmf_BlitTile(__reg("a1") long* SrcAddr, __reg("d0") WORD SrcModulo, __reg("d1") long SrcOffset, __reg("a2") long* DstAddr, __reg("d2") WORD DstModulo, __reg("d3") long PosX, __reg("d4") long PosY, __reg("d5") WORD BlitSize);
 ;
 
 _lwmf_BlitTile::
-	movem.l d2-d4/a2,-(sp)			; save registers
+	movem.l d2-d6/a2,-(sp)						; save registers
 
 	bsr     _lwmf_WaitBlitter
 
-	move.w  d0,BLTAMOD				; SOURCE_BITMAP_WIDTH/8 - WORDS
-	move.w  d2,BLTDMOD				; TARGET_BITMAP_WIDTH/8 * NUMBITPLANES - WORDS
-	move.l  #$09F00000,BLTCON0		; D = A ($F0)
-	move.l	#$FFFFFFFF,BLTAFWM	  
-	add.l   d1,a1                   ; Add source offset (in bytes)
-	move.l  a1,BLTAPTH
-	add.l   d3,a2                   ; Add destination offset (in bytes)
-	move.l  a2,BLTDPTH		       
-	move.w  d4,BLTSIZE              ; Number of Lines * 64 + WORDS
+	subq.w	#2,d0								; subtract 2 because of barrel shift
+	move.w  d0,BLTAMOD							; SOURCE_BITMAP_WIDTH/8 - WORDS
+	subq.w	#2,d2								; subtract 2 because of barrel shift
+	move.w  d2,BLTDMOD							; TARGET_BITMAP_WIDTH/8 * NUMBITPLANES - WORDS
 
-	movem.l (sp)+,d2-d4/a2			; restore registers
+	move.l	d3,d6
+	lsr.l	#4,d6         						; PosX shift right 4 bits  
+	lsl.l	#1,d6         						; PosX shift left 1 bit
+	mulu	#SCREEN_BROW*NUMBITPLANES,d4        ; multiply PosY
+	add.l	d6,a2         						; add PosX to DstAddr
+	add.l	d4,a2         						; add PosY to DstAddr
+	move.l  a2,BLTDPTH		       
+
+	andi.l	#$F,d3        						; clear all but first byte of PosX
+	lsl.l	#8,d3         						; shift left 8 bits (max allowed)
+	lsl.l	#4,d3         						; shift left another 4 bits
+	add.w	#$09F0,d3     						; D = A ($F0)
+	
+	move.w  d3,BLTCON0
+	move.w	#$0000,BLTCON1 
+	move.l	#$FFFF0000,BLTAFWM					; mask out first word	  
+	
+	add.l   d1,a1                   			; add source offset (in bytes)
+	move.l  a1,BLTAPTH
+		
+	addq.w	#1,d5								; add one because of barrel shift
+	move.w  d5,BLTSIZE              			; number of Lines * 64 + WORDS
+
+	movem.l (sp)+,d2-d6/a2						; restore registers
 	rts
 
 ; ***************************************************************************************************
