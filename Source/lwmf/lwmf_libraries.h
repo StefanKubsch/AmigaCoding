@@ -18,7 +18,7 @@
 
 // Hardware
 
-__reg("d0") ULONG lwmf_LoadLibraries(void);
+ULONG lwmf_LoadLibraries(void);
 void lwmf_CloseLibraries();
 void lwmf_TakeOverOS(void);
 void lwmf_ReleaseOS(void);

@@ -89,7 +89,7 @@ MINVERSION          equ     39        ; set required version (39 -> Amiga OS 3.0
 ; **************************************************************************
 
 ;
-; __reg("d0") ULONG lwmf_LoadLibraries(void);
+; ULONG lwmf_LoadLibraries(void);
 ;
 
 _lwmf_LoadLibraries::
@@ -100,23 +100,20 @@ _lwmf_LoadLibraries::
 	lea     gfxlib(pc),a1           ; load graphics.library
 	moveq   #MINVERSION,d0
 	jsr     LVOOpenLibrary(a6)      
-	tst.l   d0                      ; check if loading was successful
-	beq.s   .open_failed            ; if d0 == 0 then failed
 	move.l  d0,_GfxBase             ; store adress of GfxBase in variable
-	
+	beq.s   .open_failed            ; if d0 == 0 then failed
+
 	lea     intuitionlib(pc),a1     ; load intuition.library
 	moveq   #MINVERSION,d0
 	jsr     LVOOpenLibrary(a6)      
-	tst.l   d0                      
-	beq.s   .open_failed
 	move.l  d0,_IntuitionBase       
+	beq.s   .open_failed
 
 	lea     datatypeslib(pc),a1     ; load datatypes.library
 	moveq   #MINVERSION,d0
 	jsr     LVOOpenLibrary(a6)      
-	tst.l   d0                     
-	beq.s   .open_failed
 	move.l  d0,_DataTypesBase       
+	beq.s   .open_failed
 
 	moveq   #0,d0                   ; return with success
 	movea.l (sp)+,a6                ; restore registers
@@ -397,7 +394,7 @@ _lwmf_BlitTile::
 	move.w	#SCREENWIDTHTOTAL,d6				; TARGET_BITMAP_WIDTH/8 * NUMBITPLANES - WORDS
 	sub.w	d4,d6								; subtract width in words
 	subq.w	#2,d6								; subtract two more words because of barrel shift
-	move.w  d6,BLTDMOD							; move complete modulo into target D							
+	move.w  d6,BLTDMOD							; move complete modulo into Blitter Destination D							
 
 	move.w	d2,d6								; store PosX for further use
 	asr.w	#3,d6         						; arithmetic right shift PosX by three bits  
