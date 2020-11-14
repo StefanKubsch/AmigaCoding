@@ -13,9 +13,11 @@
 SCREENWIDTH         equ     320
 SCREENHEIGHT        equ     256
 NUMBITPLANES        equ     3
-SCREEN_BROW         equ     SCREENWIDTH/8
-SCREENCLRSIZEBLT    equ     128*NUMBITPLANES*64+SCREEN_BROW/2               ; half screen size for blitter part of screen clear (top -> mid)
-SCREENCLRSIZECPU    equ     SCREEN_BROW*SCREENHEIGHT*NUMBITPLANES           ; size for cpu part of screen clear ( bottom -> mid)
+
+SCREENBROW			equ     SCREENWIDTH/8
+SCREENWIDTHTOTAL	equ		SCREENBROW*NUMBITPLANES
+SCREENCLRSIZEBLT    equ     128*NUMBITPLANES*64+SCREENBROW/2        ; half screen size for blitter part of screen clear (top -> mid)
+SCREENCLRSIZECPU    equ     SCREENWIDTHTOTAL*SCREENHEIGHT			; size for cpu part of screen clear ( bottom -> mid)
 
 ; Custom registers
 
@@ -363,7 +365,7 @@ _lwmf_ClearScreen::
 _lwmf_SetPixel::
 	movem.l d2-d4,-(sp)                         ; save registers
 
-	muls.w  #SCREEN_BROW*NUMBITPLANES,d1        ; address offset for line
+	muls.w  #SCREENWIDTHTOTAL,d1        		; address offset for line
 	move.w  d0,d3			                    ; calc x position
 	not.w   d3			       
 	asr.w   #3,d0			                    ; byte offset for x position
@@ -374,14 +376,14 @@ _lwmf_SetPixel::
 	bpl.s   .skipbpl
 	bset    d3,(a0,d1.l)	                    ; if not -> set it
 .skipbpl
-	lea     SCREEN_BROW(a0),a0	                ; next bitplane
+	lea     SCREENBROW(a0),a0	                ; next bitplane
 	dbra    d4,.loop
 
 	movem.l (sp)+,d2-d4                         ; restore registers
 	rts
 
 ;
-; void lwmf_BlitTile(__reg("a1") long* SrcAddr, __reg("d0") WORD SrcModulo, __reg("d1") long SrcOffset, __reg("a2") long* DstAddr, __reg("d2") WORD DstModulo, __reg("d3") long PosX, __reg("d4") long PosY, __reg("d5") WORD BlitSize);
+; void lwmf_BlitTile(__reg("a1") long* SrcAddr, __reg("d0") WORD SrcModulo, __reg("d1") long SrcOffset, __reg("a2") long* DstAddr, __reg("d2") WORD PosX, __reg("d3") WORD PosY, __reg("d4") WORD Width, __reg("d5") WORD Height);
 ;
 
 _lwmf_BlitTile::
@@ -389,33 +391,35 @@ _lwmf_BlitTile::
 
 	bsr     _lwmf_WaitBlitter
 
-	subq.w	#2,d0								; subtract 2 because of barrel shift
-	move.w  d0,BLTAMOD							; SOURCE_BITMAP_WIDTH/8 - WORDS
-	subq.w	#2,d2								; subtract 2 because of barrel shift
-	move.w  d2,BLTDMOD							; TARGET_BITMAP_WIDTH/8 * NUMBITPLANES - WORDS
+	subq.w	#2,d0								; subtract two more words because of barrel shift
+	move.w  d0,BLTAMOD							; in general: SOURCE_BITMAP_WIDTH/8 - width in words
 
-	move.l	d3,d6
-	lsr.l	#4,d6         						; PosX shift right 4 bits  
-	lsl.l	#1,d6         						; PosX shift left 1 bit
-	mulu	#SCREEN_BROW*NUMBITPLANES,d4        ; multiply PosY
+	move.w	#SCREENWIDTHTOTAL,d6				; TARGET_BITMAP_WIDTH/8 * NUMBITPLANES - WORDS
+	sub.w	d4,d6								; subtract width in words
+	subq.w	#2,d6								; subtract two more words because of barrel shift
+	move.w  d6,BLTDMOD							; move complete modulo into target D							
+
+	move.w	d2,d6								; store PosX for further use
+	asr.w	#3,d6         						; arithmetic right shift PosX by three bits  
+	mulu.w	#SCREENWIDTHTOTAL,d3         		; multiply PosY with target width
 	add.l	d6,a2         						; add PosX to DstAddr
-	add.l	d4,a2         						; add PosY to DstAddr
-	move.l  a2,BLTDPTH		       
+	add.l	d3,a2         						; add PosY to DstAddr
+	move.l  a2,BLTDPTH							; DstAddr -> Blitter Destination D									       
 
-	andi.l	#$F,d3        						; clear all but first byte of PosX
-	lsl.l	#8,d3         						; shift left 8 bits (max allowed)
-	lsl.l	#4,d3         						; shift left another 4 bits
-	add.w	#$09F0,d3     						; D = A ($F0)
+	andi.w	#$F,d2        						; clear all but first byte of PosX
+	ror.w	#4,d2								; rotate right by four bits
+	add.w	#$09F0,d2     						; D = A ($F0), ascending mode
+	move.w  d2,BLTCON0
 	
-	move.w  d3,BLTCON0
-	move.w	#$0000,BLTCON1 
 	move.l	#$FFFF0000,BLTAFWM					; mask out first word	  
 	
-	add.l   d1,a1                   			; add source offset (in bytes)
-	move.l  a1,BLTAPTH
+	add.l   d1,a1                   			; add source offset (in bytes) to SrcAddr
+	move.l  a1,BLTAPTH							; SrcAddr -> Blitter Source A
 		
-	addq.w	#1,d5								; add one because of barrel shift
-	move.w  d5,BLTSIZE              			; number of Lines * 64 + WORDS
+	lsl.w	#6,d5								; multiply Height in lines by 64
+	add.w	d4,d5								; add width in words to Height
+	addq.w	#1,d5								; add one more word because of barrel shift
+	move.w  d5,BLTSIZE              			; in general: number of lines * 64 + width in words
 
 	movem.l (sp)+,d2-d6/a2						; restore registers
 	rts
@@ -452,12 +456,6 @@ oldview:
 
 oldcopper:
 	dc.l    0
-
-modfile:
-	dc.b	"sfx/hardwired2.mod",0
-
-ptrmod:
-	dc.l	0
 
 ;
 ; Libraries

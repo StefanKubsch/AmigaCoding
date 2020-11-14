@@ -27,8 +27,7 @@ struct Logofont
 	UWORD TextLength;
 	UWORD CharMapLength;
 	WORD SrcModulo;
-	WORD DstModulo;
-	WORD BlitSize;
+	WORD WidthInWords;
 } TextFont;
 
 BOOL Init_TextLogo(void)
@@ -50,10 +49,8 @@ BOOL Init_TextLogo(void)
 	TextFont.CharOverallWidth = TextFont.CharWidth + TextFont.CharSpacing;
 	TextFont.TextLength = strlen(TextFont.Text);
 	TextFont.CharMapLength = strlen(TextFont.CharMap);
-	TextFont.SrcModulo = (TextFont.FontBitmap->Width >> 3) - 1;
-	TextFont.DstModulo = ((SCREENWIDTH >> 3) * NUMBEROFBITPLANES) - 1;
-	TextFont.BlitSize = (TextFont.CharHeight << 6) + 1;
-
+	TextFont.SrcModulo = (TextFont.FontBitmap->Width / 8) - (TextFont.CharOverallWidth / 16);
+	TextFont.WidthInWords = (TextFont.CharOverallWidth / 16);
 	if (!(TextFont.Map = AllocVec(sizeof(WORD) * TextFont.TextLength, MEMF_ANY | MEMF_CLEAR)))
 	{
 		return FALSE;
@@ -100,12 +97,21 @@ void Cleanup_TextLogo(void)
 
 void Draw_TextLogo(void)
 {
-	WORD XPos = 175;
+	static WORD XPos = 0;
+	static WORD Speed = 2;
+	WORD Pos = XPos;
 
 	for (UWORD i = 0; i < TextFont.TextLength; ++i)
 	{
-		lwmf_BlitTile((long*)TextFont.FontBitmap->Image->Planes[0], TextFont.SrcModulo, TextFont.Map[i], (long*)RenderPort.BitMap->Planes[0], TextFont.DstModulo, XPos, 234, TextFont.BlitSize);
-		XPos += TextFont.CharOverallWidth << 1;
+		lwmf_BlitTile((long*)TextFont.FontBitmap->Image->Planes[0], TextFont.SrcModulo, TextFont.Map[i], (long*)RenderPort.BitMap->Planes[0], Pos, 234, TextFont.WidthInWords, TextFont.CharHeight);
+		Pos += TextFont.CharOverallWidth << 1;
+	}
+
+	XPos += Speed;
+
+	if (XPos <= 0 || XPos >= 175)
+	{
+		Speed *= -1;
 	}
 }
 
