@@ -7,9 +7,7 @@
 #include <graphics/rastport.h>
 #include <datatypes/pictureclass.h>
 #include <clib/exec_protos.h>
-#include <clib/dos_protos.h>
 #include <clib/graphics_protos.h>
-#include <clib/alib_protos.h>
 #include <clib/datatypes_protos.h>
 
 //
@@ -18,7 +16,7 @@
 
 // Hardware
 
-ULONG lwmf_LoadLibraries(void);
+UWORD lwmf_LoadLibraries(void);
 void lwmf_CloseLibraries();
 void lwmf_TakeOverOS(void);
 void lwmf_ReleaseOS(void);
@@ -31,7 +29,7 @@ void lwmf_BlitTile(__reg("a1") long* SrcAddr, __reg("d0") WORD SrcModulo, __reg(
 
 // Math
 
-__reg("d0") ULONG lwmf_Random(void);
+ULONG lwmf_Random(void);
 
 //
 // External variables as defined in assembler sources

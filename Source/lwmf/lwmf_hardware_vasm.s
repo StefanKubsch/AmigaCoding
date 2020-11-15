@@ -89,7 +89,7 @@ MINVERSION          equ     39        ; set required version (39 -> Amiga OS 3.0
 ; **************************************************************************
 
 ;
-; ULONG lwmf_LoadLibraries(void);
+; UWORD lwmf_LoadLibraries(void);
 ;
 
 _lwmf_LoadLibraries::
@@ -131,15 +131,12 @@ _lwmf_LoadLibraries::
 _lwmf_CloseLibraries::
 	move.l  EXECBASE.w,a6           ; use exec base address
 	move.l  _DataTypesBase(pc),d0   ; use _DataTypesBase address in a1 for CloseLibrary     
-	tst.l   d0
 	bne.s   .closedatatypelib
 
 	move.l  _IntuitionBase(pc),d0   ; use _IntuitionBase address in a1 for CloseLibrary      
-	tst.l   d0  
 	bne.s   .closeintuitionlib
 
 	move.l  _GfxBase(pc),d0         ; use _GfxBase address in a1 for CloseLibrary                         
-	tst.l   d0
 	bne.s   .closegraphicslib
 	rts
 .closedatatypelib
