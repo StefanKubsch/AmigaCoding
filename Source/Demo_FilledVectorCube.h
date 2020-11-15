@@ -10,9 +10,6 @@
 
 #include <math.h>
 
-void Init_FilledVectorCube(void);
-void Draw_FilledVectorCube(void);
-
 struct CubeFaceStruct
 {
 	UBYTE p0;

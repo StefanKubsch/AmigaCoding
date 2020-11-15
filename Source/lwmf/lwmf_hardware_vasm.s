@@ -265,7 +265,7 @@ _lwmf_WaitVertBlank::
 ;
 
 _lwmf_ClearMemCPU::
-	movem.l d2-d7/a2-a6,-(sp)       ; save all registers
+	movem.l d2-d6/a2-a6,-(sp)       ; save all registers
 
 	lea     zeros(pc),a0
 	add.l   d7,a1                   ; we go top -> down
@@ -274,7 +274,7 @@ _lwmf_ClearMemCPU::
 	lsr.l   #7,d6                   ; get number of blocks of 128 long words 
 	beq.s   .clear                  ; branch if we have no complete block
 	subq.l  #1,d6                   ; one less to get loop working
-	movem.l (a0),d0-d5/a2-a6        ; we use eight registers -> equals 32 bytes
+	movem.l (a0),d0-d5/a2-a6        ; clear all registers
 .clearblock
 	movem.l d0-d5/a2-a6,-(a1)       ; 11 registers -> clear 44 bytes at once
 	movem.l d0-d5/a2-a6,-(a1)
@@ -295,10 +295,10 @@ _lwmf_ClearMemCPU::
 	subq.l  #1,d7                   ; one less to get loop working
 	move.l  (a0),a1
 .setword
-	move.l  d0,-(a1)                ; set memory by one long word at a time
+	move.l  d0,-(a1)                ; clear memory by one long word at a time
 	dbra    d7,.setword
 .done
-	movem.l (sp)+,d2-d7/a2-a6       ; restore registers
+	movem.l (sp)+,d2-d6/a2-a6       ; restore registers
 	rts
 
 ;
@@ -306,28 +306,27 @@ _lwmf_ClearMemCPU::
 ;
 
 _lwmf_ClearScreen::
-	movem.l d2-d7/a2-a6,-(sp)       ; save all registers
+	movem.l d2-d7/a2-a6,-(sp)       	; save all registers
 
 	; Clear first half of screen with blitter
 	bsr     _lwmf_WaitBlitter
-	moveq   #0,d0
-	move.w  d0,BLTDMOD		       
-	move.l  #$01000000,BLTCON0	  
+	move.w  #0,BLTDMOD		       
+	move.l  #$01000000,BLTCON0			; enable destination only	  
 	move.l  a1,BLTDPTH		       
 	move.w  #SCREENCLRSIZEBLT,BLTSIZE
 
 	; Clear rest of screen with cpu
 	lea     zeros(pc),a0
 	move.l  #SCREENCLRSIZECPU,d7
-	add.l   d7,a1                   ; we go top -> down
-	lsr.l   #3,d7                   ; divide by 8, we only need to clear half of the screen...
+	add.l   d7,a1                   	; we go top -> down
+	lsr.l   #3,d7                   	; divide by 8, we only need to clear half of the screen...
 	move.l  d7,d6
-	lsr.l   #7,d6                   ; get number of blocks of 128 long words 
-	beq.s   .clear                  ; branch if we have no complete block
-	subq.l  #1,d6                   ; one less to get loop working
-	movem.l (a0),d0-d5/a2-a6        ; we use eight registers -> equals 32 bytes
+	lsr.l   #7,d6                   	; get number of blocks of 128 long words 
+	beq.s   .clear                  	; branch if we have no complete block
+	subq.l  #1,d6                   	; one less to get loop working
+	movem.l (a0),d0-d5/a2-a6			; clear all registers
 .clearblock
-	movem.l d0-d5/a2-a6,-(a1)       ; 11 registers -> clear 44 bytes at once
+	movem.l d0-d5/a2-a6,-(a1)       	; 11 registers -> clear 44 bytes at once
 	movem.l d0-d5/a2-a6,-(a1)
 	movem.l d0-d5/a2-a6,-(a1) 
 	movem.l d0-d5/a2-a6,-(a1) 
@@ -338,18 +337,18 @@ _lwmf_ClearScreen::
 	movem.l d0-d5/a2-a6,-(a1) 
 	movem.l d0-d5/a2-a6,-(a1) 
 	movem.l d0-d5/a2-a6,-(a1) 
-	movem.l d0-d5/a2,-(a1)          ; 7 registers
+	movem.l d0-d5/a2,-(a1)          	; 7 registers
 	dbra    d6,.clearblock
 .clear
-	and.l   #$0F,d7                 ; check how many long words we still have
+	and.l   #$0F,d7                 	; check how many long words we still have
 	beq.s   .done
-	subq.l  #1,d7                   ; one less to get loop working
+	subq.l  #1,d7                   	; one less to get loop working
 	move.l  (a0),a1
 .setword
-	move.l  d0,-(a1)                ; set memory by one long word at a time
+	move.l  d0,-(a1)                	; clear memory by one long word at a time
 	dbra    d7,.setword
 .done
-	movem.l (sp)+,d2-d7/a2-a6       ; restore registers
+	movem.l (sp)+,d2-d7/a2-a6       	; restore registers
 	rts
 
 ;
@@ -357,7 +356,7 @@ _lwmf_ClearScreen::
 ;
 
 _lwmf_SetPixel::
-	movem.l d2-d4,-(sp)                         ; save registers
+	movem.l d3-d4,-(sp)                         ; save registers
 
 	muls.w  #SCREENWIDTHTOTAL,d1        		; address offset for line
 	move.w  d0,d3			                    ; calc x position
@@ -366,22 +365,22 @@ _lwmf_SetPixel::
 	add.l   d0,d1
 	moveq   #NUMBITPLANES-1,d4                  ; loop through bitplanes
 .loop
-	ror.b   #1,d2                               ; is bit already set?			       
+	ror.b   d2                               	; is bit already set?			       
 	bpl.s   .skipbpl
 	bset    d3,(a0,d1.l)	                    ; if not -> set it
 .skipbpl
 	lea     SCREENBROW(a0),a0	                ; next bitplane
 	dbra    d4,.loop
 
-	movem.l (sp)+,d2-d4                         ; restore registers
+	movem.l (sp)+,d3-d4                         ; restore registers
 	rts
 
 ;
-; void lwmf_BlitTile(__reg("a1") long* SrcAddr, __reg("d0") WORD SrcModulo, __reg("d1") long SrcOffset, __reg("a2") long* DstAddr, __reg("d2") WORD PosX, __reg("d3") WORD PosY, __reg("d4") WORD Width, __reg("d5") WORD Height);
+; void lwmf_BlitTile(__reg("a0") long* SrcAddr, __reg("d0") WORD SrcModulo, __reg("d1") long SrcOffset, __reg("a1") long* DstAddr, __reg("d2") WORD PosX, __reg("d3") WORD PosY, __reg("d4") WORD Width, __reg("d5") WORD Height);
 ;
 
 _lwmf_BlitTile::
-	movem.l d2-d6/a2,-(sp)						; save registers
+	movem.l d6,-(sp)							; save registers
 
 	bsr     _lwmf_WaitBlitter
 
@@ -396,9 +395,9 @@ _lwmf_BlitTile::
 	move.w	d2,d6								; store PosX for further use
 	asr.w	#3,d6         						; arithmetic right shift PosX by three bits  
 	mulu.w	#SCREENWIDTHTOTAL,d3         		; multiply PosY with target width
-	add.l	d6,a2         						; add PosX to DstAddr
-	add.l	d3,a2         						; add PosY to DstAddr
-	move.l  a2,BLTDPTH							; DstAddr -> Blitter Destination D									       
+	add.l	d6,a1         						; add PosX to DstAddr
+	add.l	d3,a1         						; add PosY to DstAddr
+	move.l  a1,BLTDPTH							; DstAddr -> Blitter Destination D									       
 
 	andi.w	#$F,d2        						; clear all but first byte of PosX
 	ror.w	#4,d2								; rotate right by four bits
@@ -407,15 +406,15 @@ _lwmf_BlitTile::
 	
 	move.l	#$FFFF0000,BLTAFWM					; mask out first word	  
 	
-	add.l   d1,a1                   			; add source offset (in bytes) to SrcAddr
-	move.l  a1,BLTAPTH							; SrcAddr -> Blitter Source A
+	add.l   d1,a0                   			; add source offset (in bytes) to SrcAddr
+	move.l  a0,BLTAPTH							; SrcAddr -> Blitter Source A
 		
 	lsl.w	#6,d5								; multiply Height in lines by 64
 	add.w	d4,d5								; add width in words to Height
 	addq.w	#1,d5								; add one more word because of barrel shift
 	move.w  d5,BLTSIZE              			; in general: number of lines * 64 + width in words
 
-	movem.l (sp)+,d2-d6/a2						; restore registers
+	movem.l (sp)+,d6							; restore registers
 	rts
 
 ; ***************************************************************************************************
@@ -458,17 +457,20 @@ oldcopper:
 gfxlib:
 	dc.b    "graphics.library",0
 
+	even
 _GfxBase::
 	dc.l    0
 
 intuitionlib:
 	dc.b    "intuition.library",0
 
+	even
 _IntuitionBase::
 	dc.l    0
 
 datatypeslib:
 	dc.b    "datatypes.library",0
 
+	even
 _DataTypesBase::
 	dc.l    0

@@ -8,50 +8,26 @@
 //* (C) 2020 by Stefan Kubsch      *
 //**********************************
 
-BOOL Init_3DStarfield(void);
-void Cleanup_3DStarfield(void);
-void Draw_3DStarfield(void);
-
 struct StarStruct3D
 {
 	WORD x;
 	WORD y;
 	WORD z;
-} *Stars3D;
+} Stars3D[200];
 
-UWORD NumberOf3DStars;
-
-BOOL Init_3DStarfield(void)
+void Init_3DStarfield(void)
 {
-	// Use more stars, if a fast CPU is available...
-	NumberOf3DStars = FastCPUFlag ? 200 : 50;
-
-	if (!(Stars3D = AllocVec(sizeof(struct StarStruct3D) * NumberOf3DStars, MEMF_ANY | MEMF_CLEAR)))
-	{
-		return FALSE;
-	}
-
-	for (UWORD i = 0; i < NumberOf3DStars; ++i) 
+	for (UWORD i = 0; i < 200; ++i) 
 	{
 		Stars3D[i].x = (lwmf_Random() % SCREENWIDTH - (SCREENWIDTH >> 1)) << 8;
 		Stars3D[i].y = (lwmf_Random() % SCREENHEIGHT - (SCREENHEIGHT >> 1)) << 8;
 		Stars3D[i].z = lwmf_Random() % 800;
 	}
-
-	return TRUE;
-}
-
-void Cleanup_3DStarfield(void)
-{
-	if (Stars3D)
-	{
-		FreeVec(Stars3D);
-	}
 }
 
 void Draw_3DStarfield(void)
 {
-	for (UWORD i = 0; i < NumberOf3DStars; ++i)
+	for (UWORD i = 0; i < 200; ++i)
 	{
 		Stars3D[i].z -= 15;
 	

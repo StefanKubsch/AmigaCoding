@@ -63,6 +63,7 @@ BOOL Init_SineScroller(void)
 
 	if (!(Font.Map = AllocVec(sizeof(WORD) * Font.TextLength, MEMF_ANY | MEMF_CLEAR)))
 	{
+		Cleanup_SineScroller();
 		return FALSE;
 	}
 

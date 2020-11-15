@@ -51,8 +51,10 @@ BOOL Init_TextLogo(void)
 	TextFont.CharMapLength = strlen(TextFont.CharMap);
 	TextFont.SrcModulo = (TextFont.FontBitmap->Width / 8) - (TextFont.CharOverallWidth / 16);
 	TextFont.WidthInWords = (TextFont.CharOverallWidth / 16);
+	
 	if (!(TextFont.Map = AllocVec(sizeof(WORD) * TextFont.TextLength, MEMF_ANY | MEMF_CLEAR)))
 	{
+		Cleanup_TextLogo();
 		return FALSE;
 	}
 

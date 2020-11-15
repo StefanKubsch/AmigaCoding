@@ -2,7 +2,7 @@
 //* Simple combined demo for Amiga with at least OS 3.0    			   *
 //*														 			   *
 //* Effects: Copper background, 3D starfield, filled vector cube,      *
-//* a sine scroller	and a 2D starfield   						       *
+//* a sine scroller, moving text logo and a 2D starfield   			   *
 //*														 			   *
 //*                                                      			   *
 //* (C) 2020 by Stefan Kubsch                            			   *
@@ -135,17 +135,7 @@ void Cleanup_CopperList(void)
 
 BOOL Init_Demo(void)
 {
-	if (!Init_2DStarfield())
-	{
-		return FALSE;
-	}
-
 	if (!Init_TextLogo())
-	{
-		return FALSE;
-	}
-
-	if (!Init_3DStarfield())
 	{
 		return FALSE;
 	}
@@ -155,6 +145,8 @@ BOOL Init_Demo(void)
 		return FALSE;
 	}
 
+	Init_2DStarfield();
+	Init_3DStarfield();
 	Init_FilledVectorCube();
 
 	return TRUE;
@@ -162,8 +154,6 @@ BOOL Init_Demo(void)
 
 void Cleanup_Demo(void)
 {
-	Cleanup_3DStarfield();
-	Cleanup_2DStarfield();
 	Cleanup_SineScroller();
 	Cleanup_TextLogo();
 	Cleanup_CopperList();
@@ -182,10 +172,6 @@ int main(void)
 	// Gain control over the OS
 	lwmf_TakeOverOS();
 
-	// Check which CPU is used in your Amiga (or UAE...)
-	// Depening on this, we use more or less stars (or effects in the near future...)
-	lwmf_CheckCPU();
-	
 	// Setup screen
 	if (!lwmf_CreateViewPort(SCREENWIDTH, SCREENHEIGHT, NUMBEROFBITPLANES, NUMBEROFCOLORS))
 	{
