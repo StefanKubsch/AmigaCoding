@@ -16,7 +16,8 @@
 
 // Hardware
 
-UWORD lwmf_LoadLibraries(void);
+UWORD lwmf_LoadGraphicsLib(void);
+UWORD lwmf_LoadDatatypesLib(void);
 void lwmf_CloseLibraries();
 void lwmf_TakeOverOS(void);
 void lwmf_ReleaseOS(void);
@@ -36,7 +37,6 @@ ULONG lwmf_Random(void);
 //
 
 extern long GfxBase;
-extern long IntuitionBase;
 extern long DataTypesBase;
 
 

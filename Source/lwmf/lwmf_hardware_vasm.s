@@ -89,38 +89,46 @@ MINVERSION          equ     39        ; set required version (39 -> Amiga OS 3.0
 ; **************************************************************************
 
 ;
-; UWORD lwmf_LoadLibraries(void);
+; UWORD lwmf_LoadGraphicsLib(void);
 ;
 
-_lwmf_LoadLibraries::
-	movem.l a6,-(sp)                ; save register on stack
-
+_lwmf_LoadGraphicsLib::
+	move.l	a6,-(sp)                ; save register on stack
 	move.l	EXECBASE.w,a6           ; use exec base address
 	
 	lea     gfxlib(pc),a1           ; load graphics.library
 	moveq   #MINVERSION,d0
 	jsr     LVOOpenLibrary(a6)      
 	move.l  d0,_GfxBase             ; store adress of GfxBase in variable
-	beq.s   .open_failed            ; if d0 == 0 then failed
+	bne.s   .success
 
-	lea     intuitionlib(pc),a1     ; load intuition.library
-	moveq   #MINVERSION,d0
-	jsr     LVOOpenLibrary(a6)      
-	move.l  d0,_IntuitionBase       
-	beq.s   .open_failed
+	moveq   #20,d0                  ; return with error
+	bra.s	.exit
+.success
+	moveq	#0,d0					; return with success
+.exit
+	movea.l (sp)+,a6                ; restore register
+	rts
 
+;
+; UWORD lwmf_LoadDatatypesLib(void);
+;
+
+_lwmf_LoadDatatypesLib::
+	move.l	a6,-(sp)                ; save register on stack
+	move.l	EXECBASE.w,a6           ; use exec base address
+	
 	lea     datatypeslib(pc),a1     ; load datatypes.library
 	moveq   #MINVERSION,d0
 	jsr     LVOOpenLibrary(a6)      
-	move.l  d0,_DataTypesBase       
-	beq.s   .open_failed
+	move.l  d0,_DataTypesBase 		; store adress of DataTypeBase in variable      
+	bne.s   .success
 
-	moveq   #0,d0                   ; return with success
-	movea.l (sp)+,a6                ; restore registers
-	rts
-.open_failed
-	bsr.b   _lwmf_CloseLibraries
 	moveq   #20,d0                  ; return with error
+	bra.s	.exit
+.success
+	moveq	#0,d0					; return with success
+.exit
 	movea.l (sp)+,a6                ; restore register
 	rts
 
@@ -130,24 +138,18 @@ _lwmf_LoadLibraries::
 
 _lwmf_CloseLibraries::
 	move.l  EXECBASE.w,a6           ; use exec base address
+	
 	move.l  _DataTypesBase(pc),d0   ; use _DataTypesBase address in a1 for CloseLibrary     
 	bne.s   .closedatatypelib
 
-	move.l  _IntuitionBase(pc),d0   ; use _IntuitionBase address in a1 for CloseLibrary      
-	bne.s   .closeintuitionlib
-
 	move.l  _GfxBase(pc),d0         ; use _GfxBase address in a1 for CloseLibrary                         
 	bne.s   .closegraphicslib
+
 	rts
 .closedatatypelib
 	move.l  d0,a1                           
 	jsr     LVOCloseLibrary(a6) 
 	move.l  #0,_DataTypesBase
-	rts
-.closeintuitionlib
-	move.l  d0,a1                           
-	jsr     LVOCloseLibrary(a6)    
-	move.l  #0,_IntuitionBase
 	rts
 .closegraphicslib
 	move.l  d0,a1                           
@@ -164,7 +166,7 @@ _lwmf_CloseLibraries::
 ;
 
 _lwmf_TakeOverOS::
-	movem.l a6,-(sp)                ; save register on stack
+	move.l	a6,-(sp)                ; save register on stack
 
 	move.w  DMACONR,d0          	; store current custom registers for later restore
 	or.w    #$8000,d0
@@ -208,7 +210,7 @@ _lwmf_TakeOverOS::
 ;
 
 _lwmf_ReleaseOS::
-	movem.l a6,-(sp)                    ; save register on stack
+	move.l	a6,-(sp)                    ; save register on stack
 
 	move.w  #$7FFF,DMACON
 	move.w  olddma(pc),DMACON
@@ -380,7 +382,7 @@ _lwmf_SetPixel::
 ;
 
 _lwmf_BlitTile::
-	movem.l d6,-(sp)							; save registers
+	move.l	d6,-(sp)							; save registers
 
 	bsr     _lwmf_WaitBlitter
 
@@ -414,7 +416,7 @@ _lwmf_BlitTile::
 	addq.w	#1,d5								; add one more word because of barrel shift
 	move.w  d5,BLTSIZE              			; in general: number of lines * 64 + width in words
 
-	movem.l (sp)+,d6							; restore registers
+	move.l	(sp)+,d6							; restore registers
 	rts
 
 ; ***************************************************************************************************
@@ -459,13 +461,6 @@ gfxlib:
 
 	even
 _GfxBase::
-	dc.l    0
-
-intuitionlib:
-	dc.b    "intuition.library",0
-
-	even
-_IntuitionBase::
 	dc.l    0
 
 datatypeslib:

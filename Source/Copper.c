@@ -23,9 +23,6 @@
 #define LOWERBORDERLINE		255
 
 #define NUMBEROFBITPLANES	4
-#define bpl					((WIDTH >> 4) << 1)
-#define bwid				(NUMBEROFBITPLANES * bpl)
-#define modulos				(bwid - bpl)
 
 UWORD* CopperList = NULL;
 UWORD CopperbarStart = 0;
@@ -187,9 +184,8 @@ int main()
 {
 	// Load libraries
 	// Exit with SEVERE Error (20) if something goes wrong
-	if (lwmf_LoadLibraries() != 0)
+	if (lwmf_LoadGraphicsLib() != 0)
 	{
-		lwmf_CleanupAll();
 		return 20;
 	}
 

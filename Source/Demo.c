@@ -163,9 +163,13 @@ int main(void)
 {
 	// Load libraries
 	// Exit with SEVERE Error (20) if something goes wrong
-	if (lwmf_LoadLibraries() != 0)
+	if (lwmf_LoadGraphicsLib() != 0)
 	{
-		lwmf_CleanupAll();
+		return 20;
+	}
+
+	if (lwmf_LoadDatatypesLib() != 0)
+	{
 		return 20;
 	}
 
