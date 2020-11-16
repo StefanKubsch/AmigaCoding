@@ -46,9 +46,19 @@ INTENA              equ     $00DFF09A		; Interrupt enable read/write
 INTENAR             equ     $00DFF01C		; Interrupt enable read
 INTREQ              equ     $00DFF09C		; Interrupt request read/write
 INTREQR             equ     $00DFF01E		; Interrupr request read
+
+SPR0CTL				equ		$00DFF142		; Sprite 0 position and control data
+SPR1CTL				equ		$00DFF14A		; Sprite 1 position and control data
+SPR2CTL				equ		$00DFF152		; Sprite 2 position and control data
+SPR3CTL				equ		$00DFF15A		; Sprite 3 position and control data
+SPR4CTL				equ		$00DFF162		; Sprite 4 position and control data
+SPR5CTL				equ		$00DFF16A		; Sprite 5 position and control data
+SPR6CTL				equ		$00DFF172		; Sprite 6 position and control data
+SPR7CTL				equ		$00DFF17A		; Sprite 7 position and control data
+
 VPOSR               equ     $00DFF004		; Read vert most sig. bits (and frame flop)
 
-DMAB_BLTDONE        equ		6				; DMACONR bit 14 - blitter busy flag
+DMAB_BLITTER        equ		6				; DMACONR bit 14 - blitter busy flag
 
 ; Library vector offsets (LVO)
 
@@ -189,7 +199,6 @@ _lwmf_TakeOverOS::
 	jsr     LVOWaitTOF(a6)
 	jsr     LVOWaitTOF(a6)
 
-	bsr     _lwmf_WaitVertBlank
 	move.w  #$7FFF,DMACON       	; clear DMACON / Description: http://amiga-dev.wikidot.com/hardware:dmaconr
 	move.w  #$83C0,DMACON       	; set DMACON to 1000001111000000 = $83C0
 
@@ -245,7 +254,7 @@ _lwmf_ReleaseOS::
 _lwmf_WaitBlitter::
 	move.w	#$8400,DMACON				; enable "blitter nasty"
 .loop
-	btst.b 	#DMAB_BLTDONE,DMACONR 		; check blitter busy flag
+	btst.b 	#DMAB_BLITTER,DMACONR 		; check blitter busy flag
 	bne.s 	.loop
 	move.w	#$0400,DMACON				; disable blitter nasty
 	rts

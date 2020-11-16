@@ -59,11 +59,11 @@ BOOL Init_CopperList(void)
 	CopperList[Index++] = 0x90;
 	CopperList[Index++] = 0x2CC1;
 	// Display data fetch start (horizontal position)
-	CopperList[Index++] = 0x92;
-	CopperList[Index++] = 0x0038;
+	// CopperList[Index++] = 0x92;
+	// CopperList[Index++] = 0x0038;
 	// Display data fetch stop (horizontal position)
-	CopperList[Index++] = 0x94;
-	CopperList[Index++] = 0x00D0;
+	// CopperList[Index++] = 0x94;
+	// CopperList[Index++] = 0x00D0;
 	// BPLCON1 Scroll register (and playfield pri)
 	CopperList[Index++] = 0x102;
 	CopperList[Index++] = 0x0000;
