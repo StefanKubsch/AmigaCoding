@@ -11,10 +11,6 @@
 #include <math.h>
 #include <string.h>
 
-BOOL Init_SineScroller(void);
-void Cleanup_SineScroller(void);
-void Draw_SineScroller(void);
-
 struct Scrollfont
 {
 	struct lwmf_Image* FontBitmap;
@@ -35,10 +31,12 @@ UWORD ScrollSinTab[SCREENWIDTH];
 
 BOOL Init_SineScroller(void)
 {
-	// Generate sinus table
-	for (UWORD i = 0; i < SCREENWIDTH; ++i)
+	// ScrollFont.bsh is an ILBM (IFF) file
+	// In this case it´s a "brush", made with Personal Paint on Amiga - a brush is smaller in size
+	// The original IFF ScrollFont.iff in included in gfx
+	if (!(Font.FontBitmap = lwmf_LoadImage("gfx/scrollfont.bsh")))
 	{
-		ScrollSinTab[i] = 115 + (UWORD)(sin(0.03f * (float)i) * 30.0f);
+		return FALSE;
 	}
 
 	// Text & Font settings
@@ -53,17 +51,8 @@ BOOL Init_SineScroller(void)
 	Font.CharMapLength = strlen(Font.CharMap);
 	Font.Length = Font.TextLength * Font.CharOverallWidth;
 
-	// ScrollFont.bsh is an ILBM (IFF) file
-	// In this case it´s a "brush", made with Personal Paint on Amiga - a brush is smaller in size
-	// The original IFF ScrollFont.iff in included in gfx
-	if (!(Font.FontBitmap = lwmf_LoadImage("gfx/scrollfont.bsh")))
-	{
-		return FALSE;
-	}
-
 	if (!(Font.Map = AllocVec(sizeof(WORD) * Font.TextLength, MEMF_ANY | MEMF_CLEAR)))
 	{
-		Cleanup_SineScroller();
 		return FALSE;
 	}
 
@@ -90,20 +79,13 @@ BOOL Init_SineScroller(void)
 		}
 	}
 
+	// Generate sinus table
+	for (UWORD i = 0; i < SCREENWIDTH; ++i)
+	{
+		ScrollSinTab[i] = 115 + (UWORD)(sin(0.03f * (float)i) * 30.0f);
+	}
+
 	return TRUE;
-}
-
-void Cleanup_SineScroller(void)
-{
-	if (Font.FontBitmap)
-	{
-		lwmf_DeleteImage(Font.FontBitmap);
-	}
-
-	if (Font.Map)
-	{
-		FreeVec(Font.Map);
-	}
 }
 
 void Draw_SineScroller(void)
@@ -134,6 +116,19 @@ void Draw_SineScroller(void)
 	if (Font.ScrollX < -Font.Length)
 	{
 		Font.ScrollX = SCREENWIDTH;
+	}
+}
+
+void Cleanup_SineScroller(void)
+{
+	if (Font.FontBitmap)
+	{
+		lwmf_DeleteImage(Font.FontBitmap);
+	}
+
+	if (Font.Map)
+	{
+		FreeVec(Font.Map);
 	}
 }
 

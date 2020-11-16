@@ -3,8 +3,6 @@
 
 #include <string.h>
 
-void lwmf_Text(char* Text, UWORD PosX, const UWORD PosY, const UBYTE Color);
-
 // Font characters
 //
 // Author: Marcel Sondaar

@@ -35,9 +35,6 @@ const UWORD CopperbarColors[] =
 	0x629, 0x619, 0x618, 0x617, 0x607, 0x606, 0x605, 0x604
 };
 
-BOOL Init_CopperList(void);
-void Update_Copperbar(void);
-
 BOOL Init_CopperList(void)
 {
 	// Number of CopperbarColors * 4 + init + end + spare
@@ -180,6 +177,14 @@ void Update_Copperbar(void)
 	}
 }
 
+void Cleanup_CopperList(void)
+{
+	if (CopperList)
+	{
+		FreeVec(CopperList);
+	}
+}
+
 int main()
 {
 	// Load libraries
@@ -207,11 +212,11 @@ int main()
 	{
 		lwmf_WaitVertBlank();
 		Update_Copperbar();
-		lwmf_WaitBlitter();
 	}
 
 	// Cleanup everything
 	DisownBlitter();
+	Cleanup_CopperList();
 	lwmf_CleanupAll();
 	return 0;
 }

@@ -54,12 +54,6 @@
 
 struct UCopList* UserCopperList = NULL;
 
-BOOL Init_CopperList(void);
-void Update_CopperList(void);
-void Cleanup_CopperList(void);
-BOOL Init_Demo(void);
-void Cleanup_Demo(void);
-
 BOOL Init_CopperList(void)
 {
 	if (!(UserCopperList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_ANY | MEMF_CLEAR)))
@@ -81,7 +75,7 @@ void Update_CopperList(void)
 	};
 
 	// Needed memory: Init, Mouse, Background & End + some spare
-	UCopperListInit(UserCopperList, 100);
+	UCopperListInit(UserCopperList, 70);
 
 	// Set mouse pointer to blank sprite
 	CMove(UserCopperList, SPR0PTH, (LONG)&BlankMousePointer);
@@ -95,6 +89,7 @@ void Update_CopperList(void)
 	CMove(UserCopperList, COLOR00, 0x000);
 	CBump(UserCopperList);
 
+	// Upper color bars
 	for (int i = 0; i <= UPPERBORDERLINE; ++i)
 	{
 		CWait(UserCopperList, i, 0);
@@ -107,6 +102,7 @@ void Update_CopperList(void)
 	CMove(UserCopperList, COLOR00, 0x003);
 	CBump(UserCopperList);
 	
+	// Lower color bars
 	for (int i = LOWERBORDERLINE, j = 29; i < SCREENHEIGHT; ++i, --j)
 	{
 		CWait(UserCopperList, i, 0);
@@ -253,7 +249,6 @@ int main(void)
 		// Start here with drawing                                      *
 		//***************************************************************
 
-		// Clear bitmap/bitplanes/screen
 		OwnBlitter();
 		lwmf_ClearScreen((long*)RenderPort.BitMap->Planes[0]);
 		Draw_TextLogo();
@@ -282,7 +277,7 @@ int main(void)
 				CurrentDemoPart = 0;
 			}
 
-			// Load colors & update viewport
+			// Load colors for next demopart & update viewport
 			LoadRGB4(&viewPort, DemoColorTable[CurrentDemoPart], NUMBEROFCOLORS);
 			lwmf_UpdateViewPort();
 		}
@@ -290,7 +285,6 @@ int main(void)
 		lwmf_WaitVertBlank();
 	}
 
-	// Cleanup everything
 	Cleanup_Demo();
 	lwmf_CleanupAll();
 	return 0;

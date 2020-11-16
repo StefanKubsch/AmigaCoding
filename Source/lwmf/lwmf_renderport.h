@@ -1,9 +1,6 @@
 #ifndef LWMF_RENDERPORT_H
 #define LWMF_RENDERPORT_H
 
-BOOL lwmf_CreateRenderPort(const UWORD NumberOfVertices, const UWORD AreaWidth, const UWORD AreaHeight);
-void lwmf_CleanupRenderPort(void);
-
 struct RastPort RenderPort;
 
 // Some needed buffers for Area operations
@@ -21,7 +18,6 @@ BOOL lwmf_CreateRenderPort(const UWORD NumberOfVertices, const UWORD AreaWidth, 
 
 	if (!(TmpRasBuffer = AllocVec(RasSize, MEMF_CHIP | MEMF_CLEAR)))
 	{
-		lwmf_CloseLibraries();
 		return FALSE;
 	}
 
@@ -31,8 +27,6 @@ BOOL lwmf_CreateRenderPort(const UWORD NumberOfVertices, const UWORD AreaWidth, 
 	// We need to allocate 5bytes per vertex
 	if (!(AreaBuffer = AllocVec(5 * NumberOfVertices, MEMF_CHIP | MEMF_CLEAR)))
 	{
-		lwmf_CleanupRenderPort();
-		lwmf_CloseLibraries();
 		return FALSE;
 	}
 

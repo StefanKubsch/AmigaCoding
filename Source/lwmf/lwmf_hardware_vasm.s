@@ -96,7 +96,7 @@ _lwmf_LoadGraphicsLib::
 	move.l	a6,-(sp)                ; save register on stack
 	move.l	EXECBASE.w,a6           ; use exec base address
 	
-	lea     gfxlib(pc),a1           ; load graphics.library
+	lea     gfxlib(pc),a1
 	moveq   #MINVERSION,d0
 	jsr     LVOOpenLibrary(a6)      
 	move.l  d0,_GfxBase             ; store adress of GfxBase in variable
@@ -118,7 +118,7 @@ _lwmf_LoadDatatypesLib::
 	move.l	a6,-(sp)                ; save register on stack
 	move.l	EXECBASE.w,a6           ; use exec base address
 	
-	lea     datatypeslib(pc),a1     ; load datatypes.library
+	lea     datatypeslib(pc),a1
 	moveq   #MINVERSION,d0
 	jsr     LVOOpenLibrary(a6)      
 	move.l  d0,_DataTypesBase 		; store adress of DataTypeBase in variable      

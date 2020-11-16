@@ -1,8 +1,6 @@
 #ifndef LWMF_HARDWARE_H
 #define LWMF_HARDWARE_H
 
-void lwmf_CheckCPU(void);
-
 //
 // Define required registers
 //

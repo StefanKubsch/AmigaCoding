@@ -1,10 +1,6 @@
 #ifndef LWMF_VIEWPORT_H
 #define LWMF_VIEWPORT_H
 
-BOOL lwmf_CreateViewPort(const ULONG Width, const ULONG Height, const int NumberOfBitPlanes, const int NumberOfColors);
-void lwmf_UpdateViewPort(void);
-void lwmf_CleanupViewPort(void);
-
 struct View view; 
 struct ViewPort viewPort;
 struct BitMap* BufferBitmap[2];
@@ -16,6 +12,20 @@ struct cprlist* LOCpr[2];
 
 struct ColorMap* colorMap = NULL;
 
+void lwmf_UpdateViewPort(void)
+{
+	for (UBYTE i = 0; i < 2; ++i)
+	{
+		rasInfo.BitMap = BufferBitmap[i];
+	
+		MakeVPort(&view, &viewPort);
+		MrgCop(&view);
+		
+		LOCpr[i] = view.LOFCprList;
+		view.LOFCprList = 0;
+	}
+}
+
 BOOL lwmf_CreateViewPort(const ULONG Width, const ULONG Height, const int NumberOfBitPlanes, const int NumberOfColors)
 {
 	InitView(&view); 
@@ -24,7 +34,6 @@ BOOL lwmf_CreateViewPort(const ULONG Width, const ULONG Height, const int Number
 	{
 		if (!(BufferBitmap[i] = AllocBitMap(Width, Height, NumberOfBitPlanes, BMF_INTERLEAVED | BMF_CLEAR, NULL)))
 		{
-			lwmf_CleanupViewPort();
 			return FALSE;
 		}
 
@@ -49,20 +58,6 @@ BOOL lwmf_CreateViewPort(const ULONG Width, const ULONG Height, const int Number
 	LoadView(&view);
 
 	return TRUE;
-}
-
-void lwmf_UpdateViewPort(void)
-{
-	for (UBYTE i = 0; i < 2; ++i)
-	{
-		rasInfo.BitMap = BufferBitmap[i];
-	
-		MakeVPort(&view, &viewPort);
-		MrgCop(&view);
-		
-		LOCpr[i] = view.LOFCprList;
-		view.LOFCprList = 0;
-	}
 }
 
 void lwmf_CleanupViewPort(void)

@@ -10,10 +10,6 @@ struct lwmf_Image
 	UBYTE NumberOfColors;
 };
 
-struct BitMap* lwmf_BitmapCopy(struct BitMap* SourceBM);
-struct lwmf_Image* lwmf_LoadImage(const char* Filename);
-void lwmf_DeleteImage(struct lwmf_Image* Image);
-
 struct BitMap* lwmf_BitmapCopy(struct BitMap* SourceBM)
 {
 	struct BitMap* TargetBM = NULL;
@@ -40,7 +36,6 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 
 	if (!(dtObject = NewDTObject(Filename, DTA_GroupID, GID_PICTURE, PDTA_Remap, FALSE, TAG_END)))
 	{
-		lwmf_CleanupAll();
 		return NULL;
 	}
 	
@@ -49,13 +44,11 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 
 	if (!(TempImage = AllocMem(sizeof(struct lwmf_Image), MEMF_ANY | MEMF_CLEAR)))
 	{
-		lwmf_CleanupAll();
 		return NULL;
 	}
 
 	if (!(TempImage->Image = lwmf_BitmapCopy(TempBitmap)))
 	{
-		lwmf_CleanupAll();
 		return NULL;
 	}
 

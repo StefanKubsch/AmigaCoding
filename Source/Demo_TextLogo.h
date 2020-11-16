@@ -10,10 +10,6 @@
 
 #include <string.h>
 
-BOOL Init_TextLogo(void);
-void Cleanup_TextLogo(void);
-void Draw_TextLogo(void);
-
 struct Logofont
 {
 	struct lwmf_Image* FontBitmap;
@@ -54,7 +50,6 @@ BOOL Init_TextLogo(void)
 	
 	if (!(TextFont.Map = AllocVec(sizeof(WORD) * TextFont.TextLength, MEMF_ANY | MEMF_CLEAR)))
 	{
-		Cleanup_TextLogo();
 		return FALSE;
 	}
 
@@ -84,19 +79,6 @@ BOOL Init_TextLogo(void)
 	return TRUE;
 }
 
-void Cleanup_TextLogo(void)
-{
-	if (TextFont.FontBitmap)
-	{
-		lwmf_DeleteImage(TextFont.FontBitmap);
-	}
-
-	if (TextFont.Map)
-	{
-		FreeVec(TextFont.Map);
-	}
-}
-
 void Draw_TextLogo(void)
 {
 	static WORD XPos = 0;
@@ -114,6 +96,19 @@ void Draw_TextLogo(void)
 	if (XPos <= 0 || XPos >= 175)
 	{
 		Speed *= -1;
+	}
+}
+
+void Cleanup_TextLogo(void)
+{
+	if (TextFont.FontBitmap)
+	{
+		lwmf_DeleteImage(TextFont.FontBitmap);
+	}
+
+	if (TextFont.Map)
+	{
+		FreeVec(TextFont.Map);
 	}
 }
 
