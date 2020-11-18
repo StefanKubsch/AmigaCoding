@@ -1,7 +1,7 @@
 ; Various assembler functions for lwmf
 ; Code is compatible with Motorola syntax as provided by vbcc
 ;
-; Coded in 2020 by Stefan Kubsch
+; Coded in 2020 by Stefan Kubsch / Deep4
 
 ; ***************************************************************************************************
 ; * Global                                                                                          *
@@ -60,7 +60,6 @@ SPR4CTL				equ		$00DFF162		; Sprite 4 position and control data
 SPR5CTL				equ		$00DFF16A		; Sprite 5 position and control data
 SPR6CTL				equ		$00DFF172		; Sprite 6 position and control data
 SPR7CTL				equ		$00DFF17A		; Sprite 7 position and control data
-
 VPOSR               equ     $00DFF004		; Read vert most sig. bits (and frame flop)
 
 DMAB_BLITTER        equ		6				; DMACONR bit 14 - blitter busy flag
@@ -421,7 +420,9 @@ _lwmf_BlitTile::
 	
 	; Source offset
 	add.l   d1,a0                   			; add source offset (in bytes) to SrcAddr
-	addq.w	#1,d4								; add one word to Width because of barrel shift
+	
+	; Add one word to Width because of barrel shift	
+	addq.w	#1,d4								
 	
 	bsr     _lwmf_WaitBlitter
 

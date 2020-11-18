@@ -8,9 +8,9 @@
 //* (C) 2020 by Stefan Kubsch      *
 //**********************************
 
-struct lwmf_Image* LogoBitmap;
-WORD SrcModulo;
-WORD WidthInWords;
+struct lwmf_Image* LogoBitmap = NULL;
+WORD SrcModulo = 0;
+WORD WidthInWords = 0;
 
 UWORD LogoSinTabY[64];
 UWORD LogoSinTabX[64];
@@ -22,14 +22,14 @@ BOOL Init_TextLogo(void)
 		return FALSE;
 	}
 
-	WidthInWords = (176 / 16) * (LogoBitmap->Image->Depth * 2);
-	SrcModulo = (LogoBitmap->Image->BytesPerRow) - (WidthInWords * 2);
+	WidthInWords = (176 >> 4) * (LogoBitmap->Image->Depth << 1);
+	SrcModulo = (LogoBitmap->Image->BytesPerRow) - (WidthInWords << 1);
 
 	// Create two sintabs for a lissajous figure
 	for (UBYTE i = 0; i < 64; ++i)
 	{
-		LogoSinTabY[i] = (UWORD)(sin(0.2f * (float)i) * 40.0f);
-		LogoSinTabX[i] = (UWORD)(sin(0.1f * (float)i) * 60.0f);
+		LogoSinTabX[i] = 70 + (UWORD)(sin(0.1f * (float)i) * 60.0f);
+		LogoSinTabY[i] = 100 + (UWORD)(sin(0.2f * (float)i) * 40.0f);
 	}
 
 	return TRUE;
@@ -37,13 +37,13 @@ BOOL Init_TextLogo(void)
 
 void Draw_TextLogo(void)
 {
-	static UBYTE LogoSinTabCount = 0;
+	static UBYTE SinTabCount = 0;
 
-	lwmf_BlitTile((long*)LogoBitmap->Image->Planes[0], SrcModulo, 0, (long*)RenderPort.BitMap->Planes[0], 70 + LogoSinTabX[LogoSinTabCount], 100 + LogoSinTabY[LogoSinTabCount], WidthInWords, 47);
+	lwmf_BlitTile((long*)LogoBitmap->Image->Planes[0], SrcModulo, 0, (long*)RenderPort.BitMap->Planes[0], LogoSinTabX[SinTabCount], LogoSinTabY[SinTabCount], WidthInWords, 47);
 
-	if (++LogoSinTabCount >= 63)
+	if (++SinTabCount >= 63)
 	{
-		LogoSinTabCount = 0;
+		SinTabCount = 0;
 	}
 }
 

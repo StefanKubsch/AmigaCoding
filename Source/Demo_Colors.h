@@ -24,7 +24,7 @@ UWORD DemoColorTable[5][8] =
 	// Sine scroller
 	{ 
 		0x000, // Clear color
-		0x2AF, // Bitmap font
+		0xC0D, // Bitmap font
 		0x000, 
 		0x000,
 		0x000,

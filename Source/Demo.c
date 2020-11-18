@@ -5,7 +5,7 @@
 //* a sine scroller, moving text logo and a 2D starfield   			   *
 //*														 			   *
 //*                                                      			   *
-//* (C) 2020 by Stefan Kubsch                            			   *
+//* (C) 2020 by Stefan Kubsch / Deep4                      			   *
 //* Project for vbcc	                                 			   *
 //*                                                      			   *
 //* Compile & link with:                                 			   *
@@ -200,13 +200,13 @@ int main(void)
 		Update_CopperList();
 	}
 
-	// Initial loading of colors
-	LoadRGB4(&viewPort, DemoColorTable[0], NUMBEROFCOLORS);
-	lwmf_UpdateViewPort();	
-
 	//
 	// Init stuff for demo if needed
 	//
+
+	// Initial loading of colors
+	LoadRGB4(&viewPort, DemoColorTable[0], NUMBEROFCOLORS);
+	lwmf_UpdateViewPort();	
 
 	if (!Init_Demo())
 	{
@@ -216,7 +216,7 @@ int main(void)
 	}
 
 	// Our parts, packed into an array of function pointers
-	const void (*DemoParts[5])() =
+	const void (*DemoParts[])() =
 	{
 		Draw_TextLogo, Draw_SineScroller, Draw_2DStarfield, Draw_FilledVectorCube, Draw_3DStarfield
 	};
@@ -224,6 +224,7 @@ int main(void)
 	// Loop control
 	UBYTE CurrentBuffer = 0;
 	UBYTE CurrentDemoPart = 0;
+	const UBYTE NumberOfDemoParts = sizeof(DemoParts)/sizeof(DemoParts[0]);
 	UWORD FrameCount = 0;
 
 	// Duration of each part in frames
@@ -281,7 +282,7 @@ int main(void)
 		{
 			FrameCount = 0;
 
-			if (++CurrentDemoPart > 4)
+			if (++CurrentDemoPart >= NumberOfDemoParts)
 			{
 				CurrentDemoPart = 0;
 			}

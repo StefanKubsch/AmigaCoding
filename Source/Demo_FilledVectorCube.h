@@ -51,8 +51,8 @@ void Init_FilledVectorCube(void)
 	// Create two sintabs for a lissajous figure
 	for (UBYTE i = 0; i < 64; ++i)
 	{
-		CubeSinTabY[i] = (UWORD)(sin(0.2f * (float)i) * 40.0f);
 		CubeSinTabX[i] = (UWORD)(sin(0.1f * (float)i) * 60.0f);
+		CubeSinTabY[i] = (UWORD)(sin(0.2f * (float)i) * 40.0f);
 	}
 
 	const float CosA = cos(0.04f);
@@ -108,33 +108,33 @@ void Init_FilledVectorCube(void)
 
 void Draw_FilledVectorCube(void)
 {
-	const UBYTE CubeFacesColors[] = { 1, 2, 3, 4, 5, 6 };
-	static UBYTE VCCount = 0;
-	static UBYTE CubeSinTabCount = 0;
+	const UBYTE FaceColors[] = { 1, 2, 3, 4, 5, 6 };
+	static UBYTE idx = 0;
+	static UBYTE SinTabCount = 0;
 
 	RenderPort.Mask = 0x07;
 
 	// Since we see only the three faces on top, we only need to render these (3, 4 and 5)
 	for (UBYTE i = 3; i < 6; ++i)
 	{
-		SetAPen(&RenderPort, CubeFacesColors[CubePreCalc[VCCount].Order[i].first]);
+		SetAPen(&RenderPort, FaceColors[CubePreCalc[idx].Order[i].first]);
 
-		AreaMove(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p0].x + CubeSinTabX[CubeSinTabCount], CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p0].y + CubeSinTabY[CubeSinTabCount]);
-		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p1].x + CubeSinTabX[CubeSinTabCount], CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p1].y + CubeSinTabY[CubeSinTabCount]);
-		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p2].x + CubeSinTabX[CubeSinTabCount], CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p2].y + CubeSinTabY[CubeSinTabCount]);
-		AreaDraw(&RenderPort, CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p3].x + CubeSinTabX[CubeSinTabCount], CubePreCalc[VCCount].Cube[CubeFaces[CubePreCalc[VCCount].Order[i].first].p3].y + CubeSinTabY[CubeSinTabCount]);
+		AreaMove(&RenderPort, CubePreCalc[idx].Cube[CubeFaces[CubePreCalc[idx].Order[i].first].p0].x + CubeSinTabX[SinTabCount], CubePreCalc[idx].Cube[CubeFaces[CubePreCalc[idx].Order[i].first].p0].y + CubeSinTabY[SinTabCount]);
+		AreaDraw(&RenderPort, CubePreCalc[idx].Cube[CubeFaces[CubePreCalc[idx].Order[i].first].p1].x + CubeSinTabX[SinTabCount], CubePreCalc[idx].Cube[CubeFaces[CubePreCalc[idx].Order[i].first].p1].y + CubeSinTabY[SinTabCount]);
+		AreaDraw(&RenderPort, CubePreCalc[idx].Cube[CubeFaces[CubePreCalc[idx].Order[i].first].p2].x + CubeSinTabX[SinTabCount], CubePreCalc[idx].Cube[CubeFaces[CubePreCalc[idx].Order[i].first].p2].y + CubeSinTabY[SinTabCount]);
+		AreaDraw(&RenderPort, CubePreCalc[idx].Cube[CubeFaces[CubePreCalc[idx].Order[i].first].p3].x + CubeSinTabX[SinTabCount], CubePreCalc[idx].Cube[CubeFaces[CubePreCalc[idx].Order[i].first].p3].y + CubeSinTabY[SinTabCount]);
 
 		AreaEnd(&RenderPort);
 	}
 
-	if (++VCCount >= 90)
+	if (++idx >= 90)
 	{
-		VCCount = 0;
+		idx = 0;
 	}
 
-	if (++CubeSinTabCount >= 63)
+	if (++SinTabCount >= 63)
 	{
-		CubeSinTabCount = 0;
+		SinTabCount = 0;
 	}
 
 	RenderPort.Mask = -1;
