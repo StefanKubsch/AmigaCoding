@@ -8,8 +8,19 @@
 //* (C) 2020 by Stefan Kubsch      *
 //**********************************
 
-UWORD DemoColorTable[4][8] = 
+UWORD DemoColorTable[5][8] = 
 {
+	// TextLogo
+	{ 
+		0x000, // Clear color
+		0x368, // Logo colors
+		0x134, 
+		0x012,
+		0x246,
+		0x146,
+		0x123,
+		0x001
+	},
 	// Sine scroller
 	{ 
 		0x000, // Clear color

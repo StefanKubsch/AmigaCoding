@@ -8,72 +8,28 @@
 //* (C) 2020 by Stefan Kubsch      *
 //**********************************
 
-#include <string.h>
+struct lwmf_Image* LogoBitmap;
+WORD SrcModulo;
+WORD WidthInWords;
 
-struct Logofont
-{
-	struct lwmf_Image* FontBitmap;
-	char* Text;
-	char* CharMap;
-	WORD* Map;
-	UBYTE CharWidth;
-	UBYTE CharHeight;
-	UBYTE CharSpacing;
-	UBYTE CharOverallWidth;
-	UWORD TextLength;
-	UWORD CharMapLength;
-	WORD SrcModulo;
-	WORD WidthInWords;
-} TextFont;
+UWORD LogoSinTabY[64];
+UWORD LogoSinTabX[64];
 
 BOOL Init_TextLogo(void)
 {
-	// ScrollFont.bsh is an ILBM (IFF) file
-	// In this case it´s a "brush", made with Personal Paint on Amiga - a brush is smaller in size
-	// The original IFF ScrollFont.iff in included in gfx
-	if (!(TextFont.FontBitmap = lwmf_LoadImage("gfx/scrollfont.bsh")))
+	if (!(LogoBitmap = lwmf_LoadImage("gfx/logo.iff")))
 	{
 		return FALSE;
 	}
 
-	// Text & Font settings
-	TextFont.Text = "DEEP4";
-	TextFont.CharMap = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!-,+?*()";
-	TextFont.CharWidth = 15;
-	TextFont.CharHeight = 20;
-	TextFont.CharSpacing = 1;
-	TextFont.CharOverallWidth = TextFont.CharWidth + TextFont.CharSpacing;
-	TextFont.TextLength = strlen(TextFont.Text);
-	TextFont.CharMapLength = strlen(TextFont.CharMap);
-	TextFont.SrcModulo = (TextFont.FontBitmap->Width / 8) - (TextFont.CharOverallWidth / 16);
-	TextFont.WidthInWords = (TextFont.CharOverallWidth / 16);
-	
-	if (!(TextFont.Map = AllocVec(sizeof(WORD) * TextFont.TextLength, MEMF_ANY | MEMF_CLEAR)))
+	WidthInWords = (176 / 16) * (LogoBitmap->Image->Depth * 2);
+	SrcModulo = (LogoBitmap->Image->BytesPerRow) - (WidthInWords * 2);
+
+	// Create two sintabs for a lissajous figure
+	for (UBYTE i = 0; i < 64; ++i)
 	{
-		return FALSE;
-	}
-
-	// Pre-calc char positions in map
-	for (UWORD i = 0; i < TextFont.TextLength; ++i)
-	{
-		TextFont.Map[i] = 9999;
-
-		for (UWORD j = 0, MapPos = 0; j < TextFont.CharMapLength; ++j)
-		{
-			if (*(TextFont.Text + i) == *(TextFont.CharMap + j))
-			{
-				TextFont.Map[i] = MapPos;
-				break;
-			}
-
-			MapPos += 2;
-		}
-
-		// char not found, space
-		if (TextFont.Map[i] == 9999)
-		{
-			TextFont.Map[i] = -1;
-		}
+		LogoSinTabY[i] = (UWORD)(sin(0.2f * (float)i) * 40.0f);
+		LogoSinTabX[i] = (UWORD)(sin(0.1f * (float)i) * 60.0f);
 	}
 
 	return TRUE;
@@ -81,34 +37,21 @@ BOOL Init_TextLogo(void)
 
 void Draw_TextLogo(void)
 {
-	static WORD XPos = 0;
-	static WORD Speed = 2;
-	WORD Pos = XPos;
+	static UBYTE LogoSinTabCount = 0;
 
-	for (UWORD i = 0; i < TextFont.TextLength; ++i)
+	lwmf_BlitTile((long*)LogoBitmap->Image->Planes[0], SrcModulo, 0, (long*)RenderPort.BitMap->Planes[0], 70 + LogoSinTabX[LogoSinTabCount], 100 + LogoSinTabY[LogoSinTabCount], WidthInWords, 47);
+
+	if (++LogoSinTabCount >= 63)
 	{
-		lwmf_BlitTile((long*)TextFont.FontBitmap->Image->Planes[0], TextFont.SrcModulo, TextFont.Map[i], (long*)RenderPort.BitMap->Planes[0], Pos, 234, TextFont.WidthInWords, TextFont.CharHeight);
-		Pos += TextFont.CharOverallWidth << 1;
-	}
-
-	XPos += Speed;
-
-	if (XPos <= 0 || XPos >= 175)
-	{
-		Speed *= -1;
+		LogoSinTabCount = 0;
 	}
 }
 
 void Cleanup_TextLogo(void)
 {
-	if (TextFont.FontBitmap)
+	if (LogoBitmap)
 	{
-		lwmf_DeleteImage(TextFont.FontBitmap);
-	}
-
-	if (TextFont.Map)
-	{
-		FreeVec(TextFont.Map);
+		lwmf_DeleteImage(LogoBitmap);
 	}
 }
 

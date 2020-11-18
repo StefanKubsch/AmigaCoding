@@ -16,7 +16,7 @@ struct BitMap* lwmf_BitmapCopy(struct BitMap* SourceBM)
 	ULONG Width = 0;
 	ULONG Height = 0;
 
-	if (!(TargetBM = AllocBitMap(Width = GetBitMapAttr(SourceBM, BMA_WIDTH), Height = GetBitMapAttr(SourceBM, BMA_HEIGHT), GetBitMapAttr(SourceBM, BMA_DEPTH), BMF_CLEAR, NULL)))
+	if (!(TargetBM = AllocBitMap(Width = GetBitMapAttr(SourceBM, BMA_WIDTH), Height = GetBitMapAttr(SourceBM, BMA_HEIGHT), GetBitMapAttr(SourceBM, BMA_DEPTH), GetBitMapAttr(SourceBM, BMA_FLAGS), NULL)))
 	{
 		return NULL;
 	}
@@ -54,7 +54,7 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 
 	TempImage->Width = Header->bmh_Width;
 	TempImage->Height = Header->bmh_Height;
-	TempImage->Depth = GetBitMapAttr (TempImage->Image, BMA_DEPTH);
+	TempImage->Depth = GetBitMapAttr(TempImage->Image, BMA_DEPTH);
 	TempImage->NumberOfColors = NumberOfColors;
 	
 	DisposeDTObject(dtObject);

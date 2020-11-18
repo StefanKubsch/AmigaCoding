@@ -35,9 +35,15 @@ BLTAPTL             equ     $00DFF052		; Blitter pointer to destination A (low 1
 BLTDPTH		        equ     $00DFF054		; Blitter pointer to destination D (high 5 bits)
 BLTDPTL             equ     $00DFF056		; Blitter pointer to destination D (low 15 bits)
 BLTSIZE 	        equ     $00DFF058		; Blitter start and size (win/width, height)
-BLTAMOD             equ     $00DFF064		; Blitter modulo for destination A
-BLTDMOD 	        equ     $00DFF066		; Blitter modulo for destination D
+BLTSIZH				equ		$00DFF05E		; Blitter H size and start (for 11 bit H size)
+BLTSIZV				equ		$00DFF05C		; Blitter vertical size (15 bit height)
+BLTAMOD             equ     $00DFF064		; Blitter modulo for A
+BLTBMOD				equ		$00DFF062		; Blitter modulo for B
+BLTCMOD				equ		$00DFF060		; Blitter modulo for C
+BLTDMOD 	        equ     $00DFF066		; Blitter modulo for D
 BLTADAT             equ     $00DFF074		; Blitter source A data register
+BPL1MOD				equ		$00DFF108		; Bit plane modulo (odd planes)
+BPL2MOD				equ		$00DFF10A		; Bit plane modulo (even planes)
 COP1LCH             equ     $00DFF080		; Coprocessor first location register (high 5 bits)
 COP1LCL             equ     $00DFF082		; Coprocessor first location register (low 15 bits)
 DMACON              equ     $00DFF096		; DMA control (and blitter status) read/write
@@ -46,7 +52,6 @@ INTENA              equ     $00DFF09A		; Interrupt enable read/write
 INTENAR             equ     $00DFF01C		; Interrupt enable read
 INTREQ              equ     $00DFF09C		; Interrupt request read/write
 INTREQR             equ     $00DFF01E		; Interrupr request read
-
 SPR0CTL				equ		$00DFF142		; Sprite 0 position and control data
 SPR1CTL				equ		$00DFF14A		; Sprite 1 position and control data
 SPR2CTL				equ		$00DFF152		; Sprite 2 position and control data
@@ -391,41 +396,46 @@ _lwmf_SetPixel::
 ;
 
 _lwmf_BlitTile::
-	move.l	d6,-(sp)							; save registers
+	movem.l	d6-d7,-(sp)							; save registers
 
-	bsr     _lwmf_WaitBlitter
+	; Source modulo
+	subq.w	#2,d0								; subtract two more words from Source modulo because of barrel shift
 
-	subq.w	#2,d0								; subtract two more words because of barrel shift
-	move.w  d0,BLTAMOD							; in general: SOURCE_BITMAP_WIDTH/8 - width in words
+	; Destination modulo
+	move.w	#SCREENWIDTHTOTAL,d7
+	sub.w	d4,d7								; subtract width in words 
+	sub.w	d4,d7								; subtract width in words
+	subq.w	#2,d7								; subtract two more words because of barrel shift
 
-	move.w	#SCREENWIDTHTOTAL,d6				; TARGET_BITMAP_WIDTH/8 * NUMBITPLANES - WORDS
-	sub.w	d4,d6								; subtract width in words
-	subq.w	#2,d6								; subtract two more words because of barrel shift
-	move.w  d6,BLTDMOD							; move complete modulo into Blitter Destination D							
-
+	; Calc screen position
 	move.w	d2,d6								; store PosX for further use
 	asr.w	#3,d6         						; arithmetic right shift PosX by three bits  
 	mulu.w	#SCREENWIDTHTOTAL,d3         		; multiply PosY with target width
 	add.l	d6,a1         						; add PosX to DstAddr
 	add.l	d3,a1         						; add PosY to DstAddr
-	move.l  a1,BLTDPTH							; DstAddr -> Blitter Destination D									       
 
+	; Barrel shift
 	andi.w	#$F,d2        						; clear all but first byte of PosX
 	ror.w	#4,d2								; rotate right by four bits
 	add.w	#$09F0,d2     						; D = A ($F0), ascending mode
-	move.w  d2,BLTCON0
 	
-	move.l	#$FFFF0000,BLTAFWM					; mask out first word	  
-	
+	; Source offset
 	add.l   d1,a0                   			; add source offset (in bytes) to SrcAddr
-	move.l  a0,BLTAPTH							; SrcAddr -> Blitter Source A
-		
-	lsl.w	#6,d5								; multiply Height in lines by 64
-	add.w	d4,d5								; add width in words to Height
-	addq.w	#1,d5								; add one more word because of barrel shift
-	move.w  d5,BLTSIZE              			; in general: number of lines * 64 + width in words
+	addq.w	#1,d4								; add one word to Width because of barrel shift
+	
+	bsr     _lwmf_WaitBlitter
 
-	move.l	(sp)+,d6							; restore registers
+	; ...and BLIT!
+	move.l  a0,BLTAPTH							; SrcAddr -> Blitter Source A
+	move.l  a1,BLTDPTH							; DstAddr -> Blitter Destination D									       
+	move.w  d0,BLTAMOD							; move complete modulo into Blitter Source A	
+	move.w  d7,BLTDMOD							; move complete modulo into Blitter Destination D							
+	move.w  d2,BLTCON0
+	move.l	#$FFFF0000,BLTAFWM					; mask out first word	  
+	move.w	d5,BLTSIZV							; vertical blit size (Height)
+	move.w	d4,BLTSIZH							; horizontal blit size (Width)
+
+	movem.l	(sp)+,d6-d7							; restore registers
 	rts
 
 ; ***************************************************************************************************

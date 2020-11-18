@@ -216,9 +216,9 @@ int main(void)
 	}
 
 	// Our parts, packed into an array of function pointers
-	const void (*DemoParts[4])() =
+	const void (*DemoParts[5])() =
 	{
-		Draw_SineScroller, Draw_2DStarfield, Draw_FilledVectorCube, Draw_3DStarfield
+		Draw_TextLogo, Draw_SineScroller, Draw_2DStarfield, Draw_FilledVectorCube, Draw_3DStarfield
 	};
 
 	// Loop control
@@ -251,10 +251,19 @@ int main(void)
 
 		OwnBlitter();
 		lwmf_ClearScreen((long*)RenderPort.BitMap->Planes[0]);
-		Draw_TextLogo();
-		DisownBlitter();
+		
+		if (CurrentDemoPart != 0)
+		{
+			DisownBlitter();
+		}
+
 		// Call actual demopart
 		(*DemoParts[CurrentDemoPart])();
+
+		if (CurrentDemoPart == 0)
+		{
+			DisownBlitter();
+		}
 
 		//***************************************************************
 		// Ends here ;-)                                                *
@@ -272,7 +281,7 @@ int main(void)
 		{
 			FrameCount = 0;
 
-			if (++CurrentDemoPart > 3)
+			if (++CurrentDemoPart > 4)
 			{
 				CurrentDemoPart = 0;
 			}
