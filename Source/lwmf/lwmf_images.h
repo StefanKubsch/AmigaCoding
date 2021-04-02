@@ -4,6 +4,8 @@
 struct lwmf_Image
 {
 	struct BitMap* Image;
+	ULONG Width;
+	ULONG Height;
 	ULONG* CRegs;
 	UBYTE NumberOfColors;
 };
@@ -28,30 +30,28 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 {
 	struct lwmf_Image* TempImage = NULL;
 	struct BitMap* TempBitmap = NULL;
-	ULONG NumberOfColors = 0;
-	ULONG* CRegs = NULL;
 	APTR dtObject = NULL;
-
-	if (!(dtObject = NewDTObject(Filename, DTA_GroupID, GID_PICTURE, PDTA_Remap, FALSE, TAG_END)))
-	{
-		return NULL;
-	}
-	
-	DoDTMethod(dtObject, NULL, NULL, DTM_PROCLAYOUT, NULL, TRUE);
-	GetDTAttrs(dtObject, PDTA_DestBitMap, &TempBitmap, PDTA_CRegs, &CRegs, PDTA_NumColors, &NumberOfColors, TAG_END);
 
 	if (!(TempImage = AllocMem(sizeof(struct lwmf_Image), MEMF_ANY | MEMF_CLEAR)))
 	{
 		return NULL;
 	}
 
+	if (!(dtObject = NewDTObject(Filename, DTA_GroupID, GID_PICTURE, PDTA_Remap, FALSE, TAG_END)))
+	{
+		return NULL;
+	}
+
+	DoDTMethod(dtObject, NULL, NULL, DTM_PROCLAYOUT, NULL, TRUE);
+	GetDTAttrs(dtObject, PDTA_DestBitMap, &TempBitmap, PDTA_CRegs, &TempImage->CRegs, PDTA_NumColors, &TempImage->NumberOfColors, TAG_END);
+
 	if (!(TempImage->Image = lwmf_BitmapCopy(TempBitmap)))
 	{
 		return NULL;
 	}
 
-	TempImage->NumberOfColors = NumberOfColors;
-	TempImage->CRegs = CRegs;
+	TempImage->Width = GetBitMapAttr(TempImage->Image, BMA_WIDTH);
+	TempImage->Height = GetBitMapAttr(TempImage->Image, BMA_HEIGHT);
 
 	DisposeDTObject(dtObject);
 	return TempImage;

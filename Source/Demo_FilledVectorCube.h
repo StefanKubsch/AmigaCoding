@@ -2,11 +2,11 @@
 #define FilledVectorCube_H
 
 
-//***********************************
-//* Simple filled vector cube       *
-//*								    *
-//* (C) 2020 by Stefan Kubsch       *
-//***********************************
+//****************************************
+//* Simple filled vector cube       	 *
+//*								    	 *
+//* (C) 2020-2021 by Stefan Kubsch       *
+//****************************************
 
 #include <math.h>
 

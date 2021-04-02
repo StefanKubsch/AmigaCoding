@@ -1,11 +1,11 @@
 //**********************************************************************
 //* Simple copper demo for Amiga with at least OS 3.0           	   *
 //*														 			   *
-//* (C) 2020 by Stefan Kubsch                            			   *
+//* (C) 2020-2021 by Stefan Kubsch                        			   *
 //* Project for vbcc	                                 			   *
 //*                                                      			   *
 //* Compile & link with:                                 			   *
-//* make_Copper.bat							          	     		   *
+//* make_Copper.cmd							          	     		   *
 //*                                                      			   *
 //* Quit with mouse click                                  			   *
 //**********************************************************************

@@ -2,11 +2,11 @@
 #define SineScroller_H
 
 
-//**********************************
-//* Simple sine scroller           *
-//*								   *
-//* (C) 2020 by Stefan Kubsch      *
-//**********************************
+//***************************************
+//* Simple sine scroller           		*
+//*								   		*
+//* (C) 2020-2021 by Stefan Kubsch      *
+//***************************************
 
 #include <math.h>
 #include <string.h>
@@ -33,7 +33,7 @@ BOOL Init_SineScroller(void)
 {
 	// ScrollFont.bsh is an ILBM (IFF) file
 	// In this case it´s a "brush", made with Personal Paint on Amiga - a brush is smaller in size
-	// The original IFF ScrollFont.iff in included in gfx
+	// The original IFF ScrollFont.iff is included in gfx
 	if (!(Font.FontBitmap = lwmf_LoadImage("gfx/scrollfont.bsh")))
 	{
 		return FALSE;
@@ -59,7 +59,8 @@ BOOL Init_SineScroller(void)
 	// Pre-calc char positions in map
 	for (UWORD i = 0; i < Font.TextLength; ++i)
 	{
-		Font.Map[i] = 9999;
+		// use -1 if char not found, "space"
+		Font.Map[i] = -1;
 
 		for (UWORD j = 0, MapPos = 0; j < Font.CharMapLength; ++j)
 		{
@@ -70,12 +71,6 @@ BOOL Init_SineScroller(void)
 			}
 
 			MapPos += Font.CharOverallWidth;
-		}
-
-		// char not found, space
-		if (Font.Map[i] == 9999)
-		{
-			Font.Map[i] = -1;
 		}
 	}
 
@@ -105,6 +100,10 @@ void Draw_SineScroller(void)
 			if (TempPosX < SCREENWIDTH)
 			{
 				BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, ScrollSinTab[TempPosX], 2, Font.CharHeight, 0xC0, 0x01, NULL);
+			}
+			else
+			{
+				break;
 			}
 		}
 

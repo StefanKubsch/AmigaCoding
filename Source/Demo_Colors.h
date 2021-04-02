@@ -2,11 +2,11 @@
 #define COLORS_H
 
 
-//**********************************
-//* Color definitions for demo     *
-//*								   *
-//* (C) 2020 by Stefan Kubsch      *
-//**********************************
+//***************************************
+//* Color definitions for demo     		*
+//*								   		*
+//* (C) 2020-2021 by Stefan Kubsch      *
+//***************************************
 
 UWORD DemoColorTable[5][8] = 
 {

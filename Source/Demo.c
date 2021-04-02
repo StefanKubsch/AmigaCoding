@@ -5,11 +5,11 @@
 //* a sine scroller, moving text logo and a 2D starfield   			   *
 //*														 			   *
 //*                                                      			   *
-//* (C) 2020 by Stefan Kubsch / Deep4                      			   *
+//* (C) 2020-2021 by Stefan Kubsch / Deep4                 			   *
 //* Project for vbcc	                                 			   *
 //*                                                      			   *
 //* Compile & link with:                                 			   *
-//* make_Demo.bat													   *
+//* make_Demo.cmd													   *
 //*                                                      			   *
 //* Quit with mouse click                                  			   *
 //**********************************************************************
