@@ -1,7 +1,7 @@
 ; Various assembler functions for lwmf
 ; Code is compatible with Motorola syntax as provided by vbcc
 ;
-; Coded in 2020 by Stefan Kubsch / Deep4
+; Coded in 2020-2021 by Stefan Kubsch / Deep4
 
 ; ***************************************************************************************************
 ; * Global                                                                                          *
@@ -69,6 +69,9 @@ DMAB_BLITTER        equ		6				; DMACONR bit 14 - blitter busy flag
 ; graphics.library
 LVOLoadView         equ     -222
 LVOWaitTOF          equ     -270
+LVOOwnBlitter		equ		-456
+LVODisownBlitter	equ		-462
+
 ; exec.library
 LVOForbid           equ     -132
 LVOPermit           equ     -138
@@ -252,7 +255,29 @@ _lwmf_ReleaseOS::
 ; **************************************************************************
 
 ;
-; void _lwmf_WaitBlitter(void)
+; void lwmf_OwnBlitter(void);
+;
+
+_lwmf_OwnBlitter::
+	move.l	a6,-(sp)                ; save register on stack
+	move.l  _GfxBase(pc),a6
+	jsr     LVOOwnBlitter(a6)  
+	movea.l (sp)+,a6                ; restore register
+   	rts
+ 
+;
+; void lwmf_DisownBlitter(void);
+;
+
+_lwmf_DisownBlitter::
+	move.l	a6,-(sp)                ; save register on stack
+	move.l  _GfxBase(pc),a6
+	jsr     LVODisownBlitter(a6)  
+	movea.l (sp)+,a6                ; restore register
+   	rts
+
+;
+; void lwmf_WaitBlitter(void);
 ;
 
 _lwmf_WaitBlitter::
@@ -264,7 +289,7 @@ _lwmf_WaitBlitter::
 	rts
 
 ;
-; void _lwmf_WaitVertBlank(void)
+; void lwmf_WaitVertBlank(void);
 ;
 
 _lwmf_WaitVertBlank::

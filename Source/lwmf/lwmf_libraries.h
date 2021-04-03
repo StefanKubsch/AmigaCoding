@@ -21,6 +21,8 @@ UWORD lwmf_LoadDatatypesLib(void);
 void lwmf_CloseLibraries();
 void lwmf_TakeOverOS(void);
 void lwmf_ReleaseOS(void);
+void lwmf_OwnBlitter(void);
+void lwmf_DisownBlitter(void);
 void lwmf_WaitVertBlank(void);
 void lwmf_WaitBlitter(void);
 void lwmf_ClearMemCPU(__reg("a1") long* StartAddress, __reg("d7") long NumberOfBytes);

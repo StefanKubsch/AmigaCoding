@@ -17,9 +17,9 @@
 // Include our own header files
 #include "lwmf/lwmf.h"
 
-// Enable (set to 1) for debugging
+// Enable (set to TRUE) for debugging
 // When enabled, copperlist is not executed and load per frame will be displayed via color changing of background
-#define DEBUG 				0
+BOOL DEBUG = FALSE;
 
 //
 // Screen settings
@@ -195,7 +195,7 @@ int main(void)
 		return 20;
 	}
 
-	if (DEBUG == 0)
+	if (DEBUG == FALSE)
 	{
 		Update_CopperList();
 	}
@@ -238,7 +238,7 @@ int main(void)
 	// PRA_FIR0 = Bit 6 (0x40)
 	while (*CIAA_PRA & 0x40)
 	{
-		if (DEBUG == 1)
+		if (DEBUG == TRUE)
 		{
 			*COLOR00 = 0x000;
 		}
@@ -250,12 +250,12 @@ int main(void)
 		// Start here with drawing                                      *
 		//***************************************************************
 
-		OwnBlitter();
+		lwmf_OwnBlitter();
 		lwmf_ClearScreen((long*)RenderPort.BitMap->Planes[0]);
 		
 		if (CurrentDemoPart != 0)
 		{
-			DisownBlitter();
+			lwmf_DisownBlitter();
 		}
 
 		// Call actual demopart
@@ -263,14 +263,14 @@ int main(void)
 
 		if (CurrentDemoPart == 0)
 		{
-			DisownBlitter();
+			lwmf_DisownBlitter();
 		}
 
 		//***************************************************************
 		// Ends here ;-)                                                *
 		//***************************************************************
 
-		if (DEBUG == 1)
+		if (DEBUG == TRUE)
 		{
 			*COLOR00 = 0xF00;
 		}
