@@ -27,39 +27,21 @@ CUSTOM		        equ     $00DFF000		; Base address of custom registers
 ADKCON              equ     $00DFF09E		; Audio/Disk control read/write
 ADKCONR             equ     $00DFF010		; Audio/Disk control read
 BLTCON0 	        equ     $00DFF040		; Blitter control reg 0
-BLTCON1 	        equ     $00DFF042		; Blitter control reg 1
 BLTAFWM             equ     $00DFF044		; Blitter first-word mask for source A
-BLTALWM             equ     $00DFF046		; Blitter last-word mask for source A
 BLTAPTH             equ     $00DFF050		; Blitter pointer to destination A (high 5 bits)
-BLTAPTL             equ     $00DFF052		; Blitter pointer to destination A (low 15 bits)
-BLTDPTH		        equ     $00DFF054		; Blitter pointer to destination D (high 5 bits)
-BLTDPTL             equ     $00DFF056		; Blitter pointer to destination D (low 15 bits)
 BLTSIZE 	        equ     $00DFF058		; Blitter start and size (win/width, height)
 BLTSIZH				equ		$00DFF05E		; Blitter H size and start (for 11 bit H size)
 BLTSIZV				equ		$00DFF05C		; Blitter vertical size (15 bit height)
 BLTAMOD             equ     $00DFF064		; Blitter modulo for A
-BLTBMOD				equ		$00DFF062		; Blitter modulo for B
-BLTCMOD				equ		$00DFF060		; Blitter modulo for C
 BLTDMOD 	        equ     $00DFF066		; Blitter modulo for D
-BLTADAT             equ     $00DFF074		; Blitter source A data register
-BPL1MOD				equ		$00DFF108		; Bit plane modulo (odd planes)
-BPL2MOD				equ		$00DFF10A		; Bit plane modulo (even planes)
+BLTDPTH		        equ     $00DFF054		; Blitter pointer to destination D (high 5 bits)
 COP1LCH             equ     $00DFF080		; Coprocessor first location register (high 5 bits)
-COP1LCL             equ     $00DFF082		; Coprocessor first location register (low 15 bits)
 DMACON              equ     $00DFF096		; DMA control (and blitter status) read/write
 DMACONR             equ     $00DFF002		; DMA control (and blitter status) read
 INTENA              equ     $00DFF09A		; Interrupt enable read/write
 INTENAR             equ     $00DFF01C		; Interrupt enable read
 INTREQ              equ     $00DFF09C		; Interrupt request read/write
 INTREQR             equ     $00DFF01E		; Interrupr request read
-SPR0CTL				equ		$00DFF142		; Sprite 0 position and control data
-SPR1CTL				equ		$00DFF14A		; Sprite 1 position and control data
-SPR2CTL				equ		$00DFF152		; Sprite 2 position and control data
-SPR3CTL				equ		$00DFF15A		; Sprite 3 position and control data
-SPR4CTL				equ		$00DFF162		; Sprite 4 position and control data
-SPR5CTL				equ		$00DFF16A		; Sprite 5 position and control data
-SPR6CTL				equ		$00DFF172		; Sprite 6 position and control data
-SPR7CTL				equ		$00DFF17A		; Sprite 7 position and control data
 VPOSR               equ     $00DFF004		; Read vert most sig. bits (and frame flop)
 
 DMAB_BLITTER        equ		6				; DMACONR bit 14 - blitter busy flag

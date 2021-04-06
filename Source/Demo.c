@@ -252,7 +252,8 @@ int main(void)
 
 		lwmf_OwnBlitter();
 		lwmf_ClearScreen((long*)RenderPort.BitMap->Planes[0]);
-		
+		//lwmf_ClearMemCPU((long*)RenderPort.BitMap->Planes[0], 30720);
+
 		if (CurrentDemoPart != 0)
 		{
 			lwmf_DisownBlitter();
