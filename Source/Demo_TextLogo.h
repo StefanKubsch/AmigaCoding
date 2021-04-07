@@ -8,12 +8,12 @@
 //* (C) 2020-2021 by Stefan Kubsch      *
 //***************************************
 
-struct lwmf_Image* LogoBitmap = NULL;
-WORD SrcModulo = 0;
-WORD WidthInWords = 0;
+#include <math.h>
 
-UWORD LogoSinTabY[64];
-UWORD LogoSinTabX[64];
+struct lwmf_Image* LogoBitmap = NULL;
+
+UBYTE LogoSinTabY[64];
+UBYTE LogoSinTabX[64];
 
 BOOL Init_TextLogo(void)
 {
@@ -22,14 +22,11 @@ BOOL Init_TextLogo(void)
 		return FALSE;
 	}
 
-	WidthInWords = (192 / 16) * LogoBitmap->Image->Depth * 2;
-	SrcModulo = LogoBitmap->Image->BytesPerRow - (WidthInWords * 2);
-
 	// Create two sintabs for a lissajous figure
 	for (UBYTE i = 0; i < 64; ++i)
 	{
-		LogoSinTabX[i] = 70 + (UWORD)(sin(0.1f * (float)i) * 60.0f);
-		LogoSinTabY[i] = 100 + (UWORD)(sin(0.2f * (float)i) * 40.0f);
+		LogoSinTabX[i] = 70 + (UBYTE)(sin(0.1f * (float)i) * 60.0f);
+		LogoSinTabY[i] = 100 + (UBYTE)(sin(0.2f * (float)i) * 40.0f);
 	}
 
 	return TRUE;
@@ -39,7 +36,17 @@ void Draw_TextLogo(void)
 {
 	static UBYTE SinTabCount = 0;
 
-	lwmf_BlitTile((long*)LogoBitmap->Image->Planes[0], SrcModulo, 0, (long*)RenderPort.BitMap->Planes[0], LogoSinTabX[SinTabCount], LogoSinTabY[SinTabCount], WidthInWords, 46);
+	// Size of logo = 192x46 starting at position 0,0
+	// Size of whole image = 320x256
+
+	// WidthInWords = (Width of Logo / 16) * NumberOfBitPlanes * 2
+	// (192 / 16) * 3 * 2 = 72
+
+	// SourceModulo = BytesPerRow - (WidthInWord * 2)
+	// BytesPerRow = Width in bytes * NumberOfBitplanes = 40 * 3 = 120
+	// 120 - (72 * 2) = -24
+
+	lwmf_BlitTile((long*)LogoBitmap->Image->Planes[0], -24, 0, (long*)RenderPort.BitMap->Planes[0], LogoSinTabX[SinTabCount], LogoSinTabY[SinTabCount], 72, 46);
 
 	if (++SinTabCount >= 63)
 	{

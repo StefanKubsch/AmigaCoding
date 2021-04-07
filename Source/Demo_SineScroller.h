@@ -27,7 +27,7 @@ struct Scrollfont
 	WORD ScrollX;
 } Font;
 
-UWORD ScrollSinTab[SCREENWIDTH];
+UBYTE ScrollSinTab[SCREENWIDTH];
 
 BOOL Init_SineScroller(void)
 {
@@ -40,7 +40,7 @@ BOOL Init_SineScroller(void)
 	}
 
 	// Text & Font settings
-	Font.Text = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!!";
+	Font.Text = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!! HAVE FUN WATCHING THE DEMO AND ENJOY YOUR AMIGA !!!";
 	Font.CharMap = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!-,+?*()";
 	Font.CharWidth = 15;
 	Font.CharHeight = 20;
@@ -77,7 +77,7 @@ BOOL Init_SineScroller(void)
 	// Generate sinus table
 	for (UWORD i = 0; i < SCREENWIDTH; ++i)
 	{
-		ScrollSinTab[i] = 115 + (UWORD)(sin(0.03f * (float)i) * 30.0f);
+		ScrollSinTab[i] = 115 + (UBYTE)(sin(0.03f * (float)i) * 30.0f);
 	}
 
 	return TRUE;
