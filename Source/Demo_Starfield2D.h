@@ -17,7 +17,7 @@ struct StarStruct2D
 
 void Init_2DStarfield(void)
 {
-	for (UWORD i = 0; i < 200; ++i) 
+	for (UBYTE i = 0; i < 200; ++i) 
 	{
 		Stars2D[i].x = lwmf_Random() % SCREENWIDTH;
 		Stars2D[i].y = lwmf_Random() % (LOWERBORDERLINE - UPPERBORDERLINE) + UPPERBORDERLINE;
@@ -27,7 +27,7 @@ void Init_2DStarfield(void)
 
 void Draw_2DStarfield(void)
 {
-	for (UWORD i = 0; i < 200; ++i)
+	for (UBYTE i = 0; i < 200; ++i)
 	{
 		Stars2D[i].x += Stars2D[i].z << 1;
 	

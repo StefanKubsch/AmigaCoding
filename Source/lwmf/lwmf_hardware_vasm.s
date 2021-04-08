@@ -27,7 +27,9 @@ CUSTOM		        equ     $00DFF000		; Base address of custom registers
 ADKCON              equ     $00DFF09E		; Audio/Disk control read/write
 ADKCONR             equ     $00DFF010		; Audio/Disk control read
 BLTCON0 	        equ     $00DFF040		; Blitter control reg 0
-BLTAFWM             equ     $00DFF044		; Blitter first-word mask for source A
+BLTCON1 	        equ     $00DFF042		; Blitter control reg 1
+BLTAFWM             equ     $00DFF044		; Blitter first word mask for source A
+BLTALWM             equ     $00DFF046		; Blitter laster word mask for source A
 BLTAPTH             equ     $00DFF050		; Blitter pointer to destination A (high 5 bits)
 BLTSIZE 	        equ     $00DFF058		; Blitter start and size (win/width, height)
 BLTSIZH				equ		$00DFF05E		; Blitter H size and start (for 11 bit H size)
@@ -74,8 +76,9 @@ MINVERSION          equ     39        ; set required version (39 -> Amiga OS 3.0
 ;
 ; a0,a1,d0,d1 are "scratch" registers - you can do what you want with 'em
 ; All other registers need to be saved before used in a function, and must be restored before returning
-; Libraries expect their respective base address in a6
-
+;
+; Libraries expect their respective base address in a6!
+;
 ; Some words about labels (taken from vasm Manual)
 ;
 ; Labels must either start at the first column of a line or have to be terminated by a colon
@@ -332,8 +335,8 @@ _lwmf_ClearScreen::
 
 	; Clear first half of screen with blitter
 	bsr     _lwmf_WaitBlitter
+	move.l  #$01000000,BLTCON0			; enable destination only (both BLTCON0 and BLTCON1 are written!)
 	move.w  #0,BLTDMOD		       
-	move.l  #$01000000,BLTCON0			; enable destination only	  
 	move.l  a1,BLTDPTH		       
 	move.w  #SCREENCLRSIZEBLT,BLTSIZE
 
@@ -421,7 +424,7 @@ _lwmf_BlitTile::
 	add.l	d3,a1         						; add PosY to DstAddr
 
 	; Barrel shift
-	andi.w	#$F,d2        						; clear all but first byte of PosX
+	and.w	#$F,d2        						; clear all but first byte of PosX
 	ror.w	#4,d2								; rotate right by four bits
 	add.w	#$09F0,d2     						; D = A ($F0), ascending mode
 	
@@ -431,15 +434,16 @@ _lwmf_BlitTile::
 	; Add one word to Width because of barrel shift	
 	addq.w	#1,d4								
 	
+	; ...and BLIT!
 	bsr     _lwmf_WaitBlitter
 
-	; ...and BLIT!
-	move.l  a0,BLTAPTH							; SrcAddr -> Blitter Source A
-	move.l  a1,BLTDPTH							; DstAddr -> Blitter Destination D									       
+	move.w  d2,BLTCON0
+	move.w  #0,BLTCON1							; clear BLTCON1
+	move.l	#$FFFF0000,BLTAFWM					; mask out first word (both BLTAFWM and BLTALWM are written!) 
 	move.w  d0,BLTAMOD							; move complete modulo into Blitter Source A	
 	move.w  d7,BLTDMOD							; move complete modulo into Blitter Destination D							
-	move.w  d2,BLTCON0
-	move.l	#$FFFF0000,BLTAFWM					; mask out first word	  
+	move.l  a0,BLTAPTH							; SrcAddr -> Blitter Source A
+	move.l  a1,BLTDPTH							; DstAddr -> Blitter Destination D									       
 	move.w	d5,BLTSIZV							; vertical blit size (Height)
 	move.w	d4,BLTSIZH							; horizontal blit size (Width)
 

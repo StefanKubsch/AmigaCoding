@@ -90,7 +90,7 @@ void Update_CopperList(void)
 	CBump(UserCopperList);
 
 	// Upper color bars
-	for (int i = 0; i <= UPPERBORDERLINE; ++i)
+	for (UWORD i = 0; i <= UPPERBORDERLINE; ++i)
 	{
 		CWait(UserCopperList, i, 0);
 		CBump(UserCopperList);
@@ -103,7 +103,7 @@ void Update_CopperList(void)
 	CBump(UserCopperList);
 	
 	// Lower color bars
-	for (int i = LOWERBORDERLINE, j = 29; i < SCREENHEIGHT; ++i, --j)
+	for (UWORD i = LOWERBORDERLINE, j = 29; i < SCREENHEIGHT; ++i, --j)
 	{
 		CWait(UserCopperList, i, 0);
 		CBump(UserCopperList);
@@ -224,11 +224,11 @@ int main(void)
 	// Loop control
 	UBYTE CurrentBuffer = 0;
 	UBYTE CurrentDemoPart = 0;
+	UBYTE FrameCount = 0;
 	const UBYTE NumberOfDemoParts = sizeof(DemoParts)/sizeof(DemoParts[0]);
-	UWORD FrameCount = 0;
 
 	// Duration of each part in frames
-	const UWORD PartDuration = 250;
+	const UBYTE PartDuration = 250;
 
 	//
 	// This is our main loop
@@ -252,7 +252,9 @@ int main(void)
 
 		lwmf_OwnBlitter();
 		lwmf_ClearScreen((long*)RenderPort.BitMap->Planes[0]);
-		//lwmf_ClearMemCPU((long*)RenderPort.BitMap->Planes[0], 30720);
+		
+		// Alternative clearing method (it´s slower on a stock 68020 machine!)
+		// lwmf_ClearMemCPU((long*)RenderPort.BitMap->Planes[0], 30720);
 
 		if (CurrentDemoPart != 0)
 		{

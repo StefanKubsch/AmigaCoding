@@ -17,7 +17,7 @@ struct StarStruct3D
 
 void Init_3DStarfield(void)
 {
-	for (UWORD i = 0; i < 200; ++i) 
+	for (UBYTE i = 0; i < 200; ++i) 
 	{
 		Stars3D[i].x = (lwmf_Random() % SCREENWIDTH - (SCREENWIDTH >> 1)) << 8;
 		Stars3D[i].y = (lwmf_Random() % SCREENHEIGHT - (SCREENHEIGHT >> 1)) << 8;
@@ -27,7 +27,7 @@ void Init_3DStarfield(void)
 
 void Draw_3DStarfield(void)
 {
-	for (UWORD i = 0; i < 200; ++i)
+	for (UBYTE i = 0; i < 200; ++i)
 	{
 		Stars3D[i].z -= 15;
 	
