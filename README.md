@@ -25,7 +25,7 @@ Copy "cygwin1.dll" from "Development" to "C:\Windows"
 
 You´re done!
 
-All you need to test your programs is an editor (I prefer Visual Studio Code, https://code.visualstudio.com/) emulator like WinUAE (https://www.winuae.net/), with a set up Amiga OS installation. Or transfer you programs to a "real" Amiga via CF Card, Network etc.
+All you need to test your programs is an editor or IDE (I prefer Visual Studio Code, https://code.visualstudio.com/), an emulator like WinUAE (https://www.winuae.net/), with a set up Amiga OS installation. Or transfer your programs to a "real" Amiga via CF Card, Network etc.
 
 I test my code on:
 

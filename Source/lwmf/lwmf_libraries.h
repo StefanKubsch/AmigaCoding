@@ -3,7 +3,6 @@
 
 #include <exec/exec.h>
 #include <exec/types.h>
-#include <graphics/copper.h>
 #include <graphics/rastport.h>
 #include <datatypes/pictureclass.h>
 #include <clib/exec_protos.h>

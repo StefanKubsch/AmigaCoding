@@ -19,8 +19,8 @@ void Init_3DStarfield(void)
 {
 	for (UBYTE i = 0; i < 200; ++i) 
 	{
-		Stars3D[i].x = (lwmf_Random() % SCREENWIDTH - (SCREENWIDTH >> 1)) << 8;
-		Stars3D[i].y = (lwmf_Random() % SCREENHEIGHT - (SCREENHEIGHT >> 1)) << 8;
+		Stars3D[i].x = (lwmf_Random() % SCREENWIDTH - SCREENWIDTHMID) << 8;
+		Stars3D[i].y = (lwmf_Random() % SCREENHEIGHT - SCREENHEIGHTMID) << 8;
 		Stars3D[i].z = lwmf_Random() % 800;
 	}
 }

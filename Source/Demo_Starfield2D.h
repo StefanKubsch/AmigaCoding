@@ -11,8 +11,8 @@
 struct StarStruct2D
 {
 	UWORD x;
-	UWORD y;
-	UWORD z;
+	UBYTE y;
+	UBYTE z;
 } Stars2D[200];
 
 void Init_2DStarfield(void)

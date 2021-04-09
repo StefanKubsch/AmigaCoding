@@ -40,7 +40,7 @@ BOOL Init_CopperList(void)
 	// Number of CopperbarColors * 4 + init + end + spare
 	const UWORD CopperListLength = (32 << 2) + 100;
 
-	if (!(CopperList = (UWORD *) AllocVec(CopperListLength * sizeof(UWORD), MEMF_CHIP | MEMF_CLEAR)))
+	if (!(CopperList = (UWORD*)AllocVec(CopperListLength * sizeof(UWORD), MEMF_CHIP | MEMF_CLEAR)))
 	{
 		return FALSE;
 	}

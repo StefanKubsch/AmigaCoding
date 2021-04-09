@@ -56,7 +56,7 @@ struct UCopList* UserCopperList = NULL;
 
 BOOL Init_CopperList(void)
 {
-	if (!(UserCopperList = (struct UCopList*)AllocMem(sizeof(struct UCopList), MEMF_ANY | MEMF_CLEAR)))
+	if (!(UserCopperList = AllocMem(sizeof(struct UCopList), MEMF_PUBLIC | MEMF_CLEAR)))
 	{
 		return FALSE;
 	}
@@ -123,7 +123,7 @@ void Update_CopperList(void)
 
 void Cleanup_CopperList(void)
 {
-	if (viewPort.UCopIns)
+	if (UserCopperList)
 	{
 		FreeVPortCopLists(&viewPort);
 	}
@@ -182,7 +182,7 @@ int main(void)
 	// Init the RenderPort (=Rastport)
 	// We need to init some buffers for Area operations
 	// Since our demo part draws some cube surfaces which are made out of 4 vertices, we choose 5 (4 + 1 for safety)
-	if (!lwmf_CreateRenderPort(5, 130, 130))
+	if (!lwmf_CreateRenderPort(5, SCREENWIDTH, SCREENHEIGHT))
 	{
 		lwmf_CleanupAll();
 		return 20;

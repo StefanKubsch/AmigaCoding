@@ -26,7 +26,7 @@ struct PointStruct
 
 struct OrderPair
 {
-	UWORD first;
+	UBYTE first;
 	float second;
 };
 
@@ -76,8 +76,8 @@ void Init_FilledVectorCube(void)
 			CubeDef[i].y = CubeDef[i].y * CosA + x * SinA;
 
 			// 2D projection & translate
-			CubePreCalc[Pre].Cube[i].x = (SCREENWIDTH >> 1) + (UWORD)CubeDef[i].x;
-			CubePreCalc[Pre].Cube[i].y = (SCREENHEIGHT >> 1) + (UWORD)CubeDef[i].y - 5;
+			CubePreCalc[Pre].Cube[i].x = SCREENWIDTHMID + (UWORD)CubeDef[i].x;
+			CubePreCalc[Pre].Cube[i].y = SCREENHEIGHTMID + (UWORD)CubeDef[i].y - 5;
 		}
 
 		// selection-sort of depth/faces
@@ -89,7 +89,7 @@ void Init_FilledVectorCube(void)
 
 		for (UBYTE i = 0; i < 5; ++i)
 		{
-			UWORD Min = i;
+			UBYTE Min = i;
 
 			for (UBYTE j = i + 1; j <= 5; ++j)
 			{

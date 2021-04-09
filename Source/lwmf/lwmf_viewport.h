@@ -64,15 +64,21 @@ void lwmf_CleanupViewPort(void)
 {
 	for (UBYTE i = 0; i < 2; ++i)
 	{
-		FreeCprList(LOCpr[i]);
-
 		if (BufferBitmap[i])
 		{
 			FreeBitMap(BufferBitmap[i]);
 		}
 	}
 	
-	FreeVPortCopLists(&viewPort); 
+	if (view.LOFCprList)
+	{
+		FreeCprList(view.LOFCprList);
+	}
+
+	if (view.SHFCprList)
+	{
+		FreeCprList(view.SHFCprList);
+	}
 
 	if (colorMap)
 	{

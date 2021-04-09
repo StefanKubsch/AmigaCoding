@@ -64,6 +64,11 @@ void lwmf_DeleteImage(struct lwmf_Image* Image)
 		FreeBitMap(Image->Image);
 		Image->Image = NULL;
 	}
+
+	if (Image)
+	{
+		Image = NULL;
+	}
 }
 
 

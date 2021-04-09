@@ -28,7 +28,7 @@ BOOL FastCPUFlag = FALSE;
 
 void lwmf_CheckCPU(void)
 {
-	struct ExecBase *SysBase = *((struct ExecBase**)4L);
+	struct ExecBase* SysBase = *((struct ExecBase**)4L);
 
 	// Check if CPU is a 68020, 030, 040, 060 (this is the "0x80")
 	// If yes, we can calculate more stuff...
