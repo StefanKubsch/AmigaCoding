@@ -8,8 +8,6 @@
 //* (C) 2020-2021 by Stefan Kubsch       *
 //****************************************
 
-#include <math.h>
-
 struct CubeFaceStruct
 {
 	UBYTE p0;
@@ -36,8 +34,24 @@ struct CubeStruct
 	struct PointStruct Cube[8];
 } CubePreCalc[90];
 
-UWORD CubeSinTabY[64];
-UWORD CubeSinTabX[64];
+// Create two sintabs for a lissajous figure
+// for (UBYTE i = 0; i < 64; ++i)
+// {
+//		CubeSinTabX[i] = (BYTE)(sin(0.1f * (float)i) * 60.0f);
+//		CubeSinTabY[i] = (UWORD)(sin(0.2f * (float)i) * 40.0f);
+// }
+
+BYTE CubeSinTabY[64] =
+{
+	0,7,15,22,28,33,37,39,39,38,36,32,27,20,13,5,-2,-10,-17,-24,-30,-34,-38,-39,-39,-38,-35,-30,-25,-18,-11,-3,4,12,19,26,31,
+	35,38,39,39,37,34,29,23,16,8,0,-6,-14,-21,-27,-33,-36,-39,-39,-39,-36,-32,-27,-21,-14,-6,1
+};
+
+BYTE CubeSinTabX[64] =
+{
+	0,5,11,17,23,28,33,38,43,46,50,53,55,57,59,59,59,59,58,56,54,51,48,44,40,35,30,25,20,14,8,2,-3,-9,-15,-21,
+	-26,-31,-36,-41,-45,-49,-52,-54,-57,-58,-59,-59,-59,-58,-57,-55,-53,-49,-46,-42,-37,-33,-27,-22,-16,-10,-4,1
+};
 
 void Init_FilledVectorCube(void)
 {
@@ -48,15 +62,10 @@ void Init_FilledVectorCube(void)
 		float z;
 	} CubeDef[8] = { { -50.0f, -50.0f, -50.0f }, { -50.0f, -50.0f, 50.0f }, { -50.0f, 50.0f, -50.0f }, { -50.0f, 50.0f, 50.0f }, { 50.0f, -50.0f, -50.0f }, { 50.0f, -50.0f, 50.0f }, { 50.0f, 50.0f, -50.0f }, { 50.0f, 50.0f, 50.0f } };
 
-	// Create two sintabs for a lissajous figure
-	for (UBYTE i = 0; i < 64; ++i)
-	{
-		CubeSinTabX[i] = (UWORD)(sin(0.1f * (float)i) * 60.0f);
-		CubeSinTabY[i] = (UWORD)(sin(0.2f * (float)i) * 40.0f);
-	}
-
-	const float CosA = cos(0.04f);
-	const float SinA = sin(0.04f);
+	// const float CosA = cos(0.04f);
+	// const float SinA = sin(0.04f);
+	const float CosA = 0.999200f;
+	const float SinA = 0.039989f;
 
 	for (UBYTE Pre = 0; Pre < 90; ++Pre)
 	{
@@ -98,7 +107,7 @@ void Init_FilledVectorCube(void)
 					Min = j;
 				}
 			}
-			
+
 			struct OrderPair Temp = CubePreCalc[Pre].Order[Min];
 			CubePreCalc[Pre].Order[Min] = CubePreCalc[Pre].Order[i];
 			CubePreCalc[Pre].Order[i] = Temp;

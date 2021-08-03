@@ -20,7 +20,7 @@ struct BitMap* lwmf_BitmapCopy(struct BitMap* SourceBM)
 	{
 		return NULL;
 	}
-	
+
 	BltBitMap(SourceBM, 0, 0, TargetBM, 0, 0, Width, Height, 0x0C0, 0xFF, NULL);
 
 	return TargetBM;

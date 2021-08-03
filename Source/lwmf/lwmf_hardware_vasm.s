@@ -97,10 +97,10 @@ MINVERSION          equ     39        ; set required version (39 -> Amiga OS 3.0
 _lwmf_LoadGraphicsLib::
 	move.l	a6,-(sp)                ; save register on stack
 	move.l	EXECBASE.w,a6           ; use exec base address
-	
+
 	lea     gfxlib(pc),a1
 	moveq   #MINVERSION,d0
-	jsr     LVOOpenLibrary(a6)      
+	jsr     LVOOpenLibrary(a6)
 	move.l  d0,_GfxBase             ; store adress of GfxBase in variable
 	bne.s   .success
 
@@ -119,11 +119,11 @@ _lwmf_LoadGraphicsLib::
 _lwmf_LoadDatatypesLib::
 	move.l	a6,-(sp)                ; save register on stack
 	move.l	EXECBASE.w,a6           ; use exec base address
-	
+
 	lea     datatypeslib(pc),a1
 	moveq   #MINVERSION,d0
-	jsr     LVOOpenLibrary(a6)      
-	move.l  d0,_DataTypesBase 		; store adress of DataTypeBase in variable      
+	jsr     LVOOpenLibrary(a6)
+	move.l  d0,_DataTypesBase 		; store adress of DataTypeBase in variable
 	bne.s   .success
 
 	moveq   #20,d0                  ; return with error
@@ -140,22 +140,22 @@ _lwmf_LoadDatatypesLib::
 
 _lwmf_CloseLibraries::
 	move.l  EXECBASE.w,a6           ; use exec base address
-	
-	move.l  _DataTypesBase(pc),d0   ; use _DataTypesBase address in a1 for CloseLibrary     
+
+	move.l  _DataTypesBase(pc),d0   ; use _DataTypesBase address in a1 for CloseLibrary
 	bne.s   .closedatatypelib
 
-	move.l  _GfxBase(pc),d0         ; use _GfxBase address in a1 for CloseLibrary                         
+	move.l  _GfxBase(pc),d0         ; use _GfxBase address in a1 for CloseLibrary
 	bne.s   .closegraphicslib
 
 	rts
 .closedatatypelib
-	move.l  d0,a1                           
-	jsr     LVOCloseLibrary(a6) 
+	move.l  d0,a1
+	jsr     LVOCloseLibrary(a6)
 	move.l  #0,_DataTypesBase
 	rts
 .closegraphicslib
-	move.l  d0,a1                           
-	jsr     LVOCloseLibrary(a6)    
+	move.l  d0,a1
+	jsr     LVOCloseLibrary(a6)
 	move.l  #0,_GfxBase
 	rts
 
@@ -200,7 +200,7 @@ _lwmf_TakeOverOS::
 	move.l  d0,a1
 	moveq   #20,d0                  ; set task priority (20 should be enough!)
 	jsr     LVOSetTaskPri(a6)
-	
+
 	jsr     LVOForbid(a6)
 
 	movea.l (sp)+,a6                ; restore register
@@ -226,9 +226,9 @@ _lwmf_ReleaseOS::
 	move.l  _GfxBase(pc),a6             ; use graphics.library base address
 	move.l  oldview(pc),a1              ; restore saved view
 	jsr     LVOLoadView(a6)             ; loadView(oldview)
-	jsr     LVOWaitTOF(a6)          
-	jsr     LVOWaitTOF(a6)         
-	
+	jsr     LVOWaitTOF(a6)
+	jsr     LVOWaitTOF(a6)
+
 	move.l  EXECBASE.w,a6               ; use exec base address
 	jsr     LVOPermit(a6)
 
@@ -246,10 +246,10 @@ _lwmf_ReleaseOS::
 _lwmf_OwnBlitter::
 	move.l	a6,-(sp)                ; save register on stack
 	move.l  _GfxBase(pc),a6
-	jsr     LVOOwnBlitter(a6)  
+	jsr     LVOOwnBlitter(a6)
 	movea.l (sp)+,a6                ; restore register
    	rts
- 
+
 ;
 ; void lwmf_DisownBlitter(void);
 ;
@@ -257,7 +257,7 @@ _lwmf_OwnBlitter::
 _lwmf_DisownBlitter::
 	move.l	a6,-(sp)                ; save register on stack
 	move.l  _GfxBase(pc),a6
-	jsr     LVODisownBlitter(a6)  
+	jsr     LVODisownBlitter(a6)
 	movea.l (sp)+,a6                ; restore register
    	rts
 
@@ -278,11 +278,11 @@ _lwmf_WaitBlitter::
 ;
 
 _lwmf_WaitVertBlank::
-.wait  
+.wait
 	move.l	VPOSR,d0
     and.l	#$1FF00,d0
     cmp.l	#303<<8,d0
-    bne.b	.wait						 
+    bne.b	.wait
     rts
 
 ;
@@ -303,15 +303,15 @@ _lwmf_ClearMemCPU::
 .clearblock
 	movem.l d0-d5/a2-a6,-(a1)       ; 11 registers -> clear 44 bytes at once
 	movem.l d0-d5/a2-a6,-(a1)
-	movem.l d0-d5/a2-a6,-(a1) 
-	movem.l d0-d5/a2-a6,-(a1) 
-	movem.l d0-d5/a2-a6,-(a1) 
-	movem.l d0-d5/a2-a6,-(a1) 
-	movem.l d0-d5/a2-a6,-(a1) 
-	movem.l d0-d5/a2-a6,-(a1) 
-	movem.l d0-d5/a2-a6,-(a1) 
-	movem.l d0-d5/a2-a6,-(a1) 
-	movem.l d0-d5/a2-a6,-(a1) 
+	movem.l d0-d5/a2-a6,-(a1)
+	movem.l d0-d5/a2-a6,-(a1)
+	movem.l d0-d5/a2-a6,-(a1)
+	movem.l d0-d5/a2-a6,-(a1)
+	movem.l d0-d5/a2-a6,-(a1)
+	movem.l d0-d5/a2-a6,-(a1)
+	movem.l d0-d5/a2-a6,-(a1)
+	movem.l d0-d5/a2-a6,-(a1)
+	movem.l d0-d5/a2-a6,-(a1)
 	movem.l d0-d5/a2,-(a1)          ; 7 registers
 	dbra    d6,.clearblock
 .clear
@@ -336,8 +336,8 @@ _lwmf_ClearScreen::
 	; Clear first half of screen with blitter
 	bsr     _lwmf_WaitBlitter
 	move.l  #$01000000,BLTCON0			; enable destination only (both BLTCON0 and BLTCON1 are written!)
-	move.w  #0,BLTDMOD		       
-	move.l  a1,BLTDPTH		       
+	move.w  #0,BLTDMOD
+	move.l  a1,BLTDPTH
 	move.w  #SCREENCLRSIZEBLT,BLTSIZE
 
 	; Clear rest of screen with cpu
@@ -353,15 +353,15 @@ _lwmf_ClearScreen::
 .clearblock
 	movem.l d0-d5/a2-a6,-(a1)       	; 11 registers -> clear 44 bytes at once
 	movem.l d0-d5/a2-a6,-(a1)
-	movem.l d0-d5/a2-a6,-(a1) 
-	movem.l d0-d5/a2-a6,-(a1) 
-	movem.l d0-d5/a2-a6,-(a1) 
-	movem.l d0-d5/a2-a6,-(a1) 
-	movem.l d0-d5/a2-a6,-(a1) 
-	movem.l d0-d5/a2-a6,-(a1) 
-	movem.l d0-d5/a2-a6,-(a1) 
-	movem.l d0-d5/a2-a6,-(a1) 
-	movem.l d0-d5/a2-a6,-(a1) 
+	movem.l d0-d5/a2-a6,-(a1)
+	movem.l d0-d5/a2-a6,-(a1)
+	movem.l d0-d5/a2-a6,-(a1)
+	movem.l d0-d5/a2-a6,-(a1)
+	movem.l d0-d5/a2-a6,-(a1)
+	movem.l d0-d5/a2-a6,-(a1)
+	movem.l d0-d5/a2-a6,-(a1)
+	movem.l d0-d5/a2-a6,-(a1)
+	movem.l d0-d5/a2-a6,-(a1)
 	movem.l d0-d5/a2,-(a1)          	; 7 registers
 	dbra    d6,.clearblock
 .clear
@@ -385,12 +385,12 @@ _lwmf_SetPixel::
 
 	muls.w  #SCREENWIDTHTOTAL,d1        		; address offset for line
 	move.w  d0,d3			                    ; calc x position
-	not.w   d3			       
+	not.w   d3
 	asr.w   #3,d0			                    ; byte offset for x position
 	add.l   d0,d1
 	moveq   #NUMBITPLANES-1,d4                  ; loop through bitplanes
 .loop
-	ror.b   d2                               	; is bit already set?			       
+	ror.b   d2                               	; is bit already set?
 	bpl.s   .skipbpl
 	bset    d3,(a0,d1.l)	                    ; if not -> set it
 .skipbpl
@@ -412,13 +412,13 @@ _lwmf_BlitTile::
 
 	; Destination modulo
 	move.w	#SCREENWIDTHTOTAL,d7
-	sub.w	d4,d7								; subtract width in words 
+	sub.w	d4,d7								; subtract width in words
 	sub.w	d4,d7								; subtract width in words
 	subq.w	#2,d7								; subtract two more words because of barrel shift
 
 	; Calc screen position
 	move.w	d2,d6								; store PosX for further use
-	asr.w	#3,d6         						; arithmetic right shift PosX by three bits  
+	asr.w	#3,d6         						; arithmetic right shift PosX by three bits
 	mulu.w	#SCREENWIDTHTOTAL,d3         		; multiply PosY with target width
 	add.l	d6,a1         						; add PosX to DstAddr
 	add.l	d3,a1         						; add PosY to DstAddr
@@ -427,23 +427,23 @@ _lwmf_BlitTile::
 	and.w	#$F,d2        						; clear all but first byte of PosX
 	ror.w	#4,d2								; rotate right by four bits
 	add.w	#$09F0,d2     						; D = A ($F0), ascending mode
-	
+
 	; Source offset
 	add.l   d1,a0                   			; add source offset (in bytes) to SrcAddr
-	
-	; Add one word to Width because of barrel shift	
-	addq.w	#1,d4								
-	
+
+	; Add one word to Width because of barrel shift
+	addq.w	#1,d4
+
 	; ...and BLIT!
 	bsr     _lwmf_WaitBlitter
 
 	move.w  d2,BLTCON0
 	move.w  #0,BLTCON1							; clear BLTCON1
-	move.l	#$FFFF0000,BLTAFWM					; mask out first word (both BLTAFWM and BLTALWM are written!) 
-	move.w  d0,BLTAMOD							; move complete modulo into Blitter Source A	
-	move.w  d7,BLTDMOD							; move complete modulo into Blitter Destination D							
+	move.l	#$FFFF0000,BLTAFWM					; mask out first word (both BLTAFWM and BLTALWM are written!)
+	move.w  d0,BLTAMOD							; move complete modulo into Blitter Source A
+	move.w  d7,BLTDMOD							; move complete modulo into Blitter Destination D
 	move.l  a0,BLTAPTH							; SrcAddr -> Blitter Source A
-	move.l  a1,BLTDPTH							; DstAddr -> Blitter Destination D									       
+	move.l  a1,BLTDPTH							; DstAddr -> Blitter Destination D
 	move.w	d5,BLTSIZV							; vertical blit size (Height)
 	move.w	d4,BLTSIZH							; horizontal blit size (Width)
 

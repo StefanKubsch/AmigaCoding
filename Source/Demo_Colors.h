@@ -8,13 +8,13 @@
 //* (C) 2020-2021 by Stefan Kubsch      *
 //***************************************
 
-UWORD DemoColorTable[5][8] = 
+UWORD DemoColorTable[5][8] =
 {
 	// TextLogo
-	{ 
+	{
 		0x000, // Clear color
 		0x368, // Logo colors
-		0x134, 
+		0x134,
 		0x012,
 		0x246,
 		0x146,
@@ -22,10 +22,10 @@ UWORD DemoColorTable[5][8] =
 		0x001
 	},
 	// Sine scroller
-	{ 
+	{
 		0x000, // Clear color
 		0xC0D, // Bitmap font
-		0x000, 
+		0x000,
 		0x000,
 		0x000,
 		0x000,
@@ -33,10 +33,10 @@ UWORD DemoColorTable[5][8] =
 		0x000
 	},
 	// 2D Starfield
-	{ 
+	{
 		0x000, // Clear color
 		0x555, // Starfield
-		0x888, 
+		0x888,
 		0xFFF,
 		0x000,
 		0x000,

@@ -29,7 +29,7 @@ UWORD CopperbarStart = 0;
 
 const UWORD CopperbarColors[] =
 {
-	0x604, 0x605, 0x606, 0x607, 0x617, 0x618, 0x619, 0x629, 
+	0x604, 0x605, 0x606, 0x607, 0x617, 0x618, 0x619, 0x629,
 	0x72A, 0x73B, 0x74B, 0x74C, 0x75D, 0x76E, 0x77E, 0x88F,
 	0x88F, 0x77E, 0x76E, 0x75D, 0x74C, 0x74B, 0x73B, 0x72A,
 	0x629, 0x619, 0x618, 0x617, 0x607, 0x606, 0x605, 0x604
@@ -115,7 +115,7 @@ BOOL Init_CopperList(void)
 	{
 		CopperList[Index++] = ((CopperbarPos + i) << 8) + 7;
 		CopperList[Index++] = 0xFFFE;
-		
+
 		CopperList[Index++] = 0x180;
 		CopperList[Index++] = 0x003;
 	}
@@ -159,7 +159,7 @@ void Update_Copperbar(void)
 	{
 		CopperList[Index++] = ((CopperbarPos + i) << 8) + 7;
 		CopperList[Index++] = 0xFFFE;
-		
+
 		CopperList[Index++] = 0x180;
 		CopperList[Index++] = CopperbarColors[i];
 	}
@@ -196,7 +196,7 @@ int main()
 
 	// Gain control over the OS
 	lwmf_TakeOverOS();
-	
+
 	// Init and load copperlist & screen
 	if (!Init_CopperList())
 	{

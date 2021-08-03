@@ -97,11 +97,11 @@ void Update_CopperList(void)
 		CMove(UserCopperList, COLOR00, CopperColors[i]);
 		CBump(UserCopperList);
 	}
-	
+
 	// Blue
 	CMove(UserCopperList, COLOR00, 0x003);
 	CBump(UserCopperList);
-	
+
 	// Lower color bars
 	for (UWORD i = LOWERBORDERLINE, j = 29; i < SCREENHEIGHT; ++i, --j)
 	{
@@ -206,7 +206,7 @@ int main(void)
 
 	// Initial loading of colors
 	LoadRGB4(&viewPort, DemoColorTable[0], NUMBEROFCOLORS);
-	lwmf_UpdateViewPort();	
+	lwmf_UpdateViewPort();
 
 	if (!Init_Demo())
 	{
@@ -238,7 +238,7 @@ int main(void)
 	// PRA_FIR0 = Bit 6 (0x40)
 	while (*CIAA_PRA & 0x40)
 	{
-		if (DEBUG == TRUE)
+		if (DEBUG)
 		{
 			*COLOR00 = 0x000;
 		}
@@ -252,7 +252,7 @@ int main(void)
 
 		lwmf_OwnBlitter();
 		lwmf_ClearScreen((long*)RenderPort.BitMap->Planes[0]);
-		
+
 		// Alternative clearing method (it´s slower on a stock 68020 machine!)
 		// lwmf_ClearMemCPU((long*)RenderPort.BitMap->Planes[0], 30720);
 
@@ -273,7 +273,7 @@ int main(void)
 		// Ends here ;-)                                                *
 		//***************************************************************
 
-		if (DEBUG == TRUE)
+		if (DEBUG)
 		{
 			*COLOR00 = 0xF00;
 		}
