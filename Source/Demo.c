@@ -291,6 +291,10 @@ int main(void)
 			}
 
 			// Load colors for next demopart & update viewport
+			//
+			// !!! THERE SEEMS TO BE A MEMORY LEAK HERE - NEED TO CHECK !!!
+			//
+
 			LoadRGB4(&viewPort, DemoColorTable[CurrentDemoPart], NUMBEROFCOLORS);
 			lwmf_UpdateViewPort();
 		}
