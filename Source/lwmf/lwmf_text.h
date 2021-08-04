@@ -1,7 +1,6 @@
 #ifndef LWMF_TEXT_H
 #define LWMF_TEXT_H
 
-#include <string.h>
 
 // Font characters
 //
@@ -143,7 +142,12 @@ const UBYTE ASCIIFont8x8[128][8] =
 
 void lwmf_Text(char* Text, UWORD PosX, const UWORD PosY, const UBYTE Color)
 {
-	const UWORD TextLength = strlen(Text);
+	UWORD TextLength = 0;
+
+	while (Text[TextLength] != 0x00)
+	{
+  		++TextLength;
+	}
 
 	for (UWORD i = 0; i < TextLength; ++i)
 	{

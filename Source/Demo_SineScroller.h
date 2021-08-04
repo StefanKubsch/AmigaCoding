@@ -14,14 +14,14 @@ struct Scrollfont
 	char* Text;
 	char* CharMap;
 	WORD* Map;
-	UBYTE CharWidth;
-	UBYTE CharHeight;
-	UBYTE CharSpacing;
-	UBYTE CharOverallWidth;
 	UWORD TextLength;
 	UWORD CharMapLength;
 	UWORD Length;
 	WORD ScrollX;
+	UBYTE CharWidth;
+	UBYTE CharHeight;
+	UBYTE CharSpacing;
+	UBYTE CharOverallWidth;
 } Font;
 
 // Generate sinus table
@@ -65,12 +65,13 @@ BOOL Init_SineScroller(void)
 	Font.ScrollX = SCREENWIDTH;
 
 	Font.TextLength = 0;
-	Font.CharMapLength = 0;
 
 	while (Font.Text[Font.TextLength] != 0x00)
 	{
   		++Font.TextLength;
 	}
+
+	Font.CharMapLength = 0;
 
 	while (Font.CharMap[Font.CharMapLength] != 0x00)
 	{

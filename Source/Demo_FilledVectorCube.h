@@ -24,14 +24,14 @@ struct PointStruct
 
 struct OrderPair
 {
-	UBYTE first;
 	float second;
+	UBYTE first;
 };
 
 struct CubeStruct
 {
-	struct OrderPair Order[6];
 	struct PointStruct Cube[8];
+	struct OrderPair Order[6];
 } CubePreCalc[90];
 
 // Create two sintabs for a lissajous figure
