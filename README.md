@@ -20,7 +20,7 @@ vbcc is still under development (last version is from 2019) and works pretty wel
 
 You´ll find a complete development environment for Windows under "Development".
 
-Extract "vbcc.zip" to "C:\vbcc" (or whatever you want use) and set the Windows environment variable "VBCC" to the chosen path. Also, add "C:\vbcc" to the PATH-Variable!
+Extract "vbcc.zip" to "C:\vbcc" (or whatever you want use) and set the Windows environment variable "VBCC" to the chosen path. Also, add "C:\vbcc" and "C:\vbcc\bin" to the PATH-Variable!
 Copy "cygwin1.dll" from "Development" to "C:\Windows"
 
 You´re done!
