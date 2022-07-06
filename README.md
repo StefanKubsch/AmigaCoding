@@ -30,4 +30,4 @@ All you need to test your programs is an editor or IDE (I prefer Visual Studio C
 I test my code on:
 
 - a real Amiga 1200 with an iComp ACA1221 accelerator card and Amiga OS 3.1.4
-- a "stock" 14MHz A1200 in WinUA and Amiga OS 3.1.4
+- a "stock" 14MHz A1200 in WinUAE and Amiga OS 3.1.4
