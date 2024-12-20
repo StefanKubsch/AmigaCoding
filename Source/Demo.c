@@ -17,10 +17,6 @@
 // Include our own header files
 #include "lwmf/lwmf.h"
 
-// Enable (set to TRUE) for debugging
-// When enabled, copperlist is not executed and load per frame will be displayed via color changing of background
-BOOL DEBUG = FALSE;
-
 //
 // Screen settings
 //
@@ -195,10 +191,7 @@ int main(void)
 		return 20;
 	}
 
-	if (DEBUG == FALSE)
-	{
-		Update_CopperList();
-	}
+	Update_CopperList();
 
 	//
 	// Init stuff for demo if needed
@@ -238,11 +231,6 @@ int main(void)
 	// PRA_FIR0 = Bit 6 (0x40)
 	while (*CIAA_PRA & 0x40)
 	{
-		if (DEBUG)
-		{
-			*COLOR00 = 0x000;
-		}
-
 		view.LOFCprList = LOCpr[CurrentBuffer];
 		RenderPort.BitMap = Buffer[CurrentBuffer].BitMap;
 
@@ -272,11 +260,6 @@ int main(void)
 		//***************************************************************
 		// Ends here ;-)                                                *
 		//***************************************************************
-
-		if (DEBUG)
-		{
-			*COLOR00 = 0xF00;
-		}
 
 		LoadView(&view);
 		CurrentBuffer ^= 1;

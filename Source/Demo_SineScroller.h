@@ -18,6 +18,7 @@ struct Scrollfont
 	UWORD CharMapLength;
 	UWORD Length;
 	WORD ScrollX;
+	WORD Feed;
 	UBYTE CharWidth;
 	UBYTE CharHeight;
 	UBYTE CharSpacing;
@@ -61,6 +62,7 @@ BOOL Init_SineScroller(void)
 	Font.CharWidth = 15;
 	Font.CharHeight = 20;
 	Font.CharSpacing = 1;
+	Font.Feed = 2;
 	Font.CharOverallWidth = Font.CharWidth + Font.CharSpacing;
 	Font.ScrollX = SCREENWIDTH;
 
@@ -116,13 +118,13 @@ void Draw_SineScroller(void)
 			continue;
 		}
 
-		for (UWORD x1 = 0, x = Font.Map[i]; x < Font.Map[i] + Font.CharWidth; x1 += 2, x += 2)
+		for (UWORD x1 = 0, x = Font.Map[i]; x < Font.Map[i] + Font.CharWidth; x1 += Font.Feed, x += Font.Feed)
 		{
 			const UWORD TempPosX = XPos + x1;
 
-			if (TempPosX < SCREENWIDTH - 2)
+			if (TempPosX < SCREENWIDTH - Font.Feed)
 			{
-				BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, ScrollSinTab[TempPosX], 2, Font.CharHeight, 0xC0, 0x01, NULL);
+				BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, ScrollSinTab[TempPosX], Font.Feed, Font.CharHeight, 0xC0, 0x01, NULL);
 			}
 			else
 			{
@@ -133,7 +135,7 @@ void Draw_SineScroller(void)
 		XPos += Font.CharOverallWidth;
 	}
 
-	Font.ScrollX -= 4;
+	Font.ScrollX -= Font.Feed << 1;
 
 	if (Font.ScrollX < -Font.Length)
 	{
