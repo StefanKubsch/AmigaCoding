@@ -53,7 +53,9 @@ void Draw_TextLogo(void)
 	// BytesPerRow = Width in bytes * NumberOfBitplanes = 40 * 3 = 120
 	// 120 - (72 * 2) = -24
 
-	lwmf_BlitTile((long*)LogoBitmap->Image->Planes[0], -24, 0, (long*)RenderPort.BitMap->Planes[0], LogoSinTabX[SinTabCount], LogoSinTabY[SinTabCount], 72, 46);
+	lwmf_BlitTile(((long*)LogoBitmap->Image->Planes[0]) + 0 * 40, ((long*)RenderPort.BitMap->Planes[0]) + 0 * 40, 0, 0, LogoSinTabX[SinTabCount], LogoSinTabY[SinTabCount], 192, 46);
+	lwmf_BlitTile(((long*)LogoBitmap->Image->Planes[0]) + 1 * 40, ((long*)RenderPort.BitMap->Planes[0]) + 1 * 40, 0, 0, LogoSinTabX[SinTabCount], LogoSinTabY[SinTabCount], 192, 46);
+	lwmf_BlitTile(((long*)LogoBitmap->Image->Planes[0]) + 2 * 40, ((long*)RenderPort.BitMap->Planes[0]) + 2 * 40, 0, 0, LogoSinTabX[SinTabCount], LogoSinTabY[SinTabCount], 192, 46);
 
 	if (++SinTabCount >= 63)
 	{

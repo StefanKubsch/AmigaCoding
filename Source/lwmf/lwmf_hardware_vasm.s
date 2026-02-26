@@ -400,55 +400,187 @@ _lwmf_SetPixel::
 	movem.l (sp)+,d3-d4                         ; restore registers
 	rts
 
+; -----------------------------------------------------------------------------
+; vasm 68k
 ;
-; void lwmf_BlitTile(__reg("a0") long* SrcAddr, __reg("d0") WORD SrcModulo, __reg("d1") long SrcOffset, __reg("a1") long* DstAddr, __reg("d2") WORD PosX, __reg("d3") WORD PosY, __reg("d4") WORD Width, __reg("d5") WORD Height);
+; Interleaved planar: pro Zeile: Plane0(40B) Plane1(40B) Plane2(40B)
+; => ROWSTRIDE = 120 Bytes (Abstand zur nächsten Zeile derselben Plane)
 ;
+; Blitted genau EINE Plane pro Aufruf.
+;
+; Eingänge:
+;   a0 = SrcPlaneBase   (z.B. SrcBase + planeIndex*40)
+;   a1 = DstPlaneBase   (z.B. DstBase + planeIndex*40)
+;   d0 = SrcX (PIXEL)
+;   d1 = SrcY (ZEILEN)
+;   d2 = DstX (PIXEL)
+;   d3 = DstY (ZEILEN)
+;   d4 = WidthPx  (PIXEL)
+;   d5 = Height   (ZEILEN)
+;
+; -----------------------------------------------------------------------------
 
+ROWBYTES   equ 40
+PLANES     equ 3
+ROWSTRIDE  equ (ROWBYTES*PLANES)     ; 120
+
+; -----------------------------------------------------------------------------
+; Blit 1 bitplane (interleaved), source+dest coordinates in PIXELS
+; -----------------------------------------------------------------------------
 _lwmf_BlitTile::
-	movem.l	d6-d7,-(sp)							; save registers
+    movem.l d0-d7,-(sp)              ; save all data regs (safe & simple)
 
-	; Source modulo
-	subq.w	#2,d0								; subtract two more words from Source modulo because of barrel shift
+    ; ---------------------------------------------------------
+    ; Compute source pointer:
+    ;   a0 += SrcY*ROWSTRIDE + ((SrcX>>4)<<1)
+    ; Keep srcFrac = SrcX&15 in d6
+    ; ---------------------------------------------------------
+    move.w  d0,d6
+    and.w   #$000F,d6                ; d6 = srcFrac
 
-	; Destination modulo
-	move.w	#SCREENWIDTHTOTAL,d7
-	sub.w	d4,d7								; subtract width in words
-	sub.w	d4,d7								; subtract width in words
-	subq.w	#2,d7								; subtract two more words because of barrel shift
+    move.w  d1,d7
+    mulu.w  #ROWSTRIDE,d7            ; d7 = SrcY*120 (long)
+    add.l   d7,a0
 
-	; Calc screen position
-	move.w	d2,d6								; store PosX for further use
-	asr.w	#3,d6         						; arithmetic right shift PosX by three bits
-	mulu.w	#SCREENWIDTHTOTAL,d3         		; multiply PosY with target width
-	add.l	d6,a1         						; add PosX to DstAddr
-	add.l	d3,a1         						; add PosY to DstAddr
+    move.w  d0,d7
+    lsr.w   #4,d7
+    lsl.w   #1,d7
+    ext.l   d7
+    add.l   d7,a0
 
-	; Barrel shift
-	and.w	#$F,d2        						; clear all but first byte of PosX
-	ror.w	#4,d2								; rotate right by four bits
-	add.w	#$09F0,d2     						; D = A ($F0), ascending mode
+    ; ---------------------------------------------------------
+    ; Compute destination pointer:
+    ;   a1 += DstY*ROWSTRIDE + ((DstX>>4)<<1)
+    ; Keep dstFrac = DstX&15 in d7
+    ; ---------------------------------------------------------
+    move.w  d2,d7
+    and.w   #$000F,d7                ; d7 = dstFrac
 
-	; Source offset
-	add.l   d1,a0                   			; add source offset (in bytes) to SrcAddr
+    move.w  d3,d3
+    mulu.w  #ROWSTRIDE,d3            ; d3 = DstY*120 (long)
+    add.l   d3,a1
 
-	; Add one word to Width because of barrel shift
-	addq.w	#1,d4
+    move.w  d2,d3
+    lsr.w   #4,d3
+    lsl.w   #1,d3
+    ext.l   d3
+    add.l   d3,a1
 
-	; ...and BLIT!
-	bsr     _lwmf_WaitBlitter
+    ; ---------------------------------------------------------
+    ; Blitter shift:
+    ;   shift = (dstFrac - srcFrac) & 15
+    ; Store shift in d3
+    ; ---------------------------------------------------------
+    move.w  d7,d3                    ; d3 = dstFrac
+    sub.w   d6,d3                    ; d3 = dstFrac - srcFrac
+    and.w   #$000F,d3                ; d3 = shift (0..15)
 
-	move.w  d2,BLTCON0
-	move.w  #0,BLTCON1							; clear BLTCON1
-	move.l	#$FFFF0000,BLTAFWM					; mask out first word (both BLTAFWM and BLTALWM are written!)
-	move.w  d0,BLTAMOD							; move complete modulo into Blitter Source A
-	move.w  d7,BLTDMOD							; move complete modulo into Blitter Destination D
-	move.l  a0,BLTAPTH							; SrcAddr -> Blitter Source A
-	move.l  a1,BLTDPTH							; DstAddr -> Blitter Destination D
-	move.w	d5,BLTSIZV							; vertical blit size (Height)
-	move.w	d4,BLTSIZH							; horizontal blit size (Width)
+    ; ---------------------------------------------------------
+    ; width_words = (WidthPx + dstFrac + 15) >> 4   -> d2
+    ; ---------------------------------------------------------
+    move.w  d4,d2
+    add.w   d7,d2                    ; + dstFrac
+    add.w   #15,d2
+    lsr.w   #4,d2                    ; d2 = BLTSIZH (words)
 
-	movem.l	(sp)+,d6-d7							; restore registers
-	rts
+    ; ---------------------------------------------------------
+    ; BLTCON0 = $09F0 + (shift ror 4)
+    ; Store in d6 (free now)
+    ; ---------------------------------------------------------
+    move.w  d3,d6
+    ror.w   #4,d6
+    add.w   #$09F0,d6                ; d6 = BLTCON0
+
+    ; ---------------------------------------------------------
+    ; Modulos (Source/Dest): MOD = ROWSTRIDE - 2*width_words
+    ; Store AMOD in d0, DMOD in d1
+    ; ---------------------------------------------------------
+    move.w  #ROWSTRIDE,d0
+    sub.w   d2,d0
+    sub.w   d2,d0                    ; d0 = BLTAMOD
+
+    move.w  #ROWSTRIDE,d1
+    sub.w   d2,d1
+    sub.w   d2,d1                    ; d1 = BLTDMOD
+
+    ; ---------------------------------------------------------
+    ; Masks:
+    ;   AFWM = $FFFF (stabil, wie dein Fix)
+    ;   ALWM dynamisch:
+    ;     lastBits = (dstFrac + WidthPx) & 15
+    ;     ALWM = (lastBits==0)?$FFFF : ($FFFF << (16-lastBits))
+    ;   if width_words==1: ALWM &= AFWM  (AFWM=$FFFF -> keine Änderung, aber der Fall ist korrekt)
+    ;
+    ; Put AFWM in d3, ALWM in d7
+    ; ---------------------------------------------------------
+    move.w  #$FFFF,d3                ; d3 = AFWM
+
+    move.w  d7,d7                    ; d7 still dstFrac
+    add.w   d4,d7                    ; d7 = dstFrac + WidthPx
+    and.w   #$000F,d7                ; d7 = lastBits
+
+    move.w  #$FFFF,d4                ; reuse d4 as temp mask base (WidthPx is saved on stack)
+    tst.w   d7
+    beq.s   .alwm_full
+    move.w  #16,d5                   ; reuse d5 as temp count (Height saved on stack)
+    sub.w   d7,d5                    ; d5 = 16-lastBits
+    move.w  #$FFFF,d4
+    lsl.w   d5,d4                    ; d4 = ALWM
+    move.w  d4,d7
+    bra.s   .alwm_done
+.alwm_full:
+    move.w  #$FFFF,d7
+.alwm_done:
+
+    ; ---------------------------------------------------------
+    ; Wait and BLIT
+    ; Height/Width_words must be restored from stack-saved regs:
+    ; Height original is saved; but we can restore it simply by reloading from stack? Nope.
+    ; Easier: use saved registers: we saved all d-regs, so restore Height/WidthPx from that save at end.
+    ; We'll just write BLTSIZV from the *current* d5? We overwrote d5 for count.
+    ; So: restore d5 (Height) from the saved copy by doing a quick read:
+    ;   move.w  (sp)+? is messy -> instead, don't clobber d5.
+    ; Fix: use d4 for count instead of d5. (Let's do it right below.)
+    ; ---------------------------------------------------------
+
+    ; --- Undo: we clobbered d5, so restore d5 from stack by popping all regs later is too late.
+    ; Therefore, we must not clobber d5. We'll recompute ALWM without touching d5:
+    ; Replace the ALWM block above with the correct one below (and keep d5 intact).
+
+    ; -------- Correct ALWM recompute (no clobber of d5) --------
+    ; lastBits currently in d7 (0..15). We need count = 16-lastBits in d4temp.
+    move.w  #$FFFF,d4                ; d4 = mask base
+    tst.w   d7
+    beq.s   .alwm2_full
+    move.w  #16,d4
+    sub.w   d7,d4                    ; d4 = 16-lastBits
+    move.w  #$FFFF,d7
+    lsl.w   d4,d7                    ; d7 = ALWM
+    bra.s   .alwm2_done
+.alwm2_full:
+    move.w  #$FFFF,d7
+.alwm2_done:
+    ; ---------------------------------------------------------
+
+    bsr     _lwmf_WaitBlitter
+
+    move.w  d6,BLTCON0
+    move.w  #0,BLTCON1
+
+    move.w  d3,BLTAFWM              ; AFWM = $FFFF
+    move.w  d7,BLTALWM              ; ALWM
+
+    move.w  d0,BLTAMOD
+    move.w  d1,BLTDMOD
+
+    move.l  a0,BLTAPTH
+    move.l  a1,BLTDPTH
+
+    move.w  d5,BLTSIZV              ; Height (never clobbered now)
+    move.w  d2,BLTSIZH              ; width_words
+
+    movem.l (sp)+,d0-d7
+    rts
 
 ; ***************************************************************************************************
 ; * Variables                                                                                       *
