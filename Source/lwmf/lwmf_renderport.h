@@ -7,14 +7,14 @@ struct RastPort RenderPort;
 UBYTE* TmpRasBuffer = NULL;
 UBYTE* AreaBuffer = NULL;
 
+static struct TmpRas tmpRas;
+static struct AreaInfo areaInfo;
+
 BOOL lwmf_CreateRenderPort(const UWORD NumberOfVertices, const UWORD AreaWidth, const UWORD AreaHeight)
 {
 	InitRastPort(&RenderPort);
 
-	struct TmpRas tmpRas;
-	struct AreaInfo areaInfo;
-
-	const ULONG RasSize = AreaHeight * (AreaWidth + 15) >> 3&0xFFFE;
+	const ULONG RasSize = (AreaHeight * ((AreaWidth + 15) >> 3)) & 0xFFFE;
 
 	if (!(TmpRasBuffer = AllocVec(RasSize, MEMF_CHIP | MEMF_CLEAR)))
 	{

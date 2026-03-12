@@ -1,7 +1,9 @@
 ; Various assembler functions for lwmf
 ; Code is compatible with Motorola syntax as provided by vbcc
 ;
-; Coded in 2020 by Stefan Kubsch
+; Coded in 2020-2026 by Stefan Kubsch
+
+	machine	68020
 
 ; ***************************************************************************************************
 ; * Functions                                                                                       *
@@ -13,8 +15,8 @@
 
 _lwmf_Random::
 	move.l  seed(pc),d0
-	addq.l  #5,d0
-	rol.l   d0,d0
+	mulu.l  #$41C64E6D,d0
+	add.l   #$3039,d0
 	move.l  d0,seed
 	rts
 

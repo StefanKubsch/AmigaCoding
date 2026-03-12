@@ -1,7 +1,10 @@
 ; Various assembler functions for lwmf
 ; Code is compatible with Motorola syntax as provided by vbcc
+; Optimized for 68020+ (Amiga 1200 and up)
 ;
 ; Coded in 2020-2026 by Stefan Kubsch / Deep4
+
+	machine	68020
 
 ; ***************************************************************************************************
 ; * Global                                                                                          *
@@ -309,7 +312,6 @@ _lwmf_ClearMemCPU::
 	move.l  d7,d6
 	lsr.l   #7,d6                   ; get number of blocks of 128 long words
 	beq.s   .clear                  ; branch if we have no complete block
-	subq.l  #1,d6                   ; one less to get loop working
 	; 68020: init zero regs via register-to-register moves (no zeros data table reads)
 	move.l  d0,d1
 	move.l  d0,d2
@@ -334,15 +336,16 @@ _lwmf_ClearMemCPU::
 	movem.l d0-d5/a2-a6,-(a1)
 	movem.l d0-d5/a2-a6,-(a1)
 	movem.l d0-d5/a2,-(a1)          ; 7 registers
-	dbra    d6,.clearblock
+	subq.l  #1,d6                   ; 68020+: subq.l/bne replaces dbra (faster, 32-bit counter)
+	bne.s   .clearblock
 .clear
 	and.l   #$7F,d7                 ; remainder after 128-longword blocks (7 bits)
 	beq.s   .done
-	subq.l  #1,d7                   ; one less to get loop working
 	; d0 is always 0 (set unconditionally above)
 .setword
 	move.l  d0,-(a1)                ; clear memory by one long word at a time
-	dbra    d7,.setword
+	subq.l  #1,d7
+	bne.s   .setword
 .done
 	movem.l (sp)+,d2-d6/a2-a6       ; restore registers
 	rts
@@ -369,7 +372,6 @@ _lwmf_ClearScreen::
 	move.l  d7,d6
 	lsr.l   #7,d6                   	; get number of blocks of 128 long words
 	beq.s   .clear                  	; branch if we have no complete block
-	subq.l  #1,d6                   	; one less to get loop working
 	; 68020: init zero regs via register-to-register moves (no zeros data table reads)
 	move.l  d0,d1
 	move.l  d0,d2
@@ -394,16 +396,17 @@ _lwmf_ClearScreen::
 	movem.l d0-d5/a2-a6,-(a1)
 	movem.l d0-d5/a2-a6,-(a1)
 	movem.l d0-d5/a2,-(a1)          	; 7 registers
-	dbra    d6,.clearblock
+	subq.l  #1,d6                   	; 68020+: subq.l/bne replaces dbra (faster, 32-bit counter)
+	bne.s   .clearblock
 .clear
 	and.l   #$7F,d7                 	; remainder after 128-longword blocks (7 bits)
 	beq.s   .done
-	subq.l  #1,d7                   	; one less to get loop working
 
 	; d0 is always 0 (set unconditionally above)
 .setword
 	move.l  d0,-(a1)                	; clear memory by one long word at a time
-	dbra    d7,.setword
+	subq.l  #1,d7
+	bne.s   .setword
 .done
 	movem.l (sp)+,d2-d7/a2-a6       	; restore registers
 	rts
@@ -413,36 +416,31 @@ _lwmf_ClearScreen::
 ;
 
 _lwmf_SetPixel::
-	move.l  d3,-(sp)                            ; save d3 only
-
+	; 68020+ optimized: branchless pixel plot using bfins (bit field insert)
+	; Writes exact color to all bitplanes (overwrite mode)
+	ext.l   d0                                  ; ensure PosX is a clean 32-bit value (upper word may be garbage)
 	muls.w  #SCREENWIDTHTOTAL,d1                ; address offset for line
-	move.w  d0,d3                               ; calc x position
-	not.w   d3                                  ; bit index within byte (MSB = leftmost pixel)
-	asr.w   #3,d0                               ; byte offset for x position
-	ext.l   d0                                  ; zero-extend to longword (upper word may be garbage from caller)
-	add.l   d0,d1                               ; total byte offset
+	add.l   d1,a0                               ; a0 = row start in bitplane memory
+
+	; bfins inserts LSB of Dn into memory at bit offset d0 from MSB
+	; In Amiga bitplane format, MSB = leftmost pixel -> PosX maps directly
 
 	; Bitplane 0 (Color bit 0) - NOTE: update all three planes if NUMBITPLANES changes
-	ror.b   d2
-	bpl.s   .skip0
-	bset    d3,(a0,d1.l)
-.skip0
-	; Bitplane 1 (Color bit 1) - 68020: (d8,An,Xn.l) replaces lea+indirect pair
-	ror.b   d2
-	bpl.s   .skip1
-	bset    d3,(SCREENBROW,a0,d1.l)
-.skip1
-	; Bitplane 2 (Color bit 2) - 68020: (d8,An,Xn.l) replaces lea+indirect pair
-	ror.b   d2
-	bpl.s   .skip2
-	bset    d3,(SCREENBROW*2,a0,d1.l)
-.skip2
-	move.l  (sp)+,d3                            ; restore d3
+	bfins   d2,(a0){d0:1}
+
+	; Bitplane 1 (Color bit 1)
+	lsr.l   #1,d2
+	bfins   d2,(SCREENBROW,a0){d0:1}
+
+	; Bitplane 2 (Color bit 2)
+	lsr.l   #1,d2
+	bfins   d2,(SCREENBROW*2,a0){d0:1}
+
 	rts
 
 ;
 ; void lwmf_BlitTile(__reg("a0") long* SrcAddr, __reg("d0") WORD SrcX, __reg("d1") WORD SrcY, __reg("a1") long* DstAddr, __reg("d2") WORD DstX, __reg("d3") WORD DstY, __reg("d4") WORD Width, __reg("d5") WORD Height, __reg("d6") WORD SrcWidth);
-; All coordinates (SrcX, SrcY, DstX, DstY) and dimensions (Width, Height) are in pixels -> works currently only fine for word-sizes (16, 32 etc)
+; All coordinates (SrcX, SrcY, DstX, DstY) and dimensions (Width, Height) are in pixels -> works currently only fine for multiples of 16 pixels (word-aligned) due to the way masks are calculated. Non-word-aligned blits will require additional masking and shifting logic.
 ; Source bitmap is interleaved with NUMBITPLANES planes; destination uses SCREENWIDTHTOTAL row stride.
 ;
 
@@ -451,24 +449,31 @@ _lwmf_BlitTile::
 	lea		CUSTOM,a2							; a2 = CUSTOM base for compact addressing
 
 	; --------------------------------------------------
-	; 1) src_row_bytes = (SrcWidth / 8) * NUMBITPLANES
+	; 1) src_bprow = SrcWidth / 8 (single bitplane row)
+	;    src_row_bytes = src_bprow * NUMBITPLANES (interleaved)
+	;    68020: keep src_bprow in d7 for modulo calc later,
+	;    compute interleaved stride with lsl+add (replaces mulu)
 	; --------------------------------------------------
 	move.w	d6,d7								; d7 = SrcWidth (pixels)
-	lsr.w	#3,d7								; d7 = SrcWidth/8 (bytes per bitplane row)
-	mulu.w	#NUMBITPLANES,d7					; d7 = src_row_bytes (interleaved)
+	lsr.w	#3,d7								; d7 = SrcWidth/8 = src_bprow (bytes per bitplane row)
+	move.w	d7,d6								; d6 = src_bprow (preserve for modulo calc in step 9)
+	; 68020+: x*3 = x + (x<<1) — replaces mulu.w #NUMBITPLANES
+	add.w	d7,d7								; d7 = src_bprow * 2
+	add.w	d6,d7								; d7 = src_bprow * 3 = src_row_bytes (interleaved)
 
 	; --------------------------------------------------
 	; 2) Source pointer: a0 += SrcY * src_row_bytes + (SrcX & ~15) / 8
+	;    68020: use 32-bit scale-factor addressing where beneficial
 	; --------------------------------------------------
 	move.w	d0,a3								; a3 = SrcX (preserve for later)
-	move.w	d1,d6								; d6 = SrcY
-	mulu.w	d7,d6								; d6 = SrcY * src_row_bytes
-	add.l	d6,a0								; a0 += row offset
-	move.w	d0,d6
-	andi.w	#$FFF0,d6							; align SrcX down to word boundary
-	lsr.w	#3,d6								; byte offset of that word
-	ext.l	d6
-	add.l	d6,a0								; a0 = source pointer (word-aligned)
+	; 68020+: mulu.w result is 32-bit already, no ext needed
+	mulu.w	d7,d1								; d1 = SrcY * src_row_bytes
+	add.l	d1,a0								; a0 += row offset
+	move.w	d0,d1
+	andi.w	#$FFF0,d1							; align SrcX down to word boundary
+	lsr.w	#3,d1								; byte offset of that word
+	; 68020+: add.w with address register auto-extends to 32-bit
+	add.w	d1,a0								; a0 = source pointer (word-aligned)
 
 	; --------------------------------------------------
 	; 3) Dest pointer: a1 += DstY * SCREENWIDTHTOTAL + (DstX & ~15) / 8
@@ -478,32 +483,32 @@ _lwmf_BlitTile::
 	move.w	d2,d3
 	andi.w	#$FFF0,d3							; align DstX down to word boundary
 	asr.w	#3,d3								; byte offset
-	ext.l	d3
-	add.l	d3,a1								; a1 = dest pointer (word-aligned)
+	; 68020+: add.w with address register auto-extends to 32-bit
+	add.w	d3,a1								; a1 = dest pointer (word-aligned)
 
 	; --------------------------------------------------
 	; 4) Barrel shift = ((DstX & 15) - (SrcX & 15)) & 15
 	; --------------------------------------------------
-	move.w	a3,d6								; d6 = SrcX
-	andi.w	#$F,d6								; d6 = srcStartBit
-	move.w	d2,d3								; d3 = DstX
-	andi.w	#$F,d3								; d3 = dstStartBit
-	move.w	d3,d1								; d1 = dstStartBit (save)
-	sub.w	d6,d3								; d3 = dstStartBit - srcStartBit (signed)
-	andi.w	#$F,d3								; d3 = barrel shift (0..15)
+	move.w	a3,d3								; d3 = SrcX
+	andi.w	#$F,d3								; d3 = srcStartBit
+	move.w	d2,d1								; d1 = DstX
+	andi.w	#$F,d1								; d1 = dstStartBit
+	move.w	d1,d0								; d0 = dstStartBit (save)
+	sub.w	d3,d1								; d1 = dstStartBit - srcStartBit (signed)
+	andi.w	#$F,d1								; d1 = barrel shift (0..15)
 
 	; --------------------------------------------------
 	; 5) Blit width in words
 	;    srcWidthWords  = (srcStartBit + Width + 15) >> 4
 	;    blitWidthWords = srcWidthWords + (shift ? 1 : 0)
 	; --------------------------------------------------
-	move.w	d6,d0								; d0 = srcStartBit
+	move.w	d3,d0								; d0 = srcStartBit
 	add.w	d4,d0								; d0 = srcStartBit + Width
 	move.w	d0,d2								; d2 = srcStartBit + Width (save for last mask)
 	add.w	#15,d0
 	lsr.w	#4,d0								; d0 = srcWidthWords
 
-	tst.w	d3
+	tst.w	d1
 	beq.s	.noExtra
 	addq.w	#1,d0								; extra word for shifted output
 .noExtra:
@@ -515,7 +520,7 @@ _lwmf_BlitTile::
 	;    shift, so they must be in source coordinates.
 	; --------------------------------------------------
 	moveq	#-1,d0								; d0 = $FFFF
-	lsr.w	d6,d0								; d0 = first word mask
+	lsr.w	d3,d0								; d0 = first word mask
 
 	; --------------------------------------------------
 	; 7) Last word mask (source space)
@@ -526,43 +531,43 @@ _lwmf_BlitTile::
 	;    extra word has no source data, so BLTALWM = $0000
 	;    to prevent stale A-channel data from leaking in.
 	; --------------------------------------------------
-	tst.w	d3									; shift == 0?
+	tst.w	d1									; shift == 0?
 	beq.s	.calcLWM
-	moveq	#0,d1								; extra word -> block all source bits
+	moveq	#0,d3								; extra word -> block all source bits
 	bra.s	.masksReady
 .calcLWM:
-	move.w	d2,d6								; d6 = srcStartBit + Width
-	subq.w	#1,d6
-	andi.w	#$F,d6								; d6 = srcEndBit (0..15)
-	move.w	#15,d1
-	sub.w	d6,d1								; d1 = 15 - srcEndBit
-	moveq	#-1,d6								; d6 = $FFFF
-	lsl.w	d1,d6								; d6 = last word mask
-	move.w	d6,d1								; d1 = BLTALWM
+	move.w	d2,d3								; d3 = srcStartBit + Width
+	subq.w	#1,d3
+	andi.w	#$F,d3								; d3 = srcEndBit (0..15)
+	move.w	#15,d4
+	sub.w	d3,d4								; d4 = 15 - srcEndBit
+	moveq	#-1,d3								; d3 = $FFFF
+	lsl.w	d4,d3								; d3 = last word mask
 .masksReady:
 
-	; d0 = BLTAFWM, d1 = BLTALWM
+	; d0 = BLTAFWM, d3 = BLTALWM, d1 = barrel shift
 
 	; --------------------------------------------------
 	; 8) BLTCON0 = (shift << 12) | $09F0  (USE A+D, LF = D=A)
+	;    68020+: use lsl.w #8 + lsl.w #4 decomposition
+	;    (avoids ror.w pipeline stall on 68020)
 	; --------------------------------------------------
-	move.w	d3,d6								; d6 = shift
-	ror.w	#4,d6								; shift into bits 15..12
-	ori.w	#$09F0,d6							; d6 = BLTCON0
+	move.w	d1,d4								; d4 = shift (0..15)
+	lsl.w	#8,d4								; shift into bits 11..8
+	lsl.w	#4,d4								; shift into bits 15..12
+	ori.w	#$09F0,d4							; d4 = BLTCON0
 
 	; --------------------------------------------------
 	; 9) Modulos = single-plane row width - (blitWidthWords * 2)
-	;    For interleaved bitmaps the blitter steps one bitplane row
-	;    at a time, so modulos must use the per-plane stride, not
-	;    the full interleaved stride.
+	;    68020+: d6 still holds src_bprow from step 1
+	;    (eliminates the expensive divu.w #NUMBITPLANES)
 	; --------------------------------------------------
-	move.w	a3,d3								; d3 = blitWidthWords
-	add.w	d3,d3								; d3 = blitWidthBytes
-	divu.w	#NUMBITPLANES,d7					; d7.w = SrcWidth/8 (single-plane row width)
-	move.w	d7,d4								; d4 = single-plane src row width
-	sub.w	d3,d4								; d4 = SrcModulo (per bitplane row)
+	move.w	a3,d1								; d1 = blitWidthWords
+	add.w	d1,d1								; d1 = blitWidthBytes
+	move.w	d6,d2								; d2 = src_bprow (single-plane row width from step 1)
+	sub.w	d1,d2								; d2 = SrcModulo (per bitplane row)
 	move.w	#SCREENBROW,d7
-	sub.w	d3,d7								; d7 = DstModulo (per bitplane row)
+	sub.w	d1,d7								; d7 = DstModulo (per bitplane row)
 
 	; --------------------------------------------------
 	; 10) Program blitter and start
@@ -573,29 +578,31 @@ _lwmf_BlitTile::
 	move.l	a1,(BLTDPTH-CUSTOM,a2)				; destination D pointer
 
 	; BLTCON0 + BLTCON1 in one longword write
-	swap	d6									; d6 = [BLTCON0 | old]
-	clr.w	d6									; d6 = [BLTCON0 | 0000] (BLTCON1 = 0)
-	move.l	d6,(BLTCON0-CUSTOM,a2)
+	swap	d4									; d4 = [BLTCON0 | old]
+	clr.w	d4									; d4 = [BLTCON0 | 0000] (BLTCON1 = 0)
+	move.l	d4,(BLTCON0-CUSTOM,a2)
 
 	; BLTAFWM + BLTALWM in one longword write
 	swap	d0									; d0 = [FWM | old]
-	move.w	d1,d0								; d0 = [FWM | LWM]
+	move.w	d3,d0								; d0 = [FWM | LWM]
 	move.l	d0,(BLTAFWM-CUSTOM,a2)
 
 	; BLTAMOD + BLTDMOD in one longword write
-	swap	d4									; d4 = [SrcMod | old]
-	move.w	d7,d4								; d4 = [SrcMod | DstMod]
-	move.l	d4,(BLTAMOD-CUSTOM,a2)
+	swap	d2									; d2 = [SrcMod | old]
+	move.w	d7,d2								; d2 = [SrcMod | DstMod]
+	move.l	d2,(BLTAMOD-CUSTOM,a2)
 
 	; BLTSIZV + BLTSIZH in one longword write (BLTSIZH write triggers blit)
 	; Height must be multiplied by NUMBITPLANES for interleaved bitmaps:
 	; each pixel row spans NUMBITPLANES consecutive bitplane rows in memory.
-	mulu.w	#NUMBITPLANES,d5					; d5 = Height * NUMBITPLANES (total blitter rows)
-	move.w	d5,d0								; d0 = blitter height
-	swap	d0
-	clr.w	d0									; d0 = [blitHeight | 0]
-	move.w	a3,d0								; d0 = [blitHeight | blitWidthWords]
-	move.l	d0,(BLTSIZV-CUSTOM,a2)				; start blit!
+	; 68020+: x*3 = x + (x<<1) — replaces mulu.w #NUMBITPLANES
+	move.w	d5,d0								; d0 = Height
+	add.w	d5,d5								; d5 = Height * 2
+	add.w	d0,d5								; d5 = Height * 3 = total blitter rows
+	swap	d5									; d5 = [blitHeight | old]
+	clr.w	d5									; d5 = [blitHeight | 0]
+	move.w	a3,d5								; d5 = [blitHeight | blitWidthWords]
+	move.l	d5,(BLTSIZV-CUSTOM,a2)				; start blit!
 
 	movem.l	(sp)+,d2-d7/a2-a3					; restore registers
 	rts

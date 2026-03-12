@@ -5,7 +5,7 @@
 //***************************************
 //* Simple 3D starfield			   		*
 //*								   		*
-//* (C) 2020-2021 by Stefan Kubsch      *
+//* (C) 2020-2026 by Stefan Kubsch      *
 //***************************************
 
 struct StarStruct3D
@@ -27,21 +27,25 @@ void Init_3DStarfield(void)
 
 void Draw_3DStarfield(void)
 {
+	long* const Target = (long*)RenderPort.BitMap->Planes[0];
+
 	for (UBYTE i = 0; i < 200; ++i)
 	{
-		Stars3D[i].z -= 15;
+		struct StarStruct3D* const s = &Stars3D[i];
 
-		if (Stars3D[i].z <= 0)
+		s->z -= 15;
+
+		if (s->z <= 0)
 		{
-			Stars3D[i].z = 800;
+			s->z = 800;
 		}
 
-		const UWORD x = Stars3D[i].x / Stars3D[i].z + SCREENWIDTHMID;
-		const UWORD y = Stars3D[i].y / Stars3D[i].z + SCREENHEIGHTMID;
+		const WORD x = s->x / s->z + SCREENWIDTHMID;
+		const WORD y = s->y / s->z + SCREENHEIGHTMID;
 
-		if (x < SCREENWIDTH && y > UPPERBORDERLINE && y < LOWERBORDERLINE)
+		if ((UWORD)x < SCREENWIDTH && y > UPPERBORDERLINE && y < LOWERBORDERLINE)
 		{
-			lwmf_SetPixel(x, y, (Stars3D[i].z >> 8) + 1, (long*)RenderPort.BitMap->Planes[0]);
+			lwmf_SetPixel(x, y, (s->z >> 8) + 1, Target);
 		}
 	}
 }

@@ -86,7 +86,7 @@ void Update_CopperList(void)
 	CBump(UserCopperList);
 
 	// Upper color bars
-	for (UWORD i = 0; i <= UPPERBORDERLINE; ++i)
+	for (UWORD i = 0; i < UPPERBORDERLINE; ++i)
 	{
 		CWait(UserCopperList, i, 0);
 		CBump(UserCopperList);

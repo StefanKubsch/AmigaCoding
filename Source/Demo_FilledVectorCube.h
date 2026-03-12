@@ -5,7 +5,7 @@
 //****************************************
 //* Simple filled vector cube       	 *
 //*								    	 *
-//* (C) 2020-2021 by Stefan Kubsch       *
+//* (C) 2020-2026 by Stefan Kubsch       *
 //****************************************
 
 struct CubeFaceStruct
@@ -69,6 +69,8 @@ void Init_FilledVectorCube(void)
 
 	for (UBYTE Pre = 0; Pre < 90; ++Pre)
 	{
+		struct CubeStruct* const pc = &CubePreCalc[Pre];
+
 		for (UBYTE i = 0; i < 8; ++i)
 		{
 			// x - rotation
@@ -85,15 +87,16 @@ void Init_FilledVectorCube(void)
 			CubeDef[i].y = CubeDef[i].y * CosA + x * SinA;
 
 			// 2D projection & translate
-			CubePreCalc[Pre].Cube[i].x = SCREENWIDTHMID + (UWORD)CubeDef[i].x;
-			CubePreCalc[Pre].Cube[i].y = SCREENHEIGHTMID + (UWORD)CubeDef[i].y - 5;
+			pc->Cube[i].x = SCREENWIDTHMID + (UWORD)CubeDef[i].x;
+			pc->Cube[i].y = SCREENHEIGHTMID + (UWORD)CubeDef[i].y - 5;
 		}
 
 		// selection-sort of depth/faces
 		for (UBYTE i = 0; i < 6; ++i)
 		{
-			CubePreCalc[Pre].Order[i].second = (CubeDef[CubeFaces[i].p0].z + CubeDef[CubeFaces[i].p1].z + CubeDef[CubeFaces[i].p2].z + CubeDef[CubeFaces[i].p3].z) * 0.25f;
-			CubePreCalc[Pre].Order[i].first = i;
+			const struct CubeFaceStruct* const f = &CubeFaces[i];
+			pc->Order[i].second = (CubeDef[f->p0].z + CubeDef[f->p1].z + CubeDef[f->p2].z + CubeDef[f->p3].z) * 0.25f;
+			pc->Order[i].first = i;
 		}
 
 		for (UBYTE i = 0; i < 5; ++i)
@@ -102,36 +105,44 @@ void Init_FilledVectorCube(void)
 
 			for (UBYTE j = i + 1; j <= 5; ++j)
 			{
-				if (CubePreCalc[Pre].Order[j].second < CubePreCalc[Pre].Order[Min].second)
+				if (pc->Order[j].second < pc->Order[Min].second)
 				{
 					Min = j;
 				}
 			}
 
-			struct OrderPair Temp = CubePreCalc[Pre].Order[Min];
-			CubePreCalc[Pre].Order[Min] = CubePreCalc[Pre].Order[i];
-			CubePreCalc[Pre].Order[i] = Temp;
+			struct OrderPair Temp = pc->Order[Min];
+			pc->Order[Min] = pc->Order[i];
+			pc->Order[i] = Temp;
 		}
 	}
 }
 
 void Draw_FilledVectorCube(void)
 {
-	const UBYTE FaceColors[] = { 1, 2, 3, 4, 5, 6 };
+	static const UBYTE FaceColors[] = { 1, 2, 3, 4, 5, 6 };
 	static UBYTE idx = 0;
 	static UBYTE SinTabCount = 0;
 
 	RenderPort.Mask = 0x07;
 
+	const struct CubeStruct* const pc = &CubePreCalc[idx];
+	const BYTE OffsetX = CubeSinTabX[SinTabCount];
+	const BYTE OffsetY = CubeSinTabY[SinTabCount];
+
 	// Since we see only the three faces on top, we only need to render these (3, 4 and 5)
 	for (UBYTE i = 3; i < 6; ++i)
 	{
-		SetAPen(&RenderPort, FaceColors[CubePreCalc[idx].Order[i].first]);
+		const UBYTE FaceIdx = pc->Order[i].first;
+		const struct CubeFaceStruct* const face = &CubeFaces[FaceIdx];
+		const struct PointStruct* const Cube = pc->Cube;
 
-		AreaMove(&RenderPort, CubePreCalc[idx].Cube[CubeFaces[CubePreCalc[idx].Order[i].first].p0].x + CubeSinTabX[SinTabCount], CubePreCalc[idx].Cube[CubeFaces[CubePreCalc[idx].Order[i].first].p0].y + CubeSinTabY[SinTabCount]);
-		AreaDraw(&RenderPort, CubePreCalc[idx].Cube[CubeFaces[CubePreCalc[idx].Order[i].first].p1].x + CubeSinTabX[SinTabCount], CubePreCalc[idx].Cube[CubeFaces[CubePreCalc[idx].Order[i].first].p1].y + CubeSinTabY[SinTabCount]);
-		AreaDraw(&RenderPort, CubePreCalc[idx].Cube[CubeFaces[CubePreCalc[idx].Order[i].first].p2].x + CubeSinTabX[SinTabCount], CubePreCalc[idx].Cube[CubeFaces[CubePreCalc[idx].Order[i].first].p2].y + CubeSinTabY[SinTabCount]);
-		AreaDraw(&RenderPort, CubePreCalc[idx].Cube[CubeFaces[CubePreCalc[idx].Order[i].first].p3].x + CubeSinTabX[SinTabCount], CubePreCalc[idx].Cube[CubeFaces[CubePreCalc[idx].Order[i].first].p3].y + CubeSinTabY[SinTabCount]);
+		SetAPen(&RenderPort, FaceColors[FaceIdx]);
+
+		AreaMove(&RenderPort, Cube[face->p0].x + OffsetX, Cube[face->p0].y + OffsetY);
+		AreaDraw(&RenderPort, Cube[face->p1].x + OffsetX, Cube[face->p1].y + OffsetY);
+		AreaDraw(&RenderPort, Cube[face->p2].x + OffsetX, Cube[face->p2].y + OffsetY);
+		AreaDraw(&RenderPort, Cube[face->p3].x + OffsetX, Cube[face->p3].y + OffsetY);
 
 		AreaEnd(&RenderPort);
 	}

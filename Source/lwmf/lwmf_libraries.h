@@ -1,5 +1,5 @@
-#ifndef LWMF_LIBRARIRIES_H
-#define LWMF_LIBRARIRIES_H
+#ifndef LWMF_LIBRARIES_H
+#define LWMF_LIBRARIES_H
 
 #include <exec/exec.h>
 #include <exec/types.h>
@@ -41,4 +41,4 @@ extern long GfxBase;
 extern long DataTypesBase;
 
 
-#endif /* LWMF_LIBRARIRIES_H */
+#endif /* LWMF_LIBRARIES_H */

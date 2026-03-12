@@ -140,7 +140,7 @@ const UBYTE ASCIIFont8x8[128][8] =
 	{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}    // U+007F
 };
 
-void lwmf_Text(char* Text, UWORD PosX, const UWORD PosY, const UBYTE Color)
+void lwmf_Text(const char* Text, UWORD PosX, const UWORD PosY, const UBYTE Color)
 {
 	UWORD TextLength = 0;
 
@@ -149,18 +149,22 @@ void lwmf_Text(char* Text, UWORD PosX, const UWORD PosY, const UBYTE Color)
   		++TextLength;
 	}
 
+	long* const Plane = (long*)RenderPort.BitMap->Planes[0];
+
 	for (UWORD i = 0; i < TextLength; ++i)
 	{
+		const UBYTE c = (UBYTE)Text[i];
+
 		for (UBYTE y = 0; y < 8; ++y)
 		{
 			const UWORD TempY = PosY + y;
-			const UBYTE TempChar = ASCIIFont8x8[Text[i]][y];
+			const UBYTE TempChar = ASCIIFont8x8[c < 128 ? c : 0][y];
 
 			for (UBYTE x = 0; x < 8; ++x)
 			{
-				if ((TempChar & 1 << x) != 0)
+				if ((TempChar & (1 << x)) != 0)
 				{
-			   		lwmf_SetPixel(PosX + x, TempY, Color, (long*)RenderPort.BitMap->Planes[0]);
+			   		lwmf_SetPixel(PosX + x, TempY, Color, Plane);
 				}
 			}
 		}

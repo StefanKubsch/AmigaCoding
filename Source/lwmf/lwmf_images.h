@@ -21,7 +21,7 @@ struct BitMap* lwmf_BitmapCopy(struct BitMap* SourceBM)
 		return NULL;
 	}
 
-	BltBitMap(SourceBM, 0, 0, TargetBM, 0, 0, Width, Height, 0x0C0, 0xFF, NULL);
+	BltBitMap(SourceBM, 0, 0, TargetBM, 0, 0, Width, Height, 0xC0, 0xFF, NULL);
 
 	return TargetBM;
 }
@@ -39,14 +39,17 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 
 	if (!(dtObject = NewDTObject(Filename, DTA_GroupID, GID_PICTURE, PDTA_Remap, FALSE, TAG_END)))
 	{
+		FreeMem(TempImage, sizeof(struct lwmf_Image));
 		return NULL;
 	}
 
 	DoDTMethod(dtObject, NULL, NULL, DTM_PROCLAYOUT, NULL, TRUE);
 	GetDTAttrs(dtObject, PDTA_DestBitMap, &TempBitmap, PDTA_CRegs, &TempImage->CRegs, PDTA_NumColors, &TempImage->NumberOfColors, TAG_END);
 
-	if (!(TempImage->Image = lwmf_BitmapCopy(TempBitmap)))
+	if (!TempBitmap || !(TempImage->Image = lwmf_BitmapCopy(TempBitmap)))
 	{
+		DisposeDTObject(dtObject);
+		FreeMem(TempImage, sizeof(struct lwmf_Image));
 		return NULL;
 	}
 
@@ -59,15 +62,14 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 
 void lwmf_DeleteImage(struct lwmf_Image* Image)
 {
-	if (Image->Image)
-	{
-		FreeBitMap(Image->Image);
-		Image->Image = NULL;
-	}
-
 	if (Image)
 	{
-		Image = NULL;
+		if (Image->Image)
+		{
+			FreeBitMap(Image->Image);
+		}
+
+		FreeMem(Image, sizeof(struct lwmf_Image));
 	}
 }
 

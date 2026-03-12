@@ -5,7 +5,7 @@
 //***************************************
 //* Simple 2D starfield     	   		*
 //*								   		*
-//* (C) 2020-2021 by Stefan Kubsch      *
+//* (C) 2020-2026 by Stefan Kubsch      *
 //***************************************
 
 struct StarStruct2D
@@ -27,18 +27,22 @@ void Init_2DStarfield(void)
 
 void Draw_2DStarfield(void)
 {
+	long* const Target = (long*)RenderPort.BitMap->Planes[0];
+
 	for (UBYTE i = 0; i < 200; ++i)
 	{
-		Stars2D[i].x += Stars2D[i].z << 1;
+		struct StarStruct2D* const s = &Stars2D[i];
 
-		if (Stars2D[i].x >= SCREENWIDTH)
+		s->x += s->z << 1;
+
+		if (s->x >= SCREENWIDTH)
 		{
-			Stars2D[i].x = 0;
-			Stars2D[i].y = lwmf_Random() % (LOWERBORDERLINE - UPPERBORDERLINE) + UPPERBORDERLINE;
-			Stars2D[i].z = lwmf_Random() % 3 + 1;
+			s->x = 0;
+			s->y = lwmf_Random() % (LOWERBORDERLINE - UPPERBORDERLINE) + UPPERBORDERLINE;
+			s->z = lwmf_Random() % 3 + 1;
 		}
 
-		lwmf_SetPixel(Stars2D[i].x, Stars2D[i].y, Stars2D[i].z, (long*)RenderPort.BitMap->Planes[0]);
+		lwmf_SetPixel(s->x, s->y, s->z, Target);
 	}
 }
 
