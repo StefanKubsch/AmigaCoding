@@ -29,7 +29,7 @@ ADKCONR             equ     $00DFF010		; Audio/Disk control read
 BLTCON0 	        equ     $00DFF040		; Blitter control reg 0
 BLTCON1 	        equ     $00DFF042		; Blitter control reg 1
 BLTAFWM             equ     $00DFF044		; Blitter first word mask for source A
-BLTALWM             equ     $00DFF046		; Blitter laster word mask for source A
+BLTALWM             equ     $00DFF046		; Blitter last word mask for source A
 BLTAPTH             equ     $00DFF050		; Blitter pointer to destination A (high 5 bits)
 BLTSIZE 	        equ     $00DFF058		; Blitter start and size (win/width, height)
 BLTSIZH				equ		$00DFF05E		; Blitter H size and start (for 11 bit H size)
@@ -67,6 +67,9 @@ LVOCloseLibrary     equ     -414
 ; Constants
 
 MINVERSION          equ     39        ; set required version (39 -> Amiga OS 3.0 and higher)
+DMASET_DEMO         equ     $83C0     ; SET | DMAEN | BPLEN | COPEN | BLTEN (no sprites)
+GFX_ACTIVIEW        equ     34        ; GfxBase offset: pointer to active View
+GFX_COPINIT         equ     38        ; GfxBase offset: system copper list pointer
 
 ; ***************************************************************************************************
 ; * Functions                                                                                       *
@@ -141,22 +144,18 @@ _lwmf_LoadDatatypesLib::
 _lwmf_CloseLibraries::
 	move.l  EXECBASE.w,a6           ; use exec base address
 
-	move.l  _DataTypesBase(pc),d0   ; use _DataTypesBase address in a1 for CloseLibrary
-	bne.s   .closedatatypelib
-
-	move.l  _GfxBase(pc),d0         ; use _GfxBase address in a1 for CloseLibrary
-	bne.s   .closegraphicslib
-
-	rts
-.closedatatypelib
+	move.l  _DataTypesBase(pc),d0
+	beq.s   .checkgfx               ; skip if not open
 	move.l  d0,a1
 	jsr     LVOCloseLibrary(a6)
-	move.l  #0,_DataTypesBase
-	rts
-.closegraphicslib
+	clr.l   _DataTypesBase
+.checkgfx
+	move.l  _GfxBase(pc),d0
+	beq.s   .done                   ; skip if not open
 	move.l  d0,a1
 	jsr     LVOCloseLibrary(a6)
-	move.l  #0,_GfxBase
+	clr.l   _GfxBase
+.done
 	rts
 
 ; **************************************************************************
@@ -184,19 +183,21 @@ _lwmf_TakeOverOS::
 	move.w  d0,oldadkcon
 
 	move.l  _GfxBase(pc),a6
-	move.l  34(a6),oldview          ; store current view
-	move.l  38(a6),oldcopper        ; store current copperlist
+	move.l  GFX_ACTIVIEW(a6),oldview    ; store current view
+	move.l  GFX_COPINIT(a6),oldcopper  ; store current copperlist
 	suba.l  a1,a1                   ; Set a1 to zero
 	jsr     LVOLoadView(a6)	        ; LoadView(NULL)
 	jsr     LVOWaitTOF(a6)
 	jsr     LVOWaitTOF(a6)
 
-	move.w  #$7FFF,DMACON       	; clear DMACON / Description: http://amiga-dev.wikidot.com/hardware:dmaconr
-	move.w  #$83C0,DMACON       	; set DMACON to 1000001111000000 = $83C0
+	bsr     _lwmf_WaitBlitter        ; wait for any in-progress blit before killing DMA
+
+	move.w  #$7FFF,DMACON       	; clear all DMA channels
+	move.w  #DMASET_DEMO,DMACON 	; re-enable bitplane/copper/blitter DMA
 
 	move.l	EXECBASE.w,a6
-	sub.l   a1,a1                   ; find current task
-	jsr     LVOFindTask(a6)
+	suba.l  a1,a1                   ; zero a1 (NULL = current task for FindTask)
+	jsr     LVOFindTask(a6)         ; find current task
 	move.l  d0,a1
 	moveq   #20,d0                  ; set task priority (20 should be enough!)
 	jsr     LVOSetTaskPri(a6)
@@ -213,12 +214,15 @@ _lwmf_TakeOverOS::
 _lwmf_ReleaseOS::
 	move.l	a6,-(sp)                    ; save register on stack
 
+	bsr     _lwmf_WaitBlitter           ; wait for any in-progress blit before restoring DMA
+
 	move.w  #$7FFF,DMACON
 	move.w  olddma(pc),DMACON
-	move.w  #$7FFF,INTENA
-	move.w  oldintena(pc),INTENA
+	move.w  #$7FFF,INTREQ               ; clear all pending interrupts before re-enabling (write twice - hardware quirk)
 	move.w  #$7FFF,INTREQ
 	move.w  oldintreq(pc),INTREQ
+	move.w  #$7FFF,INTENA
+	move.w  oldintena(pc),INTENA
 	move.w  #$7FFF,ADKCON
 	move.w  oldadkcon(pc),ADKCON
 	move.l  oldcopper(pc),COP1LCH		; restore system copperlist
@@ -266,11 +270,14 @@ _lwmf_DisownBlitter::
 ;
 
 _lwmf_WaitBlitter::
-	move.w	#$8400,DMACON				; enable "blitter nasty"
+	btst.b  #DMAB_BLITTER,DMACONR       ; already idle? skip nasty mode entirely
+	beq.s   .done
+	move.w	#$8400,DMACON				; enable blitter nasty
 .loop
 	btst.b 	#DMAB_BLITTER,DMACONR 		; check blitter busy flag
 	bne.s 	.loop
 	move.w	#$0400,DMACON				; disable blitter nasty
+.done
 	rts
 
 ;
@@ -278,12 +285,16 @@ _lwmf_WaitBlitter::
 ;
 
 _lwmf_WaitVertBlank::
-.wait
-	move.l	VPOSR,d0
-    and.l	#$1FF00,d0
-    cmp.l	#303<<8,d0
-    bne.b	.wait
-    rts
+	; Line 303 = $12F: V8=1 (bit 0 of VPOSR+1), V7:V0=$2F (byte at VPOSR+2)
+	; Two-phase check uses byte reads for lower chip bus pressure
+.waithi
+	btst.b	#0,VPOSR+1			; test V8 - are we on lines 256+?
+	beq.s	.waithi				; no, keep waiting
+.waitlo
+	move.b	VPOSR+2,d0			; read V7:V0
+	cmp.b	#(303&$FF),d0		; = $2F
+	bne.s	.waitlo
+	rts
 
 ;
 ; void lwmf_ClearMemCPU(__reg("a1") long* StartAddress, __reg("d7") long NumberOfBytes);
@@ -315,10 +326,10 @@ _lwmf_ClearMemCPU::
 	movem.l d0-d5/a2,-(a1)          ; 7 registers
 	dbra    d6,.clearblock
 .clear
-	and.l   #$0F,d7                 ; check how many long words we still have
+	moveq   #0,d0                   ; ensure d0 = 0 if no complete blocks were processed
+	and.l   #$7F,d7                 ; remainder after 128-longword blocks (7 bits)
 	beq.s   .done
 	subq.l  #1,d7                   ; one less to get loop working
-	move.l  (a0),a1
 .setword
 	move.l  d0,-(a1)                ; clear memory by one long word at a time
 	dbra    d7,.setword
@@ -336,7 +347,7 @@ _lwmf_ClearScreen::
 	; Clear first half of screen with blitter
 	bsr     _lwmf_WaitBlitter
 	move.l  #$01000000,BLTCON0			; enable destination only (both BLTCON0 and BLTCON1 are written!)
-	move.w  #0,BLTDMOD
+	clr.w   BLTDMOD						; modulo = 0 (contiguous)
 	move.l  a1,BLTDPTH
 	move.w  #SCREENCLRSIZEBLT,BLTSIZE
 
@@ -346,10 +357,10 @@ _lwmf_ClearScreen::
 	add.l   d7,a1                   	; we go top -> down
 	lsr.l   #3,d7                   	; divide by 8, we only need to clear half of the screen...
 	move.l  d7,d6
-	lsr.l   #7,d6                   	; get number of blocks of 128 long words 
+	lsr.l   #7,d6                   	; get number of blocks of 128 long words
 	beq.s   .clear                  	; branch if we have no complete block
 	subq.l  #1,d6                   	; one less to get loop working
-	movem.l (a0),d0-d5/a2-a6			; clear all registers
+	movem.l (a0),d0-d5/a2-a6			; zero d0-d5/a2-a6 for bulk write
 .clearblock
 	movem.l d0-d5/a2-a6,-(a1)       	; 11 registers -> clear 44 bytes at once
 	movem.l d0-d5/a2-a6,-(a1)
@@ -365,10 +376,11 @@ _lwmf_ClearScreen::
 	movem.l d0-d5/a2,-(a1)          	; 7 registers
 	dbra    d6,.clearblock
 .clear
-	and.l   #$0F,d7                 	; check how many long words we still have
+	and.l   #$7F,d7                 	; remainder after 128-longword blocks (7 bits)
 	beq.s   .done
 	subq.l  #1,d7                   	; one less to get loop working
-	move.l  (a0),a1
+
+	; d0 is already 0 from the movem.l above; a1 is still the write pointer
 .setword
 	move.l  d0,-(a1)                	; clear memory by one long word at a time
 	dbra    d7,.setword
@@ -381,23 +393,33 @@ _lwmf_ClearScreen::
 ;
 
 _lwmf_SetPixel::
-	movem.l d3-d4,-(sp)                         ; save registers
+	move.l  d3,-(sp)                            ; save d3 only
 
-	muls.w  #SCREENWIDTHTOTAL,d1        		; address offset for line
-	move.w  d0,d3			                    ; calc x position
-	not.w   d3
-	asr.w   #3,d0			                    ; byte offset for x position
-	add.l   d0,d1
-	moveq   #NUMBITPLANES-1,d4                  ; loop through bitplanes
-.loop
-	ror.b   d2                               	; is bit already set?
-	bpl.s   .skipbpl
-	bset    d3,(a0,d1.l)	                    ; if not -> set it
-.skipbpl
-	lea     SCREENBROW(a0),a0	                ; next bitplane
-	dbra    d4,.loop
+	muls.w  #SCREENWIDTHTOTAL,d1               ; address offset for line
+	move.w  d0,d3                               ; calc x position
+	not.w   d3                                  ; bit index within byte (MSB = leftmost pixel)
+	asr.w   #3,d0                               ; byte offset for x position
+	ext.l   d0                                  ; zero-extend to longword (upper word may be garbage from caller)
+	add.l   d0,d1                               ; total byte offset
 
-	movem.l (sp)+,d3-d4                         ; restore registers
+	; Bitplane 0 (Color bit 0) - NOTE: update all three planes if NUMBITPLANES changes
+	ror.b   d2
+	bpl.s   .skip0
+	bset    d3,(a0,d1.l)
+.skip0
+	; Bitplane 1 (Color bit 1)
+	lea     SCREENBROW(a0),a0
+	ror.b   d2
+	bpl.s   .skip1
+	bset    d3,(a0,d1.l)
+.skip1
+	; Bitplane 2 (Color bit 2)
+	lea     SCREENBROW(a0),a0
+	ror.b   d2
+	bpl.s   .skip2
+	bset    d3,(a0,d1.l)
+.skip2
+	move.l  (sp)+,d3                            ; restore d3
 	rts
 
 ;
@@ -410,22 +432,21 @@ _lwmf_BlitTile::
 	; Source modulo
 	subq.w	#2,d0								; subtract two more words from Source modulo because of barrel shift
 
-	; Destination modulo
-	move.w	#SCREENWIDTHTOTAL,d7
-	sub.w	d4,d7								; subtract width in words 
-	sub.w	d4,d7								; subtract width in words
-	subq.w	#2,d7								; subtract two more words because of barrel shift
+	; Destination modulo (fold constant -2 into the immediate to eliminate subq)
+	move.w	#SCREENWIDTHTOTAL-2,d7				; pre-subtract barrel-shift extra words
+	sub.w	d4,d7							; subtract width in words
+	sub.w	d4,d7							; subtract width in words
 
 	; Calc screen position
-	move.w	d2,d6								; store PosX for further use
-	asr.w	#3,d6         						; arithmetic right shift PosX by three bits  
-	mulu.w	#SCREENWIDTHTOTAL,d3         		; multiply PosY with target width
-	add.l	d6,a1         						; add PosX to DstAddr
-	add.l	d3,a1         						; add PosY to DstAddr
+	move.w	d2,d6							; store PosX for further use
+	asr.w	#3,d6							; byte offset for PosX
+	ext.l	d6								; zero-extend to longword (upper word may be garbage)
+	mulu.w	#SCREENWIDTHTOTAL,d3				; multiply PosY with target width
+	add.l	d6,a1							; add PosX byte offset to DstAddr
+	add.l	d3,a1							; add PosY offset to DstAddr
 
 	; Barrel shift
-	andi.w	#$F,d2        						; clear all but first byte of PosX
-	and.w	#$F,d2        						; clear all but first byte of PosX
+	andi.w	#$F,d2        						; clear all but lower nibble of PosX
 	ror.w	#4,d2								; rotate right by four bits
 	add.w	#$09F0,d2     						; D = A ($F0), ascending mode
 
@@ -438,20 +459,15 @@ _lwmf_BlitTile::
 	; ...and BLIT!
 	bsr     _lwmf_WaitBlitter
 
-	; ...and BLIT!
 	move.l  a0,BLTAPTH							; SrcAddr -> Blitter Source A
 	move.l  a1,BLTDPTH							; DstAddr -> Blitter Destination D
 	move.w  d2,BLTCON0
-	move.w  #0,BLTCON1							; clear BLTCON1
+	clr.w   BLTCON1								; clear BLTCON1
 	move.l	#$FFFF0000,BLTAFWM					; mask out first word (both BLTAFWM and BLTALWM are written!)
-	move.w  d0,BLTAMOD							; move complete modulo into Blitter Source A
-	move.w  d7,BLTDMOD							; move complete modulo into Blitter Destination D
-	move.w  d2,BLTCON0
-	move.l	#$FFFF0000,BLTAFWM					; mask out first word
-	move.l  a0,BLTAPTH							; SrcAddr -> Blitter Source A
-	move.l  a1,BLTDPTH							; DstAddr -> Blitter Destination D
+	move.w  d0,BLTAMOD							; modulo for Blitter Source A
+	move.w  d7,BLTDMOD							; modulo for Blitter Destination D
 	move.w	d5,BLTSIZV							; vertical blit size (Height)
-	move.w	d4,BLTSIZH							; horizontal blit size (Width)
+	move.w	d4,BLTSIZH							; horizontal blit size (Width) - starts blit
 
 	movem.l	(sp)+,d6-d7							; restore registers
 	rts
