@@ -5,7 +5,7 @@
 //***************************************
 //* Simple sine scroller           		*
 //*								   		*
-//* (C) 2020-2021 by Stefan Kubsch      *
+//* (C) 2020-2026 by Stefan Kubsch      *
 //***************************************
 
 struct Scrollfont
@@ -51,7 +51,7 @@ BOOL Init_SineScroller(void)
 	// ScrollFont.bsh is an ILBM (IFF) file
 	// In this case it´s a "brush", made with Personal Paint on Amiga - a brush is smaller in size
 	// The original IFF ScrollFont.iff is included in gfx
-	if (!(Font.FontBitmap = lwmf_LoadImage("gfx/scrollfont.bsh")))
+	if (!(Font.FontBitmap = lwmf_LoadImage("gfx/ScrollFont.bsh")))
 	{
 		return FALSE;
 	}
@@ -125,7 +125,7 @@ void Draw_SineScroller(void)
 			if (TempPosX < SCREENWIDTH - Font.Feed)
 			{
 				BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, ScrollSinTab[TempPosX], Font.Feed, Font.CharHeight, 0xC0, 0x01, NULL);
-				//lwmf_BlitTile(((long*)Font.FontBitmap->Image->Planes[0]), ((long*)RenderPort.BitMap->Planes[0]), x, 0, TempPosX, ScrollSinTab[TempPosX], 16, Font.CharHeight, 96, 40, 3);
+				// lwmf_BlitTile((long*)Font.FontBitmap->Image->Planes[0], x, 0, (long*)RenderPort.BitMap->Planes[0], TempPosX, ScrollSinTab[TempPosX], Font.Feed, Font.CharHeight, 761);
 			}
 			else
 			{
