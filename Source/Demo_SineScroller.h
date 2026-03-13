@@ -57,7 +57,7 @@ BOOL Init_SineScroller(void)
 	}
 
 	// Text & Font settings
-	Font.Text = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!! HAVE FUN WATCHING THE DEMO AND ENJOY YOUR AMIGA !!! (C) DEEP4 2021...";
+	Font.Text = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!! HAVE FUN WATCHING THE DEMO AND ENJOY YOUR AMIGA !!! (C) DEEP4 2026...";
 	Font.CharMap = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!-,+?*()";
 	Font.CharWidth = 15;
 	Font.CharHeight = 20;
