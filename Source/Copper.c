@@ -144,9 +144,9 @@ BOOL Init_CopperList(void)
 			CopperList[Index++] = 0x000;
 		}
 
-		// Trailing: hold last color through right border
-		CopperList[Index++] = 0x180;
-		CopperList[Index++] = 0x000;
+		// End-of-line WAIT: prevent copper from running ahead into next line's pre-color
+		CopperList[Index++] = ((PLASMA_REGION_START + i) << 8) | 0xDF;
+		CopperList[Index++] = 0xFFFE;
 	}
 
 	// White Line
@@ -210,8 +210,6 @@ void Update_Plasma(void)
 			*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
 			*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
 		}
-
-		lineBase[LINE_WORDS - 1] = ((UWORD)*(rp - 1) << 8) | ((UWORD)*(gp - 1) << 4) | *(bp - 1);
 
 		idx3 += 3;
 		idx2 += 2;
