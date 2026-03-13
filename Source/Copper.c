@@ -1,7 +1,7 @@
 //**********************************************************************
-//* Simple copper demo for Amiga with at least OS 3.0           	   *
+//* Copper demo for Amiga with at least OS 3.0                   	   *
 //*														 			   *
-//* (C) 2020-2021 by Stefan Kubsch                        			   *
+//* (C) 2020-2026 by Stefan Kubsch                        			   *
 //* Project for vbcc	                                 			   *
 //*                                                      			   *
 //* Compile & link with:                                 			   *
@@ -38,21 +38,21 @@ UWORD CopperbarStart = 0;
 // Three copperbar palettes: purple, red, green (32 colors each, symmetric gradient)
 static UWORD BarColors[3][BAR_FULL] =
 {
-	// Purple (original)
+	// Purple
 	{
 		0x604, 0x605, 0x606, 0x607, 0x617, 0x618, 0x619, 0x629,
 		0x72A, 0x73B, 0x74B, 0x74C, 0x75D, 0x76E, 0x77E, 0x88F,
 		0x88F, 0x77E, 0x76E, 0x75D, 0x74C, 0x74B, 0x73B, 0x72A,
 		0x629, 0x619, 0x618, 0x617, 0x607, 0x606, 0x605, 0x604
 	},
-	// Red (fire)
+	// Red
 	{
 		0x200, 0x300, 0x400, 0x500, 0x610, 0x720, 0x830, 0x940,
 		0xA50, 0xB60, 0xC70, 0xD80, 0xE90, 0xEA0, 0xFB0, 0xFC5,
 		0xFC5, 0xFB0, 0xEA0, 0xE90, 0xD80, 0xC70, 0xB60, 0xA50,
 		0x940, 0x830, 0x720, 0x610, 0x500, 0x400, 0x300, 0x200
 	},
-	// Green (emerald)
+	// Green
 	{
 		0x020, 0x030, 0x040, 0x050, 0x061, 0x072, 0x083, 0x094,
 		0x0A5, 0x0B6, 0x0C7, 0x0D8, 0x1E9, 0x2EA, 0x3FB, 0x5FC,
@@ -101,7 +101,7 @@ static UWORD SineTab[SINTAB_SIZE] =
 // Animation state
 static UBYTE SinIndex = 0;
 
-// Plasma background - ShaderToy style
+// Plasma background
 // Wave sine table (256 entries, values 0..63)
 static UBYTE PlasmaSin[256] =
 {
@@ -125,7 +125,7 @@ static UBYTE PlasmaSin[256] =
 
 // 2D RGB plasma: per-component sine tables (64-entry period, doubled to 128)
 #define PLASMA_COLS 40
-#define LINE_WORDS (2 + 2 * PLASMA_COLS + 2)
+#define LINE_WORDS (2 + 2 + 2 * PLASMA_COLS + 2)
 
 static UWORD CompR[128] =
 {
@@ -250,6 +250,10 @@ BOOL Init_CopperList(void)
 
 	for (UWORD i = 0; i < BAR_REGION_LINES; ++i)
 	{
+		// Pre-color: set COLOR00 before WAIT so left border has correct color
+		CopperList[Index++] = 0x180;
+		CopperList[Index++] = 0x000;
+
 		// WAIT with 4px dithering between even/odd lines
 		UWORD h = (i & 1) ? 0x41 : 0x3F;
 		CopperList[Index++] = ((BAR_REGION_START + i) << 8) | h;
@@ -261,7 +265,7 @@ BOOL Init_CopperList(void)
 			CopperList[Index++] = 0x000;
 		}
 
-		// Reset COLOR00 to black for clean left border
+		// Trailing: hold last color through right border
 		CopperList[Index++] = 0x180;
 		CopperList[Index++] = 0x000;
 	}
@@ -336,7 +340,8 @@ void Update_Copperbar(void)
 	// Writing each line before the beam reaches it avoids race conditions
 	for (UWORD row = 0; row < BAR_REGION_LINES; ++row)
 	{
-		UWORD *cop = &CopperList[CopperbarStart + row * LINE_WORDS + 3];
+		UWORD *lineBase = &CopperList[CopperbarStart + row * LINE_WORDS];
+		UWORD *cop = lineBase + 5;
 		UWORD absLine = BAR_REGION_START + row;
 
 		// Check if any copperbar covers this line (back-to-front, last wins)
@@ -363,7 +368,10 @@ void Update_Copperbar(void)
 
 		if (isSolid)
 		{
+			// Pre-color (left border) and trailing (right border)
+			lineBase[1] = solidColor;
 			for (UBYTE j = 0; j < PLASMA_COLS; ++j) { *cop = solidColor; cop += 2; }
+			*cop = solidColor;
 		}
 		else
 		{
@@ -376,11 +384,17 @@ void Update_Copperbar(void)
 			UWORD *gv = &CompG[g_off];
 			UWORD *bv = &CompB[b_off];
 
+			// Pre-color: first column color for left border
+			lineBase[1] = *rv | *gv | *bv;
+
 			for (UBYTE j = 0; j < PLASMA_COLS; ++j)
 			{
 				*cop = *rv++ | *gv++ | *bv++;
 				cop += 2;
 			}
+
+			// Trailing: last column color for right border
+			*cop = *(rv - 1) | *(gv - 1) | *(bv - 1);
 		}
 	}
 
