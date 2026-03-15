@@ -1,5 +1,5 @@
 ﻿# AmigaCoding
- 
+
 Coding for classic 68k Amigas in C99 and Assembler
 
 I uploaded some examples for oldschool demo scene effects, written in C99 and Assembler (vasm), targeted at classic Amiga A1200 and up.
@@ -16,7 +16,7 @@ vbcc 0.9g
 
 http://sun.hasenbraten.de/vbcc/
 
-vbcc is still under development (last version is from 2019) and works pretty well and is simple to use. vbcc is available on nearly all platforms and perfect for cross-compiling.
+vbcc is still under development (last version is from 2019) and works pretty well and is simple to use. vbcc is available on nearly all platforms and perfect for cross-compiling. It also contains vasm and vlink for the assembler handling.
 
 You´ll find a complete development environment for Windows under "Development".
 
