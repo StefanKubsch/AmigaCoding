@@ -12,11 +12,11 @@ Performance-critical parts are done in assembly, like memory clearing, setting p
 
 Used compiler:
 
-vbcc 0.9g
+vbcc 0.9h Patch 3
 
 http://sun.hasenbraten.de/vbcc/
 
-vbcc is still under development (last version is from 2019) and works pretty well and is simple to use. vbcc is available on nearly all platforms and perfect for cross-compiling. It also contains vasm and vlink for the assembler handling.
+vbcc is still under development (last version is from 2022) and works pretty well and is simple to use. vbcc is available on nearly all platforms and perfect for cross-compiling. It also contains vasm and vlink for the assembler handling.
 
 You´ll find a complete development environment for Windows under "Development".
 
@@ -30,4 +30,4 @@ All you need to test your programs is an editor or IDE (I prefer Visual Studio C
 I test my code on:
 
 - a real Amiga 1200 with an iComp ACA1221 accelerator card and Amiga OS 3.1.4
-- a "stock" 14MHz A1200 in WinUAE and Amiga OS 3.1.4
+- an emulated "stock" 14MHz A1200 in WinUAE and Amiga OS 3.1.4
