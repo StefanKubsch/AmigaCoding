@@ -1,0 +1,795 @@
+//**********************************************************************
+//* Three-Part Demo for Amiga with at least OS 3.0                     *
+//*                                                                    *
+//* (C) 2020-2026 by Stefan Kubsch                                     *
+//* Project for vbcc                                                   *
+//*                                                                    *
+//* Compile & link with:                                               *
+//* make_ThreePartDemo.cmd                                             *
+//*                                                                    *
+//* Quit with mouse click                                              *
+//**********************************************************************
+
+#include "lwmf/lwmf.h"
+#include <string.h>
+
+// =====================================================================
+// Screen settings
+// =====================================================================
+
+#define SCREENWIDTH     320
+#define SCREENHEIGHT    256
+#define SCREEN_DEPTH    3
+#define BYTES_PER_ROW   (SCREENWIDTH / 8)
+#define INTERLEAVED_MOD (BYTES_PER_ROW * (SCREEN_DEPTH - 1))
+
+// Layout: 84 + 1 + 85 + 1 + 85 = 256
+#define LOGO_LINES          84
+#define WHITE_LINE_1        84
+#define PLASMA_START_LINE   85
+#define PLASMA_LINES        85
+#define WHITE_LINE_2        170
+#define SCROLLER_START_LINE 171
+#define SCROLLER_LINES      85
+
+// VPOS offset for PAL display (first visible line = $2C = 44)
+#define VPOS_OFFSET     0x2C
+
+// =====================================================================
+// Double buffering
+// =====================================================================
+
+struct BitMap* ScreenBitmap[2] = { NULL, NULL };
+
+// =====================================================================
+// Bouncing Text Logo
+// =====================================================================
+
+struct lwmf_Image* LogoBitmap = NULL;
+
+// Saved logo palette (default: B/W fallback)
+UWORD LogoPalette[8] = { 0x000, 0xFFF, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000 };
+UBYTE LogoNumColors = 2;
+
+#define LOGO_WIDTH  192
+#define LOGO_HEIGHT 46
+
+// Lissajous X table: center=64, amplitude=60, range 4-124
+static const UBYTE LogoSinTabX[64] = {
+	64,70,76,82,87,93,98,103,107,111,114,117,120,122,123,124,
+	124,123,122,121,119,116,113,109,105,100,95,90,84,78,72,66,
+	60,55,49,43,37,32,27,23,19,15,12,9,7,5,4,4,
+	4,5,6,8,11,14,18,22,26,31,36,42,47,53,59,65
+};
+
+// Lissajous Y table: center=19, amplitude=18, range 1-37
+// (logo region = lines 0-83, logo height 46 → max Y = 37)
+static const UBYTE LogoSinTabY[64] = {
+	19,23,26,29,32,34,36,37,37,37,35,34,31,28,25,22,
+	18,14,11,8,5,3,2,1,1,2,3,5,8,11,14,18,
+	21,25,28,31,33,35,36,37,37,36,34,32,30,26,23,19,
+	16,12,9,6,4,2,1,1,1,2,4,7,9,13,16,20
+};
+
+BOOL Init_TextLogo(void)
+{
+	// Load logo IFF manually via datatypes to safely extract palette
+	// before disposing the datatypes object (lwmf_LoadImage disposes too early)
+	APTR dtObject = NULL;
+	struct BitMap* TempBitmap = NULL;
+	ULONG* CRegs = NULL;
+	struct ColorRegister* ColorRegs = NULL;
+	ULONG NumColors = 0;
+
+	if (!(dtObject = NewDTObject("gfx/Logo.iff", DTA_GroupID, GID_PICTURE, PDTA_Remap, FALSE, TAG_END)))
+	{
+		return FALSE;
+	}
+
+	DoDTMethod(dtObject, NULL, NULL, DTM_PROCLAYOUT, NULL, TRUE);
+	GetDTAttrs(dtObject,
+		PDTA_DestBitMap, &TempBitmap,
+		PDTA_CRegs, &CRegs,
+		PDTA_ColorRegisters, &ColorRegs,
+		PDTA_NumColors, &NumColors,
+		TAG_END);
+
+	if (!TempBitmap)
+	{
+		DisposeDTObject(dtObject);
+		return FALSE;
+	}
+
+	// Allocate our lwmf_Image structure
+	if (!(LogoBitmap = AllocMem(sizeof(struct lwmf_Image), MEMF_ANY | MEMF_CLEAR)))
+	{
+		DisposeDTObject(dtObject);
+		return FALSE;
+	}
+
+	// Copy bitmap (while datatypes object is still alive)
+	if (!(LogoBitmap->Image = lwmf_BitmapCopy(TempBitmap)))
+	{
+		FreeMem(LogoBitmap, sizeof(struct lwmf_Image));
+		LogoBitmap = NULL;
+		DisposeDTObject(dtObject);
+		return FALSE;
+	}
+
+	LogoBitmap->Width = GetBitMapAttr(LogoBitmap->Image, BMA_WIDTH);
+	LogoBitmap->Height = GetBitMapAttr(LogoBitmap->Image, BMA_HEIGHT);
+	LogoBitmap->NumberOfColors = (UBYTE)NumColors;
+
+	// Extract palette BEFORE disposing datatypes object
+	// Prefer ColorRegisters (8-bit per component, more reliable)
+	if (ColorRegs && NumColors > 0)
+	{
+		ULONG n = NumColors;
+		if (n > 8) n = 8;
+		LogoNumColors = (UBYTE)n;
+		// Optimiert: Palette mit memcpy kopieren, dann umwandeln
+		struct ColorRegister tempRegs[8];
+		memcpy(tempRegs, ColorRegs, n * sizeof(struct ColorRegister));
+		for (UBYTE c = 0; c < (UBYTE)n; ++c)
+		{
+			UWORD r = (UWORD)(tempRegs[c].red >> 4);
+			UWORD g = (UWORD)(tempRegs[c].green >> 4);
+			UWORD b = (UWORD)(tempRegs[c].blue >> 4);
+			LogoPalette[c] = (r << 8) | (g << 4) | b;
+		}
+	}
+	else if (CRegs && NumColors > 0)
+	{
+		ULONG n = NumColors;
+		if (n > 8) n = 8;
+		LogoNumColors = (UBYTE)n;
+
+		for (UBYTE c = 0; c < (UBYTE)n; ++c)
+		{
+			UWORD r = (UWORD)(CRegs[c * 3] >> 28);
+			UWORD g = (UWORD)(CRegs[c * 3 + 1] >> 28);
+			UWORD b = (UWORD)(CRegs[c * 3 + 2] >> 28);
+			LogoPalette[c] = (r << 8) | (g << 4) | b;
+		}
+	}
+
+	// Now safe to dispose
+	DisposeDTObject(dtObject);
+
+	return TRUE;
+}
+
+void Draw_TextLogo(void)
+{
+	static UBYTE SinTabCount = 0;
+
+	BltBitMap(LogoBitmap->Image, 0, 0, RenderPort.BitMap, LogoSinTabX[SinTabCount], LogoSinTabY[SinTabCount], LOGO_WIDTH, LOGO_HEIGHT, 0xC0, 0xFF, NULL);
+
+	if (++SinTabCount >= 63)
+	{
+		SinTabCount = 0;
+	}
+}
+
+void Cleanup_TextLogo(void)
+{
+	if (LogoBitmap)
+	{
+		if (LogoBitmap->Image)
+		{
+			FreeBitMap(LogoBitmap->Image);
+		}
+
+		FreeMem(LogoBitmap, sizeof(struct lwmf_Image));
+		LogoBitmap = NULL;
+	}
+}
+
+// =====================================================================
+// Sine Scroller
+// =====================================================================
+
+struct Scrollfont
+{
+	struct lwmf_Image* FontBitmap;
+	char* Text;
+	char* CharMap;
+	WORD* Map;
+	UWORD TextLength;
+	UWORD CharMapLength;
+	UWORD Length;
+	WORD ScrollX;
+	WORD Feed;
+	UBYTE CharWidth;
+	UBYTE CharHeight;
+	UBYTE CharSpacing;
+	UBYTE CharOverallWidth;
+} Font;
+
+// Sine table for scroller Y positions (center=203, amplitude=30)
+// Scroller region = lines 171-255, char height 20 → Y range 171-235
+static const UBYTE ScrollSinTab[SCREENWIDTH] = {
+	203,204,205,206,207,207,208,209,210,211,212,213,214,214,215,216,217,218,218,219,
+	220,221,221,222,223,223,224,225,225,226,226,227,228,228,229,229,229,230,230,231,
+	231,231,232,232,232,232,232,233,233,233,233,233,233,233,233,233,233,233,233,232,
+	232,232,232,231,231,231,231,230,230,229,229,228,228,227,227,226,226,225,225,224,
+	223,223,222,221,220,220,219,218,217,217,216,215,214,213,212,212,211,210,209,208,
+	207,206,205,205,204,203,202,201,200,199,198,197,196,196,195,194,193,192,191,191,
+	190,189,188,187,187,186,185,184,184,183,182,182,181,180,180,179,179,178,178,177,
+	177,176,176,176,175,175,175,174,174,174,174,173,173,173,173,173,173,173,173,173,
+	173,173,173,173,174,174,174,174,175,175,175,176,176,176,177,177,178,178,179,179,
+	180,180,181,182,182,183,184,184,185,186,186,187,188,189,190,190,191,192,193,194,
+	195,195,196,197,198,199,200,201,202,203,204,204,205,206,207,208,209,210,211,211,
+	212,213,214,215,216,217,217,218,219,220,220,221,222,222,223,224,224,225,226,226,
+	227,227,228,228,229,229,230,230,230,231,231,231,232,232,232,232,233,233,233,233,
+	233,233,233,233,233,233,233,233,232,232,232,232,232,231,231,231,230,230,230,229,
+	229,228,228,227,227,226,225,225,224,224,223,222,222,221,220,219,219,218,217,216,
+	215,215,214,213,212,211,210,209,209,208,207,206,205,204,203,202,201,200,200,199
+};
+
+BOOL Init_SineScroller(void)
+{
+	if (!(Font.FontBitmap = lwmf_LoadImage("gfx/ScrollFont.bsh")))
+	{
+		return FALSE;
+	}
+
+	Font.Text = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!! HAVE FUN WATCHING THE DEMO AND ENJOY YOUR AMIGA !!! (C) DEEP4 2026...";
+	Font.CharMap = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!-,+?*()";
+	Font.CharWidth = 15;
+	Font.CharHeight = 20;
+	Font.CharSpacing = 1;
+	Font.Feed = 2;
+	Font.CharOverallWidth = Font.CharWidth + Font.CharSpacing;
+	Font.ScrollX = SCREENWIDTH;
+
+	const char* const Text = Font.Text;
+	const char* const CharMap = Font.CharMap;
+	const UBYTE CharOverallWidth = Font.CharOverallWidth;
+
+	UWORD TextLength = 0;
+
+	while (Text[TextLength] != 0x00)
+	{
+		++TextLength;
+	}
+
+	Font.TextLength = TextLength;
+
+	WORD CharLookup[128];
+
+	for (UWORD k = 0; k < 128; ++k)
+	{
+		CharLookup[k] = -1;
+	}
+
+	UWORD CharMapLength = 0;
+	UWORD MapPos = 0;
+
+	while (CharMap[CharMapLength] != 0x00)
+	{
+		CharLookup[(UBYTE)CharMap[CharMapLength]] = MapPos;
+		MapPos += CharOverallWidth;
+		++CharMapLength;
+	}
+
+	Font.CharMapLength = CharMapLength;
+	Font.Length = TextLength * CharOverallWidth;
+
+	if (!(Font.Map = AllocVec(sizeof(WORD) * TextLength, MEMF_ANY)))
+	{
+		return FALSE;
+	}
+
+	WORD* const Map = Font.Map;
+	// Optimiert: memcpy für Map, falls alle Zeichen im CharMap sind
+	BOOL allInMap = TRUE;
+	for (UWORD i = 0; i < TextLength; ++i) {
+		const UBYTE c = (UBYTE)Text[i];
+		if (c >= 128 || CharLookup[c] == -1) {
+			allInMap = FALSE;
+			break;
+		}
+	}
+	if (allInMap) {
+		for (UWORD i = 0; i < TextLength; ++i) {
+			Map[i] = CharLookup[(UBYTE)Text[i]];
+		}
+	} else {
+		for (UWORD i = 0; i < TextLength; ++i) {
+			const UBYTE c = (UBYTE)Text[i];
+			Map[i] = (c < 128) ? CharLookup[c] : -1;
+		}
+	}
+
+	return TRUE;
+}
+
+void Draw_SineScroller(void)
+{
+	const WORD* const Map = Font.Map;
+	const UWORD TextLength = Font.TextLength;
+	const UBYTE CharOverallWidth = Font.CharOverallWidth;
+	const UBYTE CharWidth = Font.CharWidth;
+	const WORD Feed = Font.Feed;
+	const UBYTE CharHeight = Font.CharHeight;
+	const UWORD ScreenLimit = SCREENWIDTH - Feed;
+	struct BitMap* const SrcBM = Font.FontBitmap->Image;
+	struct BitMap* const DstBM = RenderPort.BitMap;
+
+	WORD XPos = Font.ScrollX;
+
+	for (UWORD i = 0; i < TextLength; ++i)
+	{
+		const WORD MapVal = Map[i];
+		if (MapVal == -1) {
+			XPos += CharOverallWidth;
+			continue;
+		}
+		if (XPos + CharOverallWidth < 0) {
+			XPos += CharOverallWidth;
+			continue;
+		}
+		if (XPos >= SCREENWIDTH) {
+			break;
+		}
+		// Optimiert: Nur zeichnen, wenn Zeichen sichtbar
+		if (XPos >= 0 && XPos < ScreenLimit) {
+			const WORD MapEnd = MapVal + CharWidth;
+			// Schleife entrollt für Feed==2 (Standardfall)
+			if (Feed == 2) {
+				for (UWORD x1 = 0, x = MapVal; x < MapEnd; x1 += 2, x += 2) {
+					const WORD TempPosX = XPos + x1;
+					if (TempPosX >= 0 && TempPosX < ScreenLimit) {
+						BltBitMap(SrcBM, x, 0, DstBM, TempPosX, ScrollSinTab[TempPosX], 2, CharHeight, 0xC0, 0x01, NULL);
+					}
+					else if (TempPosX >= ScreenLimit) {
+						break;
+					}
+				}
+			} else {
+				for (UWORD x1 = 0, x = MapVal; x < MapEnd; x1 += Feed, x += Feed) {
+					const WORD TempPosX = XPos + x1;
+					if (TempPosX >= 0 && TempPosX < ScreenLimit) {
+						BltBitMap(SrcBM, x, 0, DstBM, TempPosX, ScrollSinTab[TempPosX], Feed, CharHeight, 0xC0, 0x01, NULL);
+					}
+					else if (TempPosX >= ScreenLimit) {
+						break;
+					}
+				}
+			}
+		}
+		XPos += CharOverallWidth;
+	}
+
+	Font.ScrollX -= Feed << 1;
+
+	if (Font.ScrollX < -Font.Length)
+	{
+		Font.ScrollX = SCREENWIDTH;
+	}
+}
+
+void Cleanup_SineScroller(void)
+{
+	if (Font.FontBitmap)
+	{
+		lwmf_DeleteImage(Font.FontBitmap);
+	}
+
+	if (Font.Map)
+	{
+		FreeVec(Font.Map);
+	}
+}
+
+// =====================================================================
+// Copper & Plasma
+// =====================================================================
+
+UWORD* CopperList = NULL;
+UWORD PlasmaStart = 0;
+UWORD BPL1PTH_Idx = 0;
+UWORD BPL1PTL_Idx = 0;
+UWORD BPL2PTH_Idx = 0;
+UWORD BPL2PTL_Idx = 0;
+UWORD BPL3PTH_Idx = 0;
+UWORD BPL3PTL_Idx = 0;
+UWORD ScrollBPL1PTH_Idx = 0;
+UWORD ScrollBPL1PTL_Idx = 0;
+UWORD LogoColorIdx = 0;
+
+#define PLASMA_COLS 40
+#define LINE_WORDS (2 + 2 + 2 * PLASMA_COLS + 2)
+
+// Wave sine table (256 entries, values 0..63)
+static const UBYTE PlasmaSin[256] = {
+	32,32,33,34,35,35,36,37,38,38,39,40,41,41,42,43,
+	44,44,45,46,46,47,48,48,49,50,50,51,51,52,53,53,
+	54,54,55,55,56,56,57,57,58,58,59,59,59,60,60,60,
+	61,61,61,61,62,62,62,62,62,63,63,63,63,63,63,63,
+	63,63,63,63,63,63,63,63,62,62,62,62,62,61,61,61,
+	61,60,60,60,59,59,59,58,58,57,57,56,56,55,55,54,
+	54,53,53,52,51,51,50,50,49,48,48,47,46,46,45,44,
+	44,43,42,41,41,40,39,38,38,37,36,35,35,34,33,32,
+	32,31,30,29,28,28,27,26,25,25,24,23,22,22,21,20,
+	19,19,18,17,17,16,15,15,14,13,13,12,12,11,10,10,
+	 9, 9, 8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 4, 3, 3, 3,
+	 2, 2, 2, 2, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0,
+	 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2,
+	 2, 3, 3, 3, 4, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9,
+	 9,10,10,11,12,12,13,13,14,15,15,16,17,17,18,19,
+	19,20,21,22,22,23,24,25,25,26,27,28,28,29,30,31
+};
+
+// 2D RGB plasma: base table (64-entry period, doubled to 128)
+static const UBYTE CompBase[128] = {
+	8, 8, 9,10,10,11,12,12,13,13,14,14,14,15,15,15,
+	15,15,15,15,14,14,14,13,13,12,12,11,10,10, 9, 8,
+	 8, 7, 6, 5, 5, 4, 3, 3, 2, 2, 1, 1, 1, 0, 0, 0,
+	 0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 7,
+	 8, 8, 9,10,10,11,12,12,13,13,14,14,14,15,15,15,
+	15,15,15,15,14,14,14,13,13,12,12,11,10,10, 9, 8,
+	 8, 7, 6, 5, 5, 4, 3, 3, 2, 2, 1, 1, 1, 0, 0, 0,
+	 0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 7
+};
+
+static UBYTE PlasmaFrameCommon = 0;
+static UBYTE PlasmaFrameRed = 0;
+static UBYTE PlasmaFrameGreen = 90;
+static UBYTE PlasmaFrameBlue = 60;
+
+// VPOS helpers
+#define LOGO_VPOS_START     (VPOS_OFFSET)
+#define WHITE1_VPOS         (VPOS_OFFSET + WHITE_LINE_1)
+#define PLASMA_VPOS_START   (VPOS_OFFSET + PLASMA_START_LINE)
+#define WHITE2_VPOS         (VPOS_OFFSET + WHITE_LINE_2)
+#define SCROLLER_VPOS_START (VPOS_OFFSET + SCROLLER_START_LINE)
+
+BOOL Init_CopperList(void)
+{
+	const UWORD CopperListLength = 80 + (PLASMA_LINES * LINE_WORDS) + 30;
+
+	if (!(CopperList = (UWORD*)AllocVec(CopperListLength * sizeof(UWORD), MEMF_CHIP | MEMF_CLEAR)))
+	{
+		return FALSE;
+	}
+
+	UWORD Index = 0;
+
+	// Slow fetch mode (AGA compatibility)
+	CopperList[Index++] = 0x1FC;
+	CopperList[Index++] = 0x0000;
+	// Display window top/left (PAL DIWSTRT)
+	CopperList[Index++] = 0x8E;
+	CopperList[Index++] = 0x2C81;
+	// Display window bottom/right (PAL DIWSTOP)
+	CopperList[Index++] = 0x90;
+	CopperList[Index++] = 0x2CC1;
+	// DDFSTRT
+	CopperList[Index++] = 0x92;
+	CopperList[Index++] = 0x0038;
+	// DDFSTOP
+	CopperList[Index++] = 0x94;
+	CopperList[Index++] = 0x00D0;
+	// BPLCON0 - 3 bitplanes + color (logo region)
+	CopperList[Index++] = 0x100;
+	CopperList[Index++] = 0x3200;
+	// BPLCON1
+	CopperList[Index++] = 0x102;
+	CopperList[Index++] = 0x0000;
+	// BPLCON2
+	CopperList[Index++] = 0x104;
+	CopperList[Index++] = 0x0000;
+	// BPLCON3
+	CopperList[Index++] = 0x106;
+	CopperList[Index++] = 0x0C00;
+	// BPL1MOD (interleaved: skip over other planes' rows)
+	CopperList[Index++] = 0x108;
+	CopperList[Index++] = INTERLEAVED_MOD;
+	// BPL2MOD
+	CopperList[Index++] = 0x10A;
+	CopperList[Index++] = INTERLEAVED_MOD;
+	// BPL1PTH/PTL (updated each frame)
+	CopperList[Index++] = 0x0E0;
+	BPL1PTH_Idx = Index;
+	CopperList[Index++] = 0x0000;
+	CopperList[Index++] = 0x0E2;
+	BPL1PTL_Idx = Index;
+	CopperList[Index++] = 0x0000;
+	// BPL2PTH/PTL
+	CopperList[Index++] = 0x0E4;
+	BPL2PTH_Idx = Index;
+	CopperList[Index++] = 0x0000;
+	CopperList[Index++] = 0x0E6;
+	BPL2PTL_Idx = Index;
+	CopperList[Index++] = 0x0000;
+	// BPL3PTH/PTL
+	CopperList[Index++] = 0x0E8;
+	BPL3PTH_Idx = Index;
+	CopperList[Index++] = 0x0000;
+	CopperList[Index++] = 0x0EA;
+	BPL3PTL_Idx = Index;
+	CopperList[Index++] = 0x0000;
+
+	// COLOR00-COLOR07 (logo palette, filled after Init_TextLogo)
+	LogoColorIdx = Index;
+	for (UBYTE c = 0; c < 8; ++c)
+	{
+		CopperList[Index++] = 0x180 + c * 2;
+		CopperList[Index++] = 0x000;
+	}
+
+	// --- White line 1 (between logo and plasma) ---
+	CopperList[Index++] = (WHITE1_VPOS << 8) | 0x07;
+	CopperList[Index++] = 0xFFFE;
+	CopperList[Index++] = 0x180;
+	CopperList[Index++] = 0xFFF;
+	// Switch to 0 bitplanes for plasma (copper-only colors)
+	CopperList[Index++] = (PLASMA_VPOS_START << 8) | 0x07;
+	CopperList[Index++] = 0xFFFE;
+	CopperList[Index++] = 0x100;
+	CopperList[Index++] = 0x0200;
+	CopperList[Index++] = 0x180;
+	CopperList[Index++] = 0x000;
+
+	// --- Per-scanline plasma region ---
+	PlasmaStart = Index;
+
+	for (UWORD i = 0; i < PLASMA_LINES; ++i)
+	{
+		// Pre-color: set COLOR00 before WAIT
+		CopperList[Index++] = 0x180;
+		CopperList[Index++] = 0x000;
+
+		// WAIT with 4px dithering between even/odd lines
+		UWORD h = (i & 1) ? 0x41 : 0x3F;
+		CopperList[Index++] = ((PLASMA_VPOS_START + i) << 8) | h;
+		CopperList[Index++] = 0xFFFE;
+
+		for (UWORD j = 0; j < PLASMA_COLS; ++j)
+		{
+			CopperList[Index++] = 0x180;
+			CopperList[Index++] = 0x000;
+		}
+
+		// End-of-line WAIT
+		CopperList[Index++] = ((PLASMA_VPOS_START + i) << 8) | 0xDF;
+		CopperList[Index++] = 0xFFFE;
+	}
+
+	// --- White line 2 (between plasma and scroller) ---
+	CopperList[Index++] = (WHITE2_VPOS << 8) | 0x07;
+	CopperList[Index++] = 0xFFFE;
+	CopperList[Index++] = 0x180;
+	CopperList[Index++] = 0xFFF;
+	// Switch to 1 bitplane for scroller, reload BPL1PT
+	CopperList[Index++] = (SCROLLER_VPOS_START << 8) | 0x07;
+	CopperList[Index++] = 0xFFFE;
+	CopperList[Index++] = 0x100;
+	CopperList[Index++] = 0x1200;
+	CopperList[Index++] = 0x0E0;
+	ScrollBPL1PTH_Idx = Index;
+	CopperList[Index++] = 0x0000;
+	CopperList[Index++] = 0x0E2;
+	ScrollBPL1PTL_Idx = Index;
+	CopperList[Index++] = 0x0000;
+	CopperList[Index++] = 0x180;
+	CopperList[Index++] = 0x000;
+	CopperList[Index++] = 0x182;
+	CopperList[Index++] = 0xC0D;
+
+	// VPOS wrap for lines > 255
+	CopperList[Index++] = 0xFFDF;
+	CopperList[Index++] = 0xFFFE;
+
+	// Copper list end
+	CopperList[Index++] = 0xFFFF;
+	CopperList[Index++] = 0xFFFE;
+
+	*COP1LC = (ULONG)CopperList;
+
+	return TRUE;
+}
+
+void Update_BitplanePointers(UBYTE Buffer)
+{
+	ULONG addr;
+
+	// Logo region: 3 bitplane pointers
+	addr = (ULONG)ScreenBitmap[Buffer]->Planes[0];
+	CopperList[BPL1PTH_Idx] = (UWORD)(addr >> 16);
+	CopperList[BPL1PTL_Idx] = (UWORD)(addr & 0xFFFF);
+
+	addr = (ULONG)ScreenBitmap[Buffer]->Planes[1];
+	CopperList[BPL2PTH_Idx] = (UWORD)(addr >> 16);
+	CopperList[BPL2PTL_Idx] = (UWORD)(addr & 0xFFFF);
+
+	addr = (ULONG)ScreenBitmap[Buffer]->Planes[2];
+	CopperList[BPL3PTH_Idx] = (UWORD)(addr >> 16);
+	CopperList[BPL3PTL_Idx] = (UWORD)(addr & 0xFFFF);
+
+	// Scroller region: plane 0 offset to scroller start line (interleaved stride)
+	addr = (ULONG)ScreenBitmap[Buffer]->Planes[0] + SCROLLER_START_LINE * BYTES_PER_ROW * SCREEN_DEPTH;
+	CopperList[ScrollBPL1PTH_Idx] = (UWORD)(addr >> 16);
+	CopperList[ScrollBPL1PTL_Idx] = (UWORD)(addr & 0xFFFF);
+}
+
+void Update_Plasma(void)
+{
+	UBYTE idx3 = PlasmaFrameCommon;
+	UBYTE idx2 = PlasmaFrameRed;
+	UBYTE idx5 = PlasmaFrameGreen;
+	UBYTE idx11 = PlasmaFrameBlue;
+
+	UWORD *lineBase = &CopperList[PlasmaStart];
+
+	for (UWORD row = 0; row < PLASMA_LINES; ++row)
+	{
+		UBYTE common = PlasmaSin[idx3] >> 2;
+		UBYTE r_off = (PlasmaSin[idx2] + common) & 63;
+		UBYTE g_off = (PlasmaSin[idx5] + common) & 63;
+		UBYTE b_off = (PlasmaSin[idx11] + common) & 63;
+
+		const UBYTE *rp = &CompBase[r_off];
+		const UBYTE *gp = &CompBase[g_off];
+		const UBYTE *bp = &CompBase[b_off];
+
+		UWORD firstCol = ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp;
+		lineBase[1] = firstCol;
+
+		ULONG *lcop = (ULONG *)(lineBase + 4);
+
+		for (UBYTE j = 0; j < PLASMA_COLS; j += 8)
+		{
+			*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+			*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+			*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+			*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+			*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+			*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+			*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+			*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		}
+
+		idx3 += 3;
+		idx2 += 2;
+		idx5 += 5;
+		idx11 += 11;
+		lineBase += LINE_WORDS;
+	}
+
+	PlasmaFrameCommon += 1;
+	PlasmaFrameRed += 3;
+	PlasmaFrameGreen += 2;
+	PlasmaFrameBlue += 5;
+}
+
+// =====================================================================
+// Cleanup & Main
+// =====================================================================
+
+void Cleanup_All(void)
+{
+	Cleanup_SineScroller();
+	Cleanup_TextLogo();
+
+	if (CopperList)
+	{
+		FreeVec(CopperList);
+	}
+
+	for (UBYTE i = 0; i < 2; ++i)
+	{
+		if (ScreenBitmap[i])
+		{
+			FreeBitMap(ScreenBitmap[i]);
+		}
+	}
+
+	lwmf_ReleaseOS();
+	lwmf_CloseLibraries();
+}
+
+int main()
+{
+	if (lwmf_LoadGraphicsLib() != 0)
+	{
+		return 20;
+	}
+
+	if (lwmf_LoadDatatypesLib() != 0)
+	{
+		return 20;
+	}
+
+	lwmf_TakeOverOS();
+
+	for (UBYTE i = 0; i < 2; ++i)
+	{
+		if (!(ScreenBitmap[i] = AllocBitMap(SCREENWIDTH, SCREENHEIGHT, SCREEN_DEPTH, BMF_INTERLEAVED | BMF_CLEAR, NULL)))
+		{
+			Cleanup_All();
+			return 20;
+		}
+	}
+
+	InitRastPort(&RenderPort);
+
+	// Load logo FIRST so CRegs palette data is still intact in memory
+	if (!Init_TextLogo())
+	{
+		Cleanup_All();
+		return 20;
+	}
+
+	if (!Init_CopperList())
+	{
+		Cleanup_All();
+		return 20;
+	}
+
+	// Apply saved logo palette to copper list
+	{
+		UWORD *colorPtr = &CopperList[LogoColorIdx];
+		for (UBYTE c = 0; c < 8; ++c)
+		{
+			colorPtr[c * 2 + 1] = LogoPalette[c];
+		}
+	}
+
+	if (!Init_SineScroller())
+	{
+		Cleanup_All();
+		return 20;
+	}
+
+	UBYTE CurrentBuffer = 1;
+	Update_BitplanePointers(0);
+
+	while (*CIAA_PRA & 0x40)
+	{
+		// Blitter clear: nur Logo- und Scroller-Bereich löschen (spart Zeit)
+		lwmf_OwnBlitter();
+		lwmf_WaitBlitter();
+
+		volatile ULONG* const BLTCON0  = (volatile ULONG* const)0xDFF040;
+		volatile UWORD* const BLTDMOD  = (volatile UWORD* const)0xDFF066;
+		volatile ULONG* const BLTDPTH  = (volatile ULONG* const)0xDFF054;
+		volatile UWORD* const BLTSIZE  = (volatile UWORD* const)0xDFF058;
+
+		// Logo-Bereich löschen
+		*BLTCON0 = 0x01000000UL;
+		*BLTDMOD = 0;
+		*BLTDPTH = (ULONG)ScreenBitmap[CurrentBuffer]->Planes[0] + (0 * BYTES_PER_ROW * SCREEN_DEPTH);
+		*BLTSIZE = (UWORD)((LOGO_LINES << 6) | ((BYTES_PER_ROW * SCREEN_DEPTH) >> 1));
+
+		lwmf_WaitBlitter();
+
+		// Scroller-Bereich löschen
+		*BLTCON0 = 0x01000000UL;
+		*BLTDMOD = 0;
+		*BLTDPTH = (ULONG)ScreenBitmap[CurrentBuffer]->Planes[0] + (SCROLLER_START_LINE * BYTES_PER_ROW * SCREEN_DEPTH);
+		*BLTSIZE = (UWORD)((SCROLLER_LINES << 6) | ((BYTES_PER_ROW * SCREEN_DEPTH) >> 1));
+
+		// CPU updates plasma while blitter clears
+		Update_Plasma();
+
+		lwmf_WaitBlitter();
+		lwmf_DisownBlitter();
+
+		// Draw both effects into backbuffer
+		RenderPort.BitMap = ScreenBitmap[CurrentBuffer];
+		Draw_TextLogo();
+		Draw_SineScroller();
+
+		// Flip
+		Update_BitplanePointers(CurrentBuffer);
+
+		lwmf_WaitVertBlank();
+		CurrentBuffer ^= 1;
+	}
+
+	Cleanup_All();
+	return 0;
+}
