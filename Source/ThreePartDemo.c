@@ -81,18 +81,13 @@ BOOL Init_TextLogo(void)
 	struct ColorRegister* ColorRegs = NULL;
 	ULONG NumColors = 0;
 
-	if (!(dtObject = NewDTObject("gfx/Logo.iff", DTA_GroupID, GID_PICTURE, PDTA_Remap, FALSE, TAG_END)))
+	if (!(dtObject = NewDTObject("gfx/logo.iff", DTA_GroupID, GID_PICTURE, PDTA_Remap, FALSE, TAG_END)))
 	{
 		return FALSE;
 	}
 
 	DoDTMethod(dtObject, NULL, NULL, DTM_PROCLAYOUT, NULL, TRUE);
-	GetDTAttrs(dtObject,
-		PDTA_DestBitMap, &TempBitmap,
-		PDTA_CRegs, &CRegs,
-		PDTA_ColorRegisters, &ColorRegs,
-		PDTA_NumColors, &NumColors,
-		TAG_END);
+	GetDTAttrs(dtObject, PDTA_DestBitMap, &TempBitmap, PDTA_CRegs, &CRegs, PDTA_ColorRegisters, &ColorRegs, PDTA_NumColors, &NumColors, TAG_END);
 
 	if (!TempBitmap)
 	{
@@ -127,7 +122,7 @@ BOOL Init_TextLogo(void)
 		ULONG n = NumColors;
 		if (n > 8) n = 8;
 		LogoNumColors = (UBYTE)n;
-		// Optimiert: Palette mit memcpy kopieren, dann umwandeln
+
 		struct ColorRegister tempRegs[8];
 		memcpy(tempRegs, ColorRegs, n * sizeof(struct ColorRegister));
 		for (UBYTE c = 0; c < (UBYTE)n; ++c)
@@ -163,7 +158,7 @@ void Draw_TextLogo(void)
 {
 	static UBYTE SinTabCount = 0;
 
-	BltBitMap(LogoBitmap->Image, 0, 0, RenderPort.BitMap, LogoSinTabX[SinTabCount], LogoSinTabY[SinTabCount], LOGO_WIDTH, LOGO_HEIGHT, 0xC0, 0xFF, NULL);
+	lwmf_BlitTile((long*)LogoBitmap->Image->Planes[0], 0, 0, (long*)RenderPort.BitMap->Planes[0], LogoSinTabX[SinTabCount], LogoSinTabY[SinTabCount], LOGO_WIDTH, LOGO_HEIGHT, 320);
 
 	if (++SinTabCount >= 63)
 	{
@@ -282,21 +277,29 @@ BOOL Init_SineScroller(void)
 	}
 
 	WORD* const Map = Font.Map;
-	// Optimiert: memcpy für Map, falls alle Zeichen im CharMap sind
+	// Optimized: memcpy for Map if all characters are in CharMap
 	BOOL allInMap = TRUE;
-	for (UWORD i = 0; i < TextLength; ++i) {
+
+	for (UWORD i = 0; i < TextLength; ++i)
+	{
 		const UBYTE c = (UBYTE)Text[i];
-		if (c >= 128 || CharLookup[c] == -1) {
+		if (c >= 128 || CharLookup[c] == -1)
+		{
 			allInMap = FALSE;
 			break;
 		}
 	}
-	if (allInMap) {
-		for (UWORD i = 0; i < TextLength; ++i) {
+
+	if (allInMap)
+	{
+		for (UWORD i = 0; i < TextLength; ++i)
+		{
 			Map[i] = CharLookup[(UBYTE)Text[i]];
 		}
-	} else {
-		for (UWORD i = 0; i < TextLength; ++i) {
+	} else
+	{
+		for (UWORD i = 0; i < TextLength; ++i) 
+		{
 			const UBYTE c = (UBYTE)Text[i];
 			Map[i] = (c < 128) ? CharLookup[c] : -1;
 		}
@@ -307,62 +310,53 @@ BOOL Init_SineScroller(void)
 
 void Draw_SineScroller(void)
 {
-	const WORD* const Map = Font.Map;
-	const UWORD TextLength = Font.TextLength;
-	const UBYTE CharOverallWidth = Font.CharOverallWidth;
-	const UBYTE CharWidth = Font.CharWidth;
-	const WORD Feed = Font.Feed;
-	const UBYTE CharHeight = Font.CharHeight;
-	const UWORD ScreenLimit = SCREENWIDTH - Feed;
-	struct BitMap* const SrcBM = Font.FontBitmap->Image;
-	struct BitMap* const DstBM = RenderPort.BitMap;
+	const UWORD ScreenLimit = SCREENWIDTH - Font.Feed;
 
 	WORD XPos = Font.ScrollX;
 
-	for (UWORD i = 0; i < TextLength; ++i)
+	for (UWORD i = 0; i < Font.TextLength; ++i)
 	{
-		const WORD MapVal = Map[i];
-		if (MapVal == -1) {
-			XPos += CharOverallWidth;
+		const WORD MapVal = Font.Map[i];
+
+		if (MapVal == -1)
+		{
+			XPos += Font.CharOverallWidth;
 			continue;
 		}
-		if (XPos + CharOverallWidth < 0) {
-			XPos += CharOverallWidth;
+
+		if (XPos + Font.CharOverallWidth < 0)
+		{
+			XPos += Font.CharOverallWidth;
 			continue;
 		}
-		if (XPos >= SCREENWIDTH) {
+
+		if (XPos >= SCREENWIDTH)
+		{
 			break;
 		}
-		// Optimiert: Nur zeichnen, wenn Zeichen sichtbar
-		if (XPos >= 0 && XPos < ScreenLimit) {
-			const WORD MapEnd = MapVal + CharWidth;
-			// Schleife entrollt für Feed==2 (Standardfall)
-			if (Feed == 2) {
-				for (UWORD x1 = 0, x = MapVal; x < MapEnd; x1 += 2, x += 2) {
-					const WORD TempPosX = XPos + x1;
-					if (TempPosX >= 0 && TempPosX < ScreenLimit) {
-						BltBitMap(SrcBM, x, 0, DstBM, TempPosX, ScrollSinTab[TempPosX], 2, CharHeight, 0xC0, 0x01, NULL);
-					}
-					else if (TempPosX >= ScreenLimit) {
-						break;
-					}
+
+		if (XPos >= 0 && XPos < ScreenLimit)
+		{
+			const WORD MapEnd = MapVal + Font.CharWidth;
+
+			for (UWORD x1 = 0, x = MapVal; x < MapEnd; x1 += Font.Feed, x += Font.Feed)
+			{
+				const WORD TempPosX = XPos + x1;
+				if (TempPosX >= 0 && TempPosX < ScreenLimit)
+				{
+					BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, ScrollSinTab[TempPosX], Font.Feed, Font.CharHeight, 0xC0, 0x01, NULL);
 				}
-			} else {
-				for (UWORD x1 = 0, x = MapVal; x < MapEnd; x1 += Feed, x += Feed) {
-					const WORD TempPosX = XPos + x1;
-					if (TempPosX >= 0 && TempPosX < ScreenLimit) {
-						BltBitMap(SrcBM, x, 0, DstBM, TempPosX, ScrollSinTab[TempPosX], Feed, CharHeight, 0xC0, 0x01, NULL);
-					}
-					else if (TempPosX >= ScreenLimit) {
-						break;
-					}
+				else if (TempPosX >= ScreenLimit)
+				{
+					break;
 				}
 			}
 		}
-		XPos += CharOverallWidth;
+
+		XPos += Font.CharOverallWidth;
 	}
 
-	Font.ScrollX -= Feed << 1;
+	Font.ScrollX -= Font.Feed << 1;
 
 	if (Font.ScrollX < -Font.Length)
 	{
@@ -640,17 +634,52 @@ void Update_Plasma(void)
 
 		ULONG *lcop = (ULONG *)(lineBase + 4);
 
-		for (UBYTE j = 0; j < PLASMA_COLS; j += 8)
-		{
-			*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-			*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-			*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-			*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-			*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-			*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-			*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-			*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		}
+		// Loop unrolling: PLASMA_COLS = 40, also 5x8
+		#pragma unroll
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
 
 		idx3 += 3;
 		idx2 += 2;
@@ -749,7 +778,6 @@ int main()
 
 	while (*CIAA_PRA & 0x40)
 	{
-		// Blitter clear: nur Logo- und Scroller-Bereich löschen (spart Zeit)
 		lwmf_OwnBlitter();
 		lwmf_WaitBlitter();
 
@@ -758,7 +786,7 @@ int main()
 		volatile ULONG* const BLTDPTH  = (volatile ULONG* const)0xDFF054;
 		volatile UWORD* const BLTSIZE  = (volatile UWORD* const)0xDFF058;
 
-		// Logo-Bereich löschen
+		// clear logo space
 		*BLTCON0 = 0x01000000UL;
 		*BLTDMOD = 0;
 		*BLTDPTH = (ULONG)ScreenBitmap[CurrentBuffer]->Planes[0] + (0 * BYTES_PER_ROW * SCREEN_DEPTH);
@@ -766,7 +794,7 @@ int main()
 
 		lwmf_WaitBlitter();
 
-		// Scroller-Bereich löschen
+		// clear scroller space
 		*BLTCON0 = 0x01000000UL;
 		*BLTDMOD = 0;
 		*BLTDPTH = (ULONG)ScreenBitmap[CurrentBuffer]->Planes[0] + (SCROLLER_START_LINE * BYTES_PER_ROW * SCREEN_DEPTH);
