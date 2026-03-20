@@ -65,23 +65,14 @@ BOOL Init_SineScroller(void)
 	Font.Feed = 2;
 	Font.CharOverallWidth = Font.CharWidth + Font.CharSpacing;
 	Font.ScrollX = SCREENWIDTH;
+	Font.TextLength = 0;
+	Font.CharMapLength = 0;
 
-	const char* const Text = Font.Text;
-	const char* const CharMap = Font.CharMap;
-	const UBYTE CharOverallWidth = Font.CharOverallWidth;
-
-	// Count text length
-	UWORD TextLength = 0;
-
-	while (Text[TextLength] != 0x00)
+	while (Font.Text[Font.TextLength] != 0x00)
 	{
-  		++TextLength;
+		++Font.TextLength;
 	}
 
-	Font.TextLength = TextLength;
-
-	// Count charmap length and build reverse lookup table
-	// Maps ASCII value -> pixel position in font bitmap (-1 = not found)
 	WORD CharLookup[128];
 
 	for (UWORD k = 0; k < 128; ++k)
@@ -89,31 +80,26 @@ BOOL Init_SineScroller(void)
 		CharLookup[k] = -1;
 	}
 
-	UWORD CharMapLength = 0;
 	UWORD MapPos = 0;
 
-	while (CharMap[CharMapLength] != 0x00)
+	while (Font.CharMap[Font.CharMapLength] != 0x00)
 	{
-		CharLookup[(UBYTE)CharMap[CharMapLength]] = MapPos;
-		MapPos += CharOverallWidth;
-		++CharMapLength;
+		CharLookup[(UBYTE)Font.CharMap[Font.CharMapLength]] = MapPos;
+		MapPos += Font.CharOverallWidth;
+		++Font.CharMapLength;
 	}
 
-	Font.CharMapLength = CharMapLength;
-	Font.Length = TextLength * CharOverallWidth;
+	Font.Length = Font.TextLength * Font.CharOverallWidth;
 
-	if (!(Font.Map = AllocVec(sizeof(WORD) * TextLength, MEMF_ANY)))
+	if (!(Font.Map = AllocVec(sizeof(WORD) * Font.TextLength, MEMF_ANY)))
 	{
 		return FALSE;
 	}
 
-	// Pre-calc char positions via lookup table - O(n) instead of O(n*m)
-	WORD* const Map = Font.Map;
-
-	for (UWORD i = 0; i < TextLength; ++i)
+	for (UWORD i = 0; i < Font.TextLength; ++i)
 	{
-		const UBYTE c = (UBYTE)Text[i];
-		Map[i] = (c < 128) ? CharLookup[c] : -1;
+		const UBYTE c = (UBYTE)Font.Text[i];
+		Font.Map[i] = (c < 128) ? CharLookup[c] : -1;
 	}
 
 	return TRUE;
@@ -121,61 +107,53 @@ BOOL Init_SineScroller(void)
 
 void Draw_SineScroller(void)
 {
-	const WORD* const Map = Font.Map;
-	const UWORD TextLength = Font.TextLength;
-	const UBYTE CharOverallWidth = Font.CharOverallWidth;
-	const UBYTE CharWidth = Font.CharWidth;
-	const WORD Feed = Font.Feed;
-	const UBYTE CharHeight = Font.CharHeight;
-	const UWORD ScreenLimit = SCREENWIDTH - Feed;
-	struct BitMap* const SrcBM = Font.FontBitmap->Image;
-	struct BitMap* const DstBM = RenderPort.BitMap;
+	const UWORD ScreenLimit = SCREENWIDTH - Font.Feed;
 
 	WORD XPos = Font.ScrollX;
 
-	for (UWORD i = 0; i < TextLength; ++i)
+	for (UWORD i = 0; i < Font.TextLength; ++i)
 	{
-		const WORD MapVal = Map[i];
+		const WORD MapVal = Font.Map[i];
 
 		if (MapVal == -1)
 		{
-			XPos += CharOverallWidth;
+			XPos += Font.CharOverallWidth;
 			continue;
 		}
 
-		// Skip characters entirely off-screen to the left
-		if (XPos + CharOverallWidth < 0)
+		if (XPos + Font.CharOverallWidth < 0)
 		{
-			XPos += CharOverallWidth;
+			XPos += Font.CharOverallWidth;
 			continue;
 		}
 
-		// All remaining characters are off-screen to the right
 		if (XPos >= SCREENWIDTH)
 		{
 			break;
 		}
 
-		const WORD MapEnd = MapVal + CharWidth;
-
-		for (UWORD x1 = 0, x = MapVal; x < MapEnd; x1 += Feed, x += Feed)
+		if (XPos >= 0 && XPos < ScreenLimit)
 		{
-			const WORD TempPosX = XPos + x1;
+			const WORD MapEnd = MapVal + Font.CharWidth;
 
-			if (TempPosX >= 0 && TempPosX < ScreenLimit)
+			for (UWORD x1 = 0, x = MapVal; x < MapEnd; x1 += Font.Feed, x += Font.Feed)
 			{
-				BltBitMap(SrcBM, x, 0, DstBM, TempPosX, ScrollSinTab[TempPosX], Feed, CharHeight, 0xC0, 0x01, NULL);
-			}
-			else if (TempPosX >= ScreenLimit)
-			{
-				break;
+				const WORD TempPosX = XPos + x1;
+				if (TempPosX >= 0 && TempPosX < ScreenLimit)
+				{
+					BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, ScrollSinTab[TempPosX], Font.Feed, Font.CharHeight, 0xC0, 0x01, NULL);
+				}
+				else if (TempPosX >= ScreenLimit)
+				{
+					break;
+				}
 			}
 		}
 
-		XPos += CharOverallWidth;
+		XPos += Font.CharOverallWidth;
 	}
 
-	Font.ScrollX -= Feed << 1;
+	Font.ScrollX -= Font.Feed << 1;
 
 	if (Font.ScrollX < -Font.Length)
 	{

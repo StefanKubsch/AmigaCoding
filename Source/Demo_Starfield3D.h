@@ -27,8 +27,6 @@ void Init_3DStarfield(void)
 
 void Draw_3DStarfield(void)
 {
-	long* const Target = (long*)RenderPort.BitMap->Planes[0];
-
 	for (UBYTE i = 0; i < 200; ++i)
 	{
 		struct StarStruct3D* const s = &Stars3D[i];
@@ -45,7 +43,7 @@ void Draw_3DStarfield(void)
 
 		if ((UWORD)x < SCREENWIDTH && y > UPPERBORDERLINE && y < LOWERBORDERLINE)
 		{
-			lwmf_SetPixel(x, y, (s->z >> 8) + 1, Target);
+			lwmf_SetPixel(x, y, (s->z >> 8) + 1, (long*)RenderPort.BitMap->Planes[0]);
 		}
 	}
 }

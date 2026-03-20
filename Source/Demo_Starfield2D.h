@@ -27,8 +27,6 @@ void Init_2DStarfield(void)
 
 void Draw_2DStarfield(void)
 {
-	long* const Target = (long*)RenderPort.BitMap->Planes[0];
-
 	for (UBYTE i = 0; i < 200; ++i)
 	{
 		struct StarStruct2D* const s = &Stars2D[i];
@@ -42,7 +40,7 @@ void Draw_2DStarfield(void)
 			s->z = lwmf_Random() % 3 + 1;
 		}
 
-		lwmf_SetPixel(s->x, s->y, s->z, Target);
+		lwmf_SetPixel(s->x, s->y, s->z, (long*)RenderPort.BitMap->Planes[0]);
 	}
 }
 
