@@ -77,11 +77,11 @@ BOOL Init_TextLogo(void)
 	return TRUE;
 }
 
-void Draw_TextLogo(void)
+void Draw_TextLogo(UBYTE Buffer)
 {
 	static UBYTE SinTabCount = 0;
 
-	lwmf_BlitTile((long*)LogoBitmap->Image->Planes[0], 0, 0, (long*)RenderPort.BitMap->Planes[0], LogoSinTabX[SinTabCount], LogoSinTabY[SinTabCount], LOGO_WIDTH, LOGO_HEIGHT, 320);
+	lwmf_BlitTile((long*)LogoBitmap->Image->Planes[0], 0, 0, (long*)ScreenBitmap[Buffer]->Planes[0], LogoSinTabX[SinTabCount], LogoSinTabY[SinTabCount], LOGO_WIDTH, LOGO_HEIGHT, 320);
 
 	if (++SinTabCount >= 63)
 	{
@@ -191,7 +191,7 @@ BOOL Init_SineScroller(void)
 	return TRUE;
 }
 
-void Draw_SineScroller(void)
+void Draw_SineScroller(UBYTE Buffer)
 {
 	const UWORD ScreenLimit = SCREENWIDTH - Font.Feed;
 
@@ -227,7 +227,7 @@ void Draw_SineScroller(void)
 				const WORD TempPosX = XPos + x1;
 				if (TempPosX >= 0 && TempPosX < ScreenLimit)
 				{
-					BltBitMap(Font.FontBitmap->Image, x, 0, RenderPort.BitMap, TempPosX, ScrollSinTab[TempPosX], Font.Feed, Font.CharHeight, 0xC0, 0x01, NULL);
+					BltBitMap(Font.FontBitmap->Image, x, 0, ScreenBitmap[Buffer], TempPosX, ScrollSinTab[TempPosX], Font.Feed, Font.CharHeight, 0xC0, 0x01, NULL);
 				}
 				else if (TempPosX >= ScreenLimit)
 				{
@@ -616,8 +616,6 @@ int main()
 		}
 	}
 
-	InitRastPort(&RenderPort);
-
 	// Load logo FIRST so CRegs palette data is still intact in memory
 	if (!Init_TextLogo())
 	{
@@ -631,7 +629,7 @@ int main()
 		return 20;
 	}
 
-	// Apply saved logo palette to copper list
+	// Apply logo palette to copper list
 	{
 		UWORD *colorPtr = &CopperList[LogoColorIdx];
 		for (UBYTE c = 0; c < 8; ++c)
@@ -680,9 +678,8 @@ int main()
 		lwmf_DisownBlitter();
 
 		// Draw both effects into backbuffer
-		RenderPort.BitMap = ScreenBitmap[CurrentBuffer];
-		Draw_TextLogo();
-		Draw_SineScroller();
+		Draw_TextLogo(CurrentBuffer);
+		Draw_SineScroller(CurrentBuffer);
 
 		// Flip
 		Update_BitplanePointers(CurrentBuffer);
