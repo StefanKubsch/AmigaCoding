@@ -177,7 +177,7 @@ BOOL Init_SineScroller(void)
 
 	Font.Length = Font.TextLength * Font.CharOverallWidth;
 
-	if (!(Font.Map = AllocVec(sizeof(WORD) * Font.TextLength, MEMF_ANY)))
+	if (!(Font.Map = AllocVec(sizeof(WORD) * Font.TextLength, MEMF_FAST)))
 	{
 		return FALSE;
 	}
@@ -660,7 +660,7 @@ int main()
 		// clear logo space
 		*BLTCON0 = 0x01000000UL;
 		*BLTDMOD = 0;
-		*BLTDPTH = (ULONG)ScreenBitmap[CurrentBuffer]->Planes[0] + (0 * BYTESPERROW * NUMBEROFBITPLANES);
+		*BLTDPTH = (ULONG)ScreenBitmap[CurrentBuffer]->Planes[0];
 		*BLTSIZE = (UWORD)((LOGO_LINES << 6) | ((BYTESPERROW * NUMBEROFBITPLANES) >> 1));
 
 		lwmf_WaitBlitter();
