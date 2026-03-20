@@ -379,12 +379,11 @@ BOOL Init_CopperList(void)
 	BPL3PTL_Idx = Index;
 	CopperList[Index++] = 0x0000;
 
-	// COLOR00-COLOR07 (logo palette, filled after Init_TextLogo)
-	LogoColorIdx = Index;
+	// COLOR00-COLOR07 (logo palette)
 	for (UBYTE c = 0; c < 8; ++c)
 	{
 		CopperList[Index++] = 0x180 + c * 2;
-		CopperList[Index++] = 0x000;
+		CopperList[Index++] = LogoPalette[c];
 	}
 
 	// --- White line 1 (between logo and plasma) ---
@@ -507,7 +506,7 @@ void Update_Plasma(void)
 
 		ULONG *lcop = (ULONG *)(lineBase + 4);
 
-		// Loop unrolling: PLASMA_COLS = 40, also 5x8
+		// Loop unrolling: PLASMA_COLS = 40, so 5x8
 		#pragma unroll
 		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
 		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
@@ -561,7 +560,7 @@ void Update_Plasma(void)
 		lineBase += LINE_WORDS;
 	}
 
-	PlasmaFrameCommon += 1;
+	PlasmaFrameCommon += 3;
 	PlasmaFrameRed += 3;
 	PlasmaFrameGreen += 2;
 	PlasmaFrameBlue += 5;
@@ -616,7 +615,6 @@ int main()
 		}
 	}
 
-	// Load logo FIRST so CRegs palette data is still intact in memory
 	if (!Init_TextLogo())
 	{
 		Cleanup_All();
@@ -629,20 +627,14 @@ int main()
 		return 20;
 	}
 
-	// Apply logo palette to copper list
-	{
-		UWORD *colorPtr = &CopperList[LogoColorIdx];
-		for (UBYTE c = 0; c < 8; ++c)
-		{
-			colorPtr[c * 2 + 1] = LogoPalette[c];
-		}
-	}
-
 	if (!Init_SineScroller())
 	{
 		Cleanup_All();
 		return 20;
 	}
+
+	const UWORD ScrollerClearStart = SCROLLER_START_LINE * BYTESPERROW * NUMBEROFBITPLANES;
+	const UWORD BLTSIZEProd = (BYTESPERROW * NUMBEROFBITPLANES) >> 1;
 
 	UBYTE CurrentBuffer = 1;
 	Update_BitplanePointers(0);
@@ -661,15 +653,15 @@ int main()
 		*BLTCON0 = 0x01000000UL;
 		*BLTDMOD = 0;
 		*BLTDPTH = (ULONG)ScreenBitmap[CurrentBuffer]->Planes[0];
-		*BLTSIZE = (UWORD)((LOGO_LINES << 6) | ((BYTESPERROW * NUMBEROFBITPLANES) >> 1));
+		*BLTSIZE = (UWORD)((LOGO_LINES << 6) | BLTSIZEProd);
 
 		lwmf_WaitBlitter();
 
 		// clear scroller space
 		*BLTCON0 = 0x01000000UL;
 		*BLTDMOD = 0;
-		*BLTDPTH = (ULONG)ScreenBitmap[CurrentBuffer]->Planes[0] + (SCROLLER_START_LINE * BYTESPERROW * NUMBEROFBITPLANES);
-		*BLTSIZE = (UWORD)((SCROLLER_LINES << 6) | ((BYTESPERROW * NUMBEROFBITPLANES) >> 1));
+		*BLTDPTH = (ULONG)ScreenBitmap[CurrentBuffer]->Planes[0] + ScrollerClearStart;
+		*BLTSIZE = (UWORD)((SCROLLER_LINES << 6) | BLTSIZEProd);
 
 		// CPU updates plasma while blitter clears
 		Update_Plasma();
