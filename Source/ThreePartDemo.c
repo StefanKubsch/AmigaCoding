@@ -633,40 +633,20 @@ int main()
 		return 20;
 	}
 
-	const UWORD ScrollerClearStart = SCROLLER_START_LINE * BYTESPERROW * NUMBEROFBITPLANES;
-	const UWORD BLTSIZEProd = (BYTESPERROW * NUMBEROFBITPLANES) >> 1;
-
 	UBYTE CurrentBuffer = 1;
 	Update_BitplanePointers(0);
 
 	while (*CIAA_PRA & 0x40)
 	{
 		lwmf_OwnBlitter();
-		lwmf_WaitBlitter();
 
-		volatile ULONG* const BLTCON0  = (volatile ULONG* const)0xDFF040;
-		volatile UWORD* const BLTDMOD  = (volatile UWORD* const)0xDFF066;
-		volatile ULONG* const BLTDPTH  = (volatile ULONG* const)0xDFF054;
-		volatile UWORD* const BLTSIZE  = (volatile UWORD* const)0xDFF058;
-
-		// clear logo space
-		*BLTCON0 = 0x01000000UL;
-		*BLTDMOD = 0;
-		*BLTDPTH = (ULONG)ScreenBitmap[CurrentBuffer]->Planes[0];
-		*BLTSIZE = (UWORD)((LOGO_LINES << 6) | BLTSIZEProd);
-
-		lwmf_WaitBlitter();
-
-		// clear scroller space
-		*BLTCON0 = 0x01000000UL;
-		*BLTDMOD = 0;
-		*BLTDPTH = (ULONG)ScreenBitmap[CurrentBuffer]->Planes[0] + ScrollerClearStart;
-		*BLTSIZE = (UWORD)((SCROLLER_LINES << 6) | BLTSIZEProd);
+		// CLear logo and scroller regions with blitter while CPU updates plasma colors in copper list
+		lwmf_BlitClearLines(0, LOGO_LINES, (long*)ScreenBitmap[CurrentBuffer]->Planes[0]);
+		lwmf_BlitClearLines(SCROLLER_START_LINE, SCROLLER_LINES, (long*)ScreenBitmap[CurrentBuffer]->Planes[0]);
 
 		// CPU updates plasma while blitter clears
 		Update_Plasma();
 
-		lwmf_WaitBlitter();
 		lwmf_DisownBlitter();
 
 		// Draw both effects into backbuffer

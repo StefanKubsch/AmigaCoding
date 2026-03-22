@@ -17,10 +17,10 @@ SCREENWIDTH         equ     320
 SCREENHEIGHT        equ     256
 NUMBITPLANES        equ     3
 
-SCREENBROW			equ     SCREENWIDTH/8
-SCREENWIDTHTOTAL	equ		SCREENBROW*NUMBITPLANES
-SCREENCLRSIZEBLT    equ     128*NUMBITPLANES*64+SCREENBROW/2        ; half screen size for blitter part of screen clear (top -> mid)
-SCREENCLRSIZECPU    equ     SCREENWIDTHTOTAL*SCREENHEIGHT			; size for cpu part of screen clear ( bottom -> mid)
+BYTESPERROW			equ     SCREENWIDTH/8
+SCREENWIDTHTOTAL	equ		BYTESPERROW*NUMBITPLANES
+SCREENCLRSIZEBLT    equ     128*NUMBITPLANES*64+BYTESPERROW/2        ; half screen size for blitter part of screen clear (top -> mid)
+SCREENCLRSIZECPU    equ     SCREENWIDTHTOTAL*SCREENHEIGHT			 ; size for cpu part of screen clear ( bottom -> mid)
 
 ; Custom registers
 
@@ -70,9 +70,9 @@ LVOCloseLibrary     equ     -414
 ; Constants
 
 MINVERSION          equ     39        ; set required version (39 -> Amiga OS 3.0 and higher)
-DMASET_DEMO         equ     $83C0     ; SET | DMAEN | BPLEN | COPEN | BLTEN (no sprites)
 GFX_ACTIVIEW        equ     34        ; GfxBase offset: pointer to active View
 GFX_COPINIT         equ     38        ; GfxBase offset: system copper list pointer
+DMASET_DEMO         equ     $83C0     ; SET | DMAEN | BPLEN | COPEN | BLTEN (no sprites)
 
 ; ***************************************************************************************************
 ; * Functions                                                                                       *
@@ -412,6 +412,43 @@ _lwmf_ClearScreen::
 	rts
 
 ;
+; void lwmf_BlitClearLines(__reg("d0") WORD StartLine, __reg("d1") WORD NumberOfLines, __reg("a0") long* Target);
+;
+
+_lwmf_BlitClearLines::
+    movem.l d2-d4/a1,-(sp)			; save registers
+
+    moveq   #BYTESPERROW,d2
+    moveq   #NUMBITPLANES,d4
+    mulu    d4,d2            		; d2 = BYTESPERROW * NUMBEROFBITPLANES
+
+    ; (BYTESPERROW * NUMBEROFBITPLANES) >> 1
+    move.l  d2,d4
+    lsr.l   #1,d4
+
+	move.l  d1,d3
+
+    ; Calculate target adress: bitmapPtr + startLine * BYTESPERROW * NUMBEROFBITPLANES
+    mulu    d0,d2            		; d2 = startLine * BYTESPERROW * NUMBEROFBITPLANES
+    add.l   a0,d2            		; d2 = Target address for blitter
+
+	bsr     _lwmf_WaitBlitter
+
+    ; Set Blitter register
+    lea     BLTCON0,a1
+    move.l  #$01000000,(a1)  		; BLTCON0: only D-Fill
+    clr.w	BLTDMOD   				; BLTDMOD = 0
+    move.l  d2,BLTDPTH     			; BLTDPTH = Targetadress
+
+    ; Blit
+    lsl.w   #6,d3
+    or.w    d4,d3
+    move.w  d3,BLTSIZE
+
+    movem.l (sp)+,d2-d4/a1			; restore registers
+    rts
+
+;
 ; void lwmf_SetPixel(__reg("d0") WORD PosX, __reg("d1") WORD PosY,  __reg("d2") UBYTE Color,  __reg("a0") long* Target);
 ;
 
@@ -430,11 +467,11 @@ _lwmf_SetPixel::
 
 	; Bitplane 1 (Color bit 1)
 	lsr.l   #1,d2
-	bfins   d2,(SCREENBROW,a0){d0:1}
+	bfins   d2,(BYTESPERROW,a0){d0:1}
 
 	; Bitplane 2 (Color bit 2)
 	lsr.l   #1,d2
-	bfins   d2,(SCREENBROW*2,a0){d0:1}
+	bfins   d2,(BYTESPERROW*2,a0){d0:1}
 
 	rts
 
@@ -566,7 +603,7 @@ _lwmf_BlitTile::
 	add.w	d1,d1								; d1 = blitWidthBytes
 	move.w	d6,d2								; d2 = src_bprow (single-plane row width from step 1)
 	sub.w	d1,d2								; d2 = SrcModulo (per bitplane row)
-	move.w	#SCREENBROW,d7
+	move.w	#BYTESPERROW,d7
 	sub.w	d1,d7								; d7 = DstModulo (per bitplane row)
 
 	; --------------------------------------------------
