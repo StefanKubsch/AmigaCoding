@@ -290,13 +290,13 @@ _lwmf_WaitBlitter::
 _lwmf_WaitVertBlank::
 	; Line 303 = $12F: V8=1 (bit 0 of VPOSR+1), V7:V0=$2F (byte at VPOSR+2)
 	; Two-phase check uses byte reads for lower chip bus pressure
-.waithi
+.waithigh
 	btst.b	#0,VPOSR+1			; test V8 - are we on lines 256+?
-	beq.s	.waithi				; no, keep waiting
-.waitlo
+	beq.s	.waithigh 			; no, keep waiting
+.waitlow
 	move.b	VPOSR+2,d0			; read V7:V0
 	cmp.b	#(303&$FF),d0		; = $2F
-	bne.s	.waitlo
+	bne.s	.waitlow
 	rts
 
 ;
@@ -422,22 +422,20 @@ _lwmf_BlitClearLines::
     moveq   #NUMBITPLANES,d4
     mulu    d4,d2            		; d2 = BYTESPERROW * NUMBEROFBITPLANES
 
-    ; (BYTESPERROW * NUMBEROFBITPLANES) >> 1
-    move.l  d2,d4
-    lsr.l   #1,d4
+	move.l  d2,d4
+    lsr.l   #1,d4					; (BYTESPERROW * NUMBEROFBITPLANES) >> 1
 
 	move.l  d1,d3
 
-    ; Calculate target adress: bitmapPtr + startLine * BYTESPERROW * NUMBEROFBITPLANES
+    ; Calculate target adress
     mulu    d0,d2            		; d2 = startLine * BYTESPERROW * NUMBEROFBITPLANES
     add.l   a0,d2            		; d2 = Target address for blitter
 
 	bsr     _lwmf_WaitBlitter
 
     ; Set Blitter register
-    lea     BLTCON0,a1
-    move.l  #$01000000,(a1)  		; BLTCON0: only D-Fill
-    clr.w	BLTDMOD   				; BLTDMOD = 0
+	move.l  #$01000000,BLTCON0		; enable destination only (both BLTCON0 and BLTCON1 are written!)
+    clr.w	BLTDMOD   				; modulo = 0 (contiguous)
     move.l  d2,BLTDPTH     			; BLTDPTH = Targetadress
 
     ; Blit
@@ -453,36 +451,35 @@ _lwmf_BlitClearLines::
 ;
 
 _lwmf_SetPixel::
-	; 68020+ optimized: branchless pixel plot using bfins (bit field insert)
-	; Writes exact color to all bitplanes (overwrite mode)
-	ext.l   d0                                  ; ensure PosX is a clean 32-bit value (upper word may be garbage)
-	muls.w  #SCREENWIDTHTOTAL,d1                ; address offset for line
-	add.l   d1,a0                               ; a0 = row start in bitplane memory
+    movem.l d2-d4,-(sp)				; save registers
 
-	; bfins inserts LSB of Dn into memory at bit offset d0 from MSB
-	; In Amiga bitplane format, MSB = leftmost pixel -> PosX maps directly
+    muls.w  #SCREENWIDTHTOTAL,d1    ; PosY * stride
+    move.w  d0,d3
+    not.w   d3                      ; low 3 bits = 7-(x&7)
+    lsr.w   #3,d0                   ; byte offset instead of ASR
+    adda.l  d1,a0                   ; Move the destination address forward once
+    adda.w  d0,a0
 
-	; Bitplane 0 (Color bit 0) - NOTE: update all three planes if NUMBITPLANES changes
-	bfins   d2,(a0){d0:1}
+    moveq   #NUMBITPLANES-1,d4
+.loop
+    lsr.b   #1,d2                   ; Plane-Bit -> Carry
+    bcc.s   .skip
+    bset    d3,(a0)
+.skip
+    lea     BYTESPERROW(a0),a0      ; next Bitplane
+    dbra    d4,.loop
 
-	; Bitplane 1 (Color bit 1)
-	lsr.l   #1,d2
-	bfins   d2,(BYTESPERROW,a0){d0:1}
+    movem.l (sp)+,d2-d4				; restore registers
+    rts
 
-	; Bitplane 2 (Color bit 2)
-	lsr.l   #1,d2
-	bfins   d2,(BYTESPERROW*2,a0){d0:1}
-
-	rts
-
-;
 ; void lwmf_BlitTile(__reg("a0") long* SrcAddr, __reg("d0") WORD SrcX, __reg("d1") WORD SrcY, __reg("a1") long* DstAddr, __reg("d2") WORD DstX, __reg("d3") WORD DstY, __reg("d4") WORD Width, __reg("d5") WORD Height, __reg("d6") WORD SrcWidth);
+;
 ; All coordinates (SrcX, SrcY, DstX, DstY) and dimensions (Width, Height) are in pixels -> works currently only fine for multiples of 16 pixels (word-aligned) due to the way masks are calculated. Non-word-aligned blits will require additional masking and shifting logic.
 ; Source bitmap is interleaved with NUMBITPLANES planes; destination uses SCREENWIDTHTOTAL row stride.
 ;
 
 _lwmf_BlitTile::
-	movem.l	d2-d7/a2-a3,-(sp)					; save registers (8 longs = 32 bytes on stack)
+	movem.l	d2-d7/a2-a3,-(sp)					; save registers
 	lea		CUSTOM,a2							; a2 = CUSTOM base for compact addressing
 
 	; --------------------------------------------------
