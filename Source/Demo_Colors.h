@@ -35,7 +35,7 @@ UWORD DemoColorTable[5][8] =
 	// 2D Starfield
 	{
 		0x000, // Clear color
-		0x555, // Starfield
+		0x333, // Starfield
 		0x888,
 		0xFFF,
 		0x000,

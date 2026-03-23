@@ -14,11 +14,11 @@
 ;
 
 _lwmf_Random::
-	move.l  seed(pc),d0
-	mulu.l  #$41C64E6D,d0
-	add.l   #$3039,d0
-	move.l  d0,seed
-	rts
+	move.w	seed(PC),d0
+    mulu    #$4E35,d0
+	addq.w	#1,d0
+    move.w  d0,seed
+    rts
 
 ; ***************************************************************************************************
 ; * Variables                                                                                       *

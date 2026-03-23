@@ -46,7 +46,7 @@ struct BitMap* ScreenBitmap[2] = { NULL, NULL };
 
 struct lwmf_Image* LogoBitmap = NULL;
 
-// Saved logo palette
+// Saved color palette
 UWORD LogoPalette[8] = {0x003, 0x368, 0x134, 0x012, 0x246,	0x146, 0x123, 0x001};
 
 #define LOGO_WIDTH  192
@@ -132,12 +132,11 @@ static const UBYTE ScrollSinTab[SCREENWIDTH] =
 	229,228,228,227,227,226,225,225,224,224,223,222,222,221,220,219,219,218,217,216,215,215,214,213,212,211,210,209,209,208,207,206,205,204,203,202,201,200,200,199
 };
 
+UWORD ScrollerPalette[8] = {0x003, 0xC0D, 0x333, 0x888, 0xFFF, 0x000, 0x000, 0x000};
+
 BOOL Init_SineScroller(void)
 {
-	// ScrollFont.bsh is an ILBM (IFF) file
-	// In this case it´s a "brush", made with Personal Paint on Amiga - a brush is smaller in size
-	// The original IFF ScrollFont.iff is included in gfx
-	if (!(Font.FontBitmap = lwmf_LoadImage("gfx/ScrollFont.bsh")))
+	if (!(Font.FontBitmap = lwmf_LoadImage("gfx/ScrollFont1.iff")))
 	{
 		return FALSE;
 	}
@@ -262,20 +261,65 @@ void Cleanup_SineScroller(void)
 }
 
 // =====================================================================
+// 2D Starfield
+// =====================================================================
+
+struct StarStruct2D
+{
+	UWORD x;
+	UBYTE y;
+	UBYTE z;
+} Stars2D[100];
+
+void Init_2DStarfield(void)
+{
+	for (UBYTE i = 0; i < 100; ++i)
+	{
+		Stars2D[i].x = lwmf_Random() % SCREENWIDTH;
+		Stars2D[i].y = lwmf_Random() % (SCREENHEIGHT - WHITE_LINE_2) + WHITE_LINE_2;
+		Stars2D[i].z = lwmf_Random() % 3 + 1;
+	}
+}
+
+void Draw_2DStarfield(UBYTE Buffer)
+{
+	for (UBYTE i = 100; i-- > 0; )
+	{
+		struct StarStruct2D* const s = &Stars2D[i];
+		s->x += s->z << 1;
+
+		if (s->x >= SCREENWIDTH)
+		{
+			UWORD rnd = lwmf_Random();
+			s->x = 0;
+			s->y = (rnd & 0xFF) % (SCREENHEIGHT - WHITE_LINE_2) + WHITE_LINE_2;
+			s->z = ((rnd >> 8) % 3) + 1; // 0..2 + 1
+		}
+
+		lwmf_SetPixel(s->x, s->y, s->z + 1, (long*)ScreenBitmap[Buffer]->Planes[0]);
+	}
+}
+
+// =====================================================================
 // Copper & Plasma
 // =====================================================================
 
 UWORD* CopperList = NULL;
 UWORD PlasmaStart = 0;
+
 UWORD BPL1PTH_Idx = 0;
 UWORD BPL1PTL_Idx = 0;
 UWORD BPL2PTH_Idx = 0;
 UWORD BPL2PTL_Idx = 0;
 UWORD BPL3PTH_Idx = 0;
 UWORD BPL3PTL_Idx = 0;
+
 UWORD ScrollBPL1PTH_Idx = 0;
 UWORD ScrollBPL1PTL_Idx = 0;
-UWORD LogoColorIdx = 0;
+UWORD ScrollBPL2PTH_Idx = 0;
+UWORD ScrollBPL2PTL_Idx = 0;
+UWORD ScrollBPL3PTH_Idx = 0;
+UWORD ScrollBPL3PTL_Idx = 0;
 
 #define PLASMA_COLS 40
 #define LINE_WORDS (2 + 2 + 2 * PLASMA_COLS + 2)
@@ -431,26 +475,42 @@ BOOL Init_CopperList(void)
 	CopperList[Index++] = 0xFFFE;
 	CopperList[Index++] = 0x180;
 	CopperList[Index++] = 0xFFF;
-	// Switch to 1 bitplane for scroller, reload BPL1PT
+	// BPLCON0 Switch to 3 bitplane for scroller
 	CopperList[Index++] = (SCROLLER_VPOS_START << 8) | 0x07;
 	CopperList[Index++] = 0xFFFE;
 	CopperList[Index++] = 0x100;
-	CopperList[Index++] = 0x1200;
+	CopperList[Index++] = 0x3200;
+	// BPLCON1
 	CopperList[Index++] = 0x0E0;
 	ScrollBPL1PTH_Idx = Index;
 	CopperList[Index++] = 0x0000;
 	CopperList[Index++] = 0x0E2;
 	ScrollBPL1PTL_Idx = Index;
 	CopperList[Index++] = 0x0000;
-	CopperList[Index++] = 0x180;
-	CopperList[Index++] = 0x003;
-	CopperList[Index++] = 0x182;
-	CopperList[Index++] = 0xC0D;
+	// BPLCON2
+	CopperList[Index++] = 0x0E4;
+	ScrollBPL2PTH_Idx = Index;
+	CopperList[Index++] = 0x0000;
+	CopperList[Index++] = 0x0E6;
+	ScrollBPL2PTL_Idx = Index;
+	CopperList[Index++] = 0x0000;
+	// BPLCON3
+	CopperList[Index++] = 0x0E8;
+	ScrollBPL3PTH_Idx = Index;
+	CopperList[Index++] = 0x0000;
+	CopperList[Index++] = 0x0EA;
+	ScrollBPL3PTL_Idx = Index;
+	CopperList[Index++] = 0x0000;
 
+	// COLOR00-COLOR07 (logo palette)
+	for (UBYTE c = 0; c < 8; ++c)
+	{
+		CopperList[Index++] = 0x180 + c * 2;
+		CopperList[Index++] = ScrollerPalette[c];
+	}
 	// VPOS wrap for lines > 255
 	CopperList[Index++] = 0xFFDF;
 	CopperList[Index++] = 0xFFFE;
-
 	// Copper list end
 	CopperList[Index++] = 0xFFFF;
 	CopperList[Index++] = 0xFFFE;
@@ -477,10 +537,18 @@ static inline void Update_BitplanePointers(UBYTE Buffer)
 	CopperList[BPL3PTH_Idx] = (UWORD)(addr >> 16);
 	CopperList[BPL3PTL_Idx] = (UWORD)(addr & 0xFFFF);
 
-	// Scroller region: plane 0 offset to scroller start line (interleaved stride)
+	// Scroller region: 3 bitplane pointers
 	addr = (ULONG)ScreenBitmap[Buffer]->Planes[0] + SCROLLER_BPLPOINTER;
 	CopperList[ScrollBPL1PTH_Idx] = (UWORD)(addr >> 16);
 	CopperList[ScrollBPL1PTL_Idx] = (UWORD)(addr & 0xFFFF);
+
+	addr = (ULONG)ScreenBitmap[Buffer]->Planes[1] + SCROLLER_BPLPOINTER;
+	CopperList[ScrollBPL2PTH_Idx] = (UWORD)(addr >> 16);
+	CopperList[ScrollBPL2PTL_Idx] = (UWORD)(addr & 0xFFFF);
+
+	addr = (ULONG)ScreenBitmap[Buffer]->Planes[2] + SCROLLER_BPLPOINTER;
+	CopperList[ScrollBPL3PTH_Idx] = (UWORD)(addr >> 16);
+	CopperList[ScrollBPL3PTL_Idx] = (UWORD)(addr & 0xFFFF);
 }
 
 void Update_Plasma(void)
@@ -617,6 +685,8 @@ int main()
 		}
 	}
 
+	Init_2DStarfield();
+
 	if (!Init_TextLogo())
 	{
 		Cleanup_All();
@@ -651,8 +721,9 @@ int main()
 
 		lwmf_DisownBlitter();
 
-		// Draw both effects into backbuffer
+		// Draw effects into backbuffer
 		Draw_TextLogo(CurrentBuffer);
+		Draw_2DStarfield(CurrentBuffer);
 		Draw_SineScroller(CurrentBuffer);
 
 		// Flip
