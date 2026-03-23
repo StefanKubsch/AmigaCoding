@@ -12,14 +12,14 @@
 
 #include "lwmf/lwmf.h"
 
+// Enable (set to 1) for debugging
+// When enabled, load per frame will be displayed via color changing of background
+#define DEBUG 				0
+
 // =====================================================================
 // Screen settings
 // =====================================================================
 
-#define SCREENWIDTH			320
-#define SCREENHEIGHT        256
-#define NUMBEROFBITPLANES   3
-#define BYTESPERROW			(SCREENWIDTH / 8)
 #define INTERLEAVEDMOD		(BYTESPERROW * (NUMBEROFBITPLANES - 1))
 
 // Layout: 84 + 1 + 85 + 1 + 85 = 256
@@ -725,6 +725,11 @@ int main()
 		Draw_TextLogo(CurrentBuffer);
 		Draw_2DStarfield(CurrentBuffer);
 		Draw_SineScroller(CurrentBuffer);
+
+		if (DEBUG == 1)
+		{
+			*COLOR00 = 0xF00;
+		}
 
 		// Flip
 		Update_BitplanePointers(CurrentBuffer);

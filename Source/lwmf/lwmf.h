@@ -1,6 +1,7 @@
 #ifndef LWMF_H
 #define LWMF_H
 
+#include "lwmf_Defines.h"
 #include "lwmf_libraries.h"
 #include "lwmf_hardware.h"
 #include "lwmf_viewport.h"

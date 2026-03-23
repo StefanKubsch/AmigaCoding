@@ -41,5 +41,4 @@ ULONG lwmf_Random(void);
 extern long GfxBase;
 extern long DataTypesBase;
 
-
 #endif /* LWMF_LIBRARIES_H */

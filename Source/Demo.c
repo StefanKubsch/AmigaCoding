@@ -21,8 +21,6 @@
 // Screen settings
 //
 
-#define SCREENWIDTH			320
-#define SCREENHEIGHT		256
 #define SCREENWIDTHMID		(SCREENWIDTH >> 1)
 #define SCREENHEIGHTMID		(SCREENHEIGHT >> 1)
 #define LINEPOS				30
@@ -37,7 +35,6 @@
 // 16 / 4
 // 32 / 5
 // 64 / 6 (Extra Halfbrite mode)
-#define NUMBEROFBITPLANES	3
 #define NUMBEROFCOLORS		8
 
 // Include the demo effects

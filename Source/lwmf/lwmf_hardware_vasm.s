@@ -12,20 +12,23 @@
 
 ; Screen stuff
 ; Change it according to your needs!
+;
+; Export constants to "Define.h" for further use in C
+; vasmm68k_mot -Fcdef -o ".\lwmf\Defines.h" ".\lwmf\lwmf_hardware_vasm.s"
 
 SCREENWIDTH         equ     320
 SCREENHEIGHT        equ     256
-NUMBITPLANES        equ     3
+NUMBEROFBITPLANES   equ     3
 
 BYTESPERROW			equ     SCREENWIDTH/8
-SCREENWIDTHTOTAL	equ		BYTESPERROW*NUMBITPLANES
-SCREENCLRSIZEBLT    equ     128*NUMBITPLANES*64+BYTESPERROW/2        ; half screen size for blitter part of screen clear (top -> mid)
-SCREENCLRSIZECPU    equ     SCREENWIDTHTOTAL*SCREENHEIGHT			 ; size for cpu part of screen clear ( bottom -> mid)
+SCREENWIDTHTOTAL	equ		BYTESPERROW*NUMBEROFBITPLANES
+SCREENCLRSIZEBLT    equ     128*NUMBEROFBITPLANES*64+BYTESPERROW/2      ; half screen size for blitter part of screen clear (top -> mid)
+SCREENCLRSIZECPU    equ     SCREENWIDTHTOTAL*SCREENHEIGHT			 	; size for cpu part of screen clear ( bottom -> mid)
 
-; Custom registers
+; CUSTOMREGS registers
 
 EXECBASE            equ     $4
-CUSTOM		        equ     $00DFF000		; Base address of custom registers
+CUSTOMREGS		    equ     $00DFF000		; Base address of CUSTOM registers
 
 ADKCON              equ     $00DFF09E		; Audio/Disk control read/write
 ADKCONR             equ     $00DFF010		; Audio/Disk control read
@@ -73,6 +76,12 @@ MINVERSION          equ     39        ; set required version (39 -> Amiga OS 3.0
 GFX_ACTIVIEW        equ     34        ; GfxBase offset: pointer to active View
 GFX_COPINIT         equ     38        ; GfxBase offset: system copper list pointer
 DMASET_DEMO         equ     $83C0     ; SET | DMAEN | BPLEN | COPEN | BLTEN (no sprites)
+
+; Magic constants
+
+WORD_ALIGN_MASK      EQU $FFF0
+BLTCON0_COPY_A_TO_D  EQU $09F0
+
 
 ; ***************************************************************************************************
 ; * Functions                                                                                       *
@@ -172,7 +181,7 @@ _lwmf_CloseLibraries::
 _lwmf_TakeOverOS::
 	move.l	a6,-(sp)                	; save register on stack
 
-	move.w  DMACONR,d0          		; store current custom registers for later restore
+	move.w  DMACONR,d0          		; store current CUSTOMREGS registers for later restore
 	or.w    #$8000,d0
 	move.w  d0,olddma
 	move.w  INTENAR,d0
@@ -306,7 +315,7 @@ _lwmf_WaitVertBlank::
 _lwmf_ClearMemCPU::
 	movem.l d2-d6/a2-a6,-(sp)       ; save all registers
 
-	add.l   d7,a1                   ; we go top -> down
+	adda.l  d7,a1                   ; we go top -> down
 	lsr.l   #2,d7                   ; divide by 4
 	moveq   #0,d0                   ; d0=0 (before lsr so CC is set by lsr, not moveq)
 	move.l  d7,d6
@@ -366,7 +375,7 @@ _lwmf_ClearScreen::
 
 	; Clear rest of screen with cpu
 	move.l  #SCREENCLRSIZECPU,d7
-	add.l   d7,a1                   	; we go top -> down
+	adda.l  d7,a1                   	; we go top -> down
 	lsr.l   #3,d7                   	; divide by 8, we only need to clear half of the screen...
 	moveq   #0,d0                   	; d0=0 (before lsr so CC is set by lsr, not moveq)
 	move.l  d7,d6
@@ -419,7 +428,7 @@ _lwmf_BlitClearLines::
     movem.l d2-d4/a1,-(sp)			; save registers
 
     moveq   #BYTESPERROW,d2
-    moveq   #NUMBITPLANES,d4
+    moveq   #NUMBEROFBITPLANES,d4
     mulu    d4,d2            		; d2 = BYTESPERROW * NUMBEROFBITPLANES
 
 	move.l  d2,d4
@@ -460,7 +469,7 @@ _lwmf_SetPixel::
     adda.l  d1,a0                   ; Move the destination address forward once
     adda.w  d0,a0
 
-    moveq   #NUMBITPLANES-1,d4
+    moveq   #NUMBEROFBITPLANES-1,d4
 .loop
     lsr.b   #1,d2                   ; Plane-Bit -> Carry
     bcc.s   .skip
@@ -475,23 +484,23 @@ _lwmf_SetPixel::
 ; void lwmf_BlitTile(__reg("a0") long* SrcAddr, __reg("d0") WORD SrcX, __reg("d1") WORD SrcY, __reg("a1") long* DstAddr, __reg("d2") WORD DstX, __reg("d3") WORD DstY, __reg("d4") WORD Width, __reg("d5") WORD Height, __reg("d6") WORD SrcWidth);
 ;
 ; All coordinates (SrcX, SrcY, DstX, DstY) and dimensions (Width, Height) are in pixels -> works currently only fine for multiples of 16 pixels (word-aligned) due to the way masks are calculated. Non-word-aligned blits will require additional masking and shifting logic.
-; Source bitmap is interleaved with NUMBITPLANES planes; destination uses SCREENWIDTHTOTAL row stride.
+; Source bitmap is interleaved with NUMBEROFBITPLANES planes; destination uses SCREENWIDTHTOTAL row stride.
 ;
 
 _lwmf_BlitTile::
 	movem.l	d2-d7/a2-a3,-(sp)					; save registers
-	lea		CUSTOM,a2							; a2 = CUSTOM base for compact addressing
+	lea		CUSTOMREGS,a2							; a2 = CUSTOMREGS base for compact addressing
 
 	; --------------------------------------------------
 	; 1) src_bprow = SrcWidth / 8 (single bitplane row)
-	;    src_row_bytes = src_bprow * NUMBITPLANES (interleaved)
+	;    src_row_bytes = src_bprow * NUMBEROFBITPLANES (interleaved)
 	;    68020: keep src_bprow in d7 for modulo calc later,
 	;    compute interleaved stride with lsl+add (replaces mulu)
 	; --------------------------------------------------
 	move.w	d6,d7								; d7 = SrcWidth (pixels)
 	lsr.w	#3,d7								; d7 = SrcWidth/8 = src_bprow (bytes per bitplane row)
 	move.w	d7,d6								; d6 = src_bprow (preserve for modulo calc in step 9)
-	; 68020+: x*3 = x + (x<<1) — replaces mulu.w #NUMBITPLANES
+	; 68020+: x*3 = x + (x<<1) — replaces mulu.w #NUMBEROFBITPLANES
 	add.w	d7,d7								; d7 = src_bprow * 2
 	add.w	d6,d7								; d7 = src_bprow * 3 = src_row_bytes (interleaved)
 
@@ -502,23 +511,23 @@ _lwmf_BlitTile::
 	move.w	d0,a3								; a3 = SrcX (preserve for later)
 	; 68020+: mulu.w result is 32-bit already, no ext needed
 	mulu.w	d7,d1								; d1 = SrcY * src_row_bytes
-	add.l	d1,a0								; a0 += row offset
+	adda.l	d1,a0								; a0 += row offset
 	move.w	d0,d1
-	andi.w	#$FFF0,d1							; align SrcX down to word boundary
+	andi.w	#WORD_ALIGN_MASK,d1					; align SrcX down to word boundary
 	lsr.w	#3,d1								; byte offset of that word
 	; 68020+: add.w with address register auto-extends to 32-bit
-	add.w	d1,a0								; a0 = source pointer (word-aligned)
+	adda.w	d1,a0								; a0 = source pointer (word-aligned)
 
 	; --------------------------------------------------
 	; 3) Dest pointer: a1 += DstY * SCREENWIDTHTOTAL + (DstX & ~15) / 8
 	; --------------------------------------------------
 	mulu.w	#SCREENWIDTHTOTAL,d3				; d3 = DstY * SCREENWIDTHTOTAL
-	add.l	d3,a1								; a1 += row offset
+	adda.l	d3,a1								; a1 += row offset
 	move.w	d2,d3
-	andi.w	#$FFF0,d3							; align DstX down to word boundary
-	asr.w	#3,d3								; byte offset
+	andi.w	#WORD_ALIGN_MASK,d3					; align DstX down to word boundary
+	lsr.w	#3,d3								; byte offset
 	; 68020+: add.w with address register auto-extends to 32-bit
-	add.w	d3,a1								; a1 = dest pointer (word-aligned)
+	adda.w	d3,a1								; a1 = dest pointer (word-aligned)
 
 	; --------------------------------------------------
 	; 4) Barrel shift = ((DstX & 15) - (SrcX & 15)) & 15
@@ -527,7 +536,6 @@ _lwmf_BlitTile::
 	andi.w	#$F,d3								; d3 = srcStartBit
 	move.w	d2,d1								; d1 = DstX
 	andi.w	#$F,d1								; d1 = dstStartBit
-	move.w	d1,d0								; d0 = dstStartBit (save)
 	sub.w	d3,d1								; d1 = dstStartBit - srcStartBit (signed)
 	andi.w	#$F,d1								; d1 = barrel shift (0..15)
 
@@ -573,7 +581,7 @@ _lwmf_BlitTile::
 	move.w	d2,d3								; d3 = srcStartBit + Width
 	subq.w	#1,d3
 	andi.w	#$F,d3								; d3 = srcEndBit (0..15)
-	move.w	#15,d4
+	moveq	#15,d4
 	sub.w	d3,d4								; d4 = 15 - srcEndBit
 	moveq	#-1,d3								; d3 = $FFFF
 	lsl.w	d4,d3								; d3 = last word mask
@@ -589,12 +597,12 @@ _lwmf_BlitTile::
 	move.w	d1,d4								; d4 = shift (0..15)
 	lsl.w	#8,d4								; shift into bits 11..8
 	lsl.w	#4,d4								; shift into bits 15..12
-	ori.w	#$09F0,d4							; d4 = BLTCON0
+	ori.w	#BLTCON0_COPY_A_TO_D,d4				; d4 = BLTCON0
 
 	; --------------------------------------------------
 	; 9) Modulos = single-plane row width - (blitWidthWords * 2)
 	;    68020+: d6 still holds src_bprow from step 1
-	;    (eliminates the expensive divu.w #NUMBITPLANES)
+	;    (eliminates the expensive divu.w #NUMBEROFBITPLANES)
 	; --------------------------------------------------
 	move.w	a3,d1								; d1 = blitWidthWords
 	add.w	d1,d1								; d1 = blitWidthBytes
@@ -608,35 +616,34 @@ _lwmf_BlitTile::
 	; --------------------------------------------------
 	bsr		_lwmf_WaitBlitter
 
-	move.l	a0,(BLTAPTH-CUSTOM,a2)				; source A pointer
-	move.l	a1,(BLTDPTH-CUSTOM,a2)				; destination D pointer
+	move.l	a0,(BLTAPTH-CUSTOMREGS,a2)				; source A pointer
+	move.l	a1,(BLTDPTH-CUSTOMREGS,a2)				; destination D pointer
 
 	; BLTCON0 + BLTCON1 in one longword write
 	swap	d4									; d4 = [BLTCON0 | old]
 	clr.w	d4									; d4 = [BLTCON0 | 0000] (BLTCON1 = 0)
-	move.l	d4,(BLTCON0-CUSTOM,a2)
+	move.l	d4,(BLTCON0-CUSTOMREGS,a2)
 
 	; BLTAFWM + BLTALWM in one longword write
 	swap	d0									; d0 = [FWM | old]
 	move.w	d3,d0								; d0 = [FWM | LWM]
-	move.l	d0,(BLTAFWM-CUSTOM,a2)
+	move.l	d0,(BLTAFWM-CUSTOMREGS,a2)
 
 	; BLTAMOD + BLTDMOD in one longword write
 	swap	d2									; d2 = [SrcMod | old]
 	move.w	d7,d2								; d2 = [SrcMod | DstMod]
-	move.l	d2,(BLTAMOD-CUSTOM,a2)
+	move.l	d2,(BLTAMOD-CUSTOMREGS,a2)
 
 	; BLTSIZV + BLTSIZH in one longword write (BLTSIZH write triggers blit)
-	; Height must be multiplied by NUMBITPLANES for interleaved bitmaps:
-	; each pixel row spans NUMBITPLANES consecutive bitplane rows in memory.
-	; 68020+: x*3 = x + (x<<1) — replaces mulu.w #NUMBITPLANES
+	; Height must be multiplied by NUMBEROFBITPLANES for interleaved bitmaps:
+	; each pixel row spans NUMBEROFBITPLANES consecutive bitplane rows in memory.
+	; 68020+: x*3 = x + (x<<1) — replaces mulu.w #NUMBEROFBITPLANES
 	move.w	d5,d0								; d0 = Height
 	add.w	d5,d5								; d5 = Height * 2
 	add.w	d0,d5								; d5 = Height * 3 = total blitter rows
 	swap	d5									; d5 = [blitHeight | old]
-	clr.w	d5									; d5 = [blitHeight | 0]
 	move.w	a3,d5								; d5 = [blitHeight | blitWidthWords]
-	move.l	d5,(BLTSIZV-CUSTOM,a2)				; start blit!
+	move.l	d5,(BLTSIZV-CUSTOMREGS,a2)				; start blit!
 
 	movem.l	(sp)+,d2-d7/a2-a3					; restore registers
 	rts
