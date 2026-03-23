@@ -47,7 +47,7 @@ struct BitMap* ScreenBitmap[2] = { NULL, NULL };
 struct lwmf_Image* LogoBitmap = NULL;
 
 // Saved logo palette
-UWORD LogoPalette[8] = {0x000, 0x368, 0x134, 0x012, 0x246,	0x146, 0x123, 0x001};
+UWORD LogoPalette[8] = {0x003, 0x368, 0x134, 0x012, 0x246,	0x146, 0x123, 0x001};
 
 #define LOGO_WIDTH  192
 #define LOGO_HEIGHT 46
@@ -225,6 +225,7 @@ void Draw_SineScroller(UBYTE Buffer)
 			for (UWORD x1 = 0, x = MapVal; x < MapEnd; x1 += Font.Feed, x += Font.Feed)
 			{
 				const WORD TempPosX = XPos + x1;
+
 				if (TempPosX >= 0 && TempPosX < ScreenLimit)
 				{
 					BltBitMap(Font.FontBitmap->Image, x, 0, ScreenBitmap[Buffer], TempPosX, ScrollSinTab[TempPosX], Font.Feed, Font.CharHeight, 0xC0, 0x01, NULL);
@@ -307,11 +308,12 @@ static UBYTE PlasmaFrameGreen = 90;
 static UBYTE PlasmaFrameBlue = 60;
 
 // VPOS helpers
-#define LOGO_VPOS_START     (VPOS_OFFSET)
-#define WHITE1_VPOS         (VPOS_OFFSET + WHITE_LINE_1)
-#define PLASMA_VPOS_START   (VPOS_OFFSET + PLASMA_START_LINE)
-#define WHITE2_VPOS         (VPOS_OFFSET + WHITE_LINE_2)
-#define SCROLLER_VPOS_START (VPOS_OFFSET + SCROLLER_START_LINE)
+#define LOGO_VPOS_START     	VPOS_OFFSET
+#define WHITE1_VPOS         	VPOS_OFFSET + WHITE_LINE_1
+#define PLASMA_VPOS_START   	VPOS_OFFSET + PLASMA_START_LINE
+#define WHITE2_VPOS         	VPOS_OFFSET + WHITE_LINE_2
+#define SCROLLER_VPOS_START 	VPOS_OFFSET + SCROLLER_START_LINE
+#define SCROLLER_BPLPOINTER		SCROLLER_START_LINE * BYTESPERROW * NUMBEROFBITPLANES
 
 BOOL Init_CopperList(void)
 {
@@ -441,7 +443,7 @@ BOOL Init_CopperList(void)
 	ScrollBPL1PTL_Idx = Index;
 	CopperList[Index++] = 0x0000;
 	CopperList[Index++] = 0x180;
-	CopperList[Index++] = 0x000;
+	CopperList[Index++] = 0x003;
 	CopperList[Index++] = 0x182;
 	CopperList[Index++] = 0xC0D;
 
@@ -458,7 +460,7 @@ BOOL Init_CopperList(void)
 	return TRUE;
 }
 
-void Update_BitplanePointers(UBYTE Buffer)
+static inline void Update_BitplanePointers(UBYTE Buffer)
 {
 	ULONG addr;
 
@@ -476,7 +478,7 @@ void Update_BitplanePointers(UBYTE Buffer)
 	CopperList[BPL3PTL_Idx] = (UWORD)(addr & 0xFFFF);
 
 	// Scroller region: plane 0 offset to scroller start line (interleaved stride)
-	addr = (ULONG)ScreenBitmap[Buffer]->Planes[0] + SCROLLER_START_LINE * BYTESPERROW * NUMBEROFBITPLANES;
+	addr = (ULONG)ScreenBitmap[Buffer]->Planes[0] + SCROLLER_BPLPOINTER;
 	CopperList[ScrollBPL1PTH_Idx] = (UWORD)(addr >> 16);
 	CopperList[ScrollBPL1PTL_Idx] = (UWORD)(addr & 0xFFFF);
 }
