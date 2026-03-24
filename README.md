@@ -32,3 +32,8 @@ I test my code on:
 - an emulated "stock" 14MHz A1200 in WinUAE and Amiga OS 3.1.4 (Kickstart 3.0, 2MB Chip-RAM, 1MB Fast-RAM)
 - a real Amiga 1200 with an iComp ACA1221 accelerator card and Amiga OS 3.1.4
 
+Useful links:
+
+68000 instructions overview - http://68k.hax.com/
+Amiga registers documentation - http://amigadev.elowar.com/read/ADCD_2.1/Hardware_Manual_guide/node0060.html
+
