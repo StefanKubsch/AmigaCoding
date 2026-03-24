@@ -32,7 +32,7 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 	struct BitMap* TempBitmap = NULL;
 	APTR dtObject = NULL;
 
-	if (!(TempImage = AllocMem(sizeof(struct lwmf_Image), MEMF_ANY | MEMF_CLEAR)))
+	if (!(TempImage = AllocMem(sizeof(struct lwmf_Image), MEMF_CLEAR)))
 	{
 		return NULL;
 	}

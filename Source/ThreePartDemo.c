@@ -20,8 +20,6 @@
 // Screen settings
 // =====================================================================
 
-#define INTERLEAVEDMOD		(BYTESPERROW * (NUMBEROFBITPLANES - 1))
-
 // Layout: 84 + 1 + 85 + 1 + 85 = 256
 #define LOGO_LINES          84
 #define WHITE_LINE_1        84
@@ -30,9 +28,6 @@
 #define WHITE_LINE_2        170
 #define SCROLLER_START_LINE 171
 #define SCROLLER_LINES      85
-
-// VPOS offset for PAL display (first visible line = $2C = 44)
-#define VPOS_OFFSET     	0x2C
 
 // =====================================================================
 // Double buffering
@@ -176,7 +171,7 @@ BOOL Init_SineScroller(void)
 
 	Font.Length = Font.TextLength * Font.CharOverallWidth;
 
-	if (!(Font.Map = AllocVec(sizeof(WORD) * Font.TextLength, MEMF_FAST)))
+	if (!(Font.Map = AllocVec(sizeof(WORD) * Font.TextLength, NULL)))
 	{
 		return FALSE;
 	}
@@ -351,6 +346,9 @@ static UBYTE PlasmaFrameRed = 0;
 static UBYTE PlasmaFrameGreen = 90;
 static UBYTE PlasmaFrameBlue = 60;
 
+// VPOS offset for PAL display (first visible line = $2C = 44)
+#define VPOS_OFFSET     		0x2C
+
 // VPOS helpers
 #define LOGO_VPOS_START     	VPOS_OFFSET
 #define WHITE1_VPOS         	VPOS_OFFSET + WHITE_LINE_1
@@ -368,6 +366,7 @@ BOOL Init_CopperList(void)
 		return FALSE;
 	}
 
+	const UWORD INTERLEAVEDMOD = (BYTESPERROW * (NUMBEROFBITPLANES - 1));
 	UWORD Index = 0;
 
 	// Slow fetch mode (AGA compatibility)
@@ -502,7 +501,7 @@ BOOL Init_CopperList(void)
 	ScrollBPL3PTL_Idx = Index;
 	CopperList[Index++] = 0x0000;
 
-	// COLOR00-COLOR07 (logo palette)
+	// COLOR00-COLOR07 (scroller palette)
 	for (UBYTE c = 0; c < 8; ++c)
 	{
 		CopperList[Index++] = 0x180 + c * 2;
@@ -520,7 +519,7 @@ BOOL Init_CopperList(void)
 	return TRUE;
 }
 
-static inline void Update_BitplanePointers(UBYTE Buffer)
+void Update_BitplanePointers(UBYTE Buffer)
 {
 	ULONG addr;
 
@@ -658,8 +657,7 @@ void Cleanup_All(void)
 		}
 	}
 
-	lwmf_ReleaseOS();
-	lwmf_CloseLibraries();
+	lwmf_CleanupAll();
 }
 
 int main()
@@ -685,8 +683,6 @@ int main()
 		}
 	}
 
-	Init_2DStarfield();
-
 	if (!Init_TextLogo())
 	{
 		Cleanup_All();
@@ -704,6 +700,8 @@ int main()
 		Cleanup_All();
 		return 20;
 	}
+
+	Init_2DStarfield();
 
 	UBYTE CurrentBuffer = 1;
 	Update_BitplanePointers(0);
@@ -733,7 +731,6 @@ int main()
 
 		// Flip
 		Update_BitplanePointers(CurrentBuffer);
-
 		lwmf_WaitVertBlank();
 		CurrentBuffer ^= 1;
 	}

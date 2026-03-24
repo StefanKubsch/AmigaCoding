@@ -13,7 +13,7 @@
 ; Screen stuff
 ; Change it according to your needs!
 ;
-; Export constants to "Define.h" for further use in C
+; Export constants to "lwmf_Defines.h" for further use in C
 ; vasmm68k_mot -Fcdef -o ".\lwmf\Defines.h" ".\lwmf\lwmf_hardware_vasm.s"
 
 SCREENWIDTH         equ     320
@@ -124,7 +124,7 @@ _lwmf_LoadGraphicsLib::
 .success
 	moveq	#0,d0					; return with success
 .exit
-	movea.l (sp)+,a6                ; restore register
+	move.l	(sp)+,a6                ; restore register
 	rts
 
 ;
@@ -146,7 +146,7 @@ _lwmf_LoadDatatypesLib::
 .success
 	moveq	#0,d0					; return with success
 .exit
-	movea.l (sp)+,a6                ; restore register
+	move.l	(sp)+,a6                ; restore register
 	rts
 
 ;
@@ -216,7 +216,7 @@ _lwmf_TakeOverOS::
 
 	jsr     LVOForbid(a6)
 
-	movea.l (sp)+,a6                	; restore register
+	move.l	(sp)+,a6                	; restore register
 	rts
 
 ;
@@ -248,7 +248,7 @@ _lwmf_ReleaseOS::
 	move.l  EXECBASE.w,a6               ; use exec base address
 	jsr     LVOPermit(a6)
 
-	movea.l (sp)+,a6                    ; restore register
+	move.l	(sp)+,a6                    ; restore register
    	rts
 
 ; **************************************************************************
@@ -263,7 +263,7 @@ _lwmf_OwnBlitter::
 	move.l	a6,-(sp)                ; save register on stack
 	move.l  _GfxBase(pc),a6
 	jsr     LVOOwnBlitter(a6)
-	movea.l (sp)+,a6                ; restore register
+	move.l	(sp)+,a6                ; restore register
    	rts
 
 ;
@@ -274,7 +274,7 @@ _lwmf_DisownBlitter::
 	move.l	a6,-(sp)                ; save register on stack
 	move.l  _GfxBase(pc),a6
 	jsr     LVODisownBlitter(a6)
-	movea.l (sp)+,a6                ; restore register
+	move.l	(sp)+,a6                ; restore register
    	rts
 
 ;
@@ -282,14 +282,18 @@ _lwmf_DisownBlitter::
 ;
 
 _lwmf_WaitBlitter::
-	btst.b  #DMAB_BLITTER,DMACONR       ; already idle? skip nasty mode entirely
+	move.l	a6,-(sp)                					; save register on stack
+	lea		CUSTOMREGS,a6								; a6 = CUSTOMREGS base for compact addressing
+
+	btst.b  #DMAB_BLITTER,(DMACONR-CUSTOMREGS,a6)       ; already idle? skip nasty mode entirely
 	beq.s   .done
-	move.w	#$8400,DMACON				; enable blitter nasty
+	move.w	#$8400,(DMACON-CUSTOMREGS,a6)				; enable blitter nasty
 .loop
-	btst.b 	#DMAB_BLITTER,DMACONR 		; check blitter busy flag
+	btst.b 	#DMAB_BLITTER,(DMACONR-CUSTOMREGS,a6) 		; check blitter busy flag
 	bne.s 	.loop
-	move.w	#$0400,DMACON				; disable blitter nasty
+	move.w	#$0400,(DMACON-CUSTOMREGS,a6)				; disable blitter nasty
 .done
+	move.l	(sp)+,a6       								; restore registers
 	rts
 
 ;
@@ -360,27 +364,28 @@ _lwmf_ClearMemCPU::
 	rts
 
 ;
-; void lwmf_ClearScreen(__reg("a1") long* StartAddress);
+; void lwmf_ClearScreen(__reg("a0") long* StartAddress);
 ;
 
 _lwmf_ClearScreen::
-	movem.l d2-d7/a2-a6,-(sp)       	; save all registers
+	movem.l d2-d7/a1-a6,-(sp)       						; save all registers
+	lea		CUSTOMREGS,a1									; a1 = CUSTOMREGS base for compact addressing
 
 	; Clear first half of screen with blitter
 	bsr     _lwmf_WaitBlitter
-	move.l  #$01000000,BLTCON0			; enable destination only (both BLTCON0 and BLTCON1 are written!)
-	clr.w   BLTDMOD						; modulo = 0 (contiguous)
-	move.l  a1,BLTDPTH
-	move.w  #SCREENCLRSIZEBLT,BLTSIZE
+	move.l  #$01000000,BLTCON0								; enable destination only (both BLTCON0 and BLTCON1 are written!)
+	clr.w   (BLTDMOD-CUSTOMREGS,a1)							; modulo = 0 (contiguous)
+	move.l  a0,(BLTDPTH-CUSTOMREGS,a1)
+	move.w  #SCREENCLRSIZEBLT,(BLTSIZE-CUSTOMREGS,a1)
 
 	; Clear rest of screen with cpu
 	move.l  #SCREENCLRSIZECPU,d7
-	adda.l  d7,a1                   	; we go top -> down
-	lsr.l   #3,d7                   	; divide by 8, we only need to clear half of the screen...
-	moveq   #0,d0                   	; d0=0 (before lsr so CC is set by lsr, not moveq)
+	adda.l  d7,a0	                  						; we go top -> down
+	lsr.l   #3,d7                   						; divide by 8, we only need to clear half of the screen...
+	moveq   #0,d0                   						; d0=0 (before lsr so CC is set by lsr, not moveq)
 	move.l  d7,d6
-	lsr.l   #7,d6                   	; get number of blocks of 128 long words
-	beq.s   .clear                  	; branch if we have no complete block
+	lsr.l   #7,d6                   						; get number of blocks of 128 long words
+	beq.s   .clear                  						; branch if we have no complete block
 	; 68020: init zero regs via register-to-register moves (no zeros data table reads)
 	move.l  d0,d1
 	move.l  d0,d2
@@ -393,31 +398,31 @@ _lwmf_ClearScreen::
 	move.l  d0,a5
 	move.l  d0,a6
 .clearblock
-	movem.l d0-d5/a2-a6,-(a1)       	; 11 registers -> clear 44 bytes at once
-	movem.l d0-d5/a2-a6,-(a1)
-	movem.l d0-d5/a2-a6,-(a1)
-	movem.l d0-d5/a2-a6,-(a1)
-	movem.l d0-d5/a2-a6,-(a1)
-	movem.l d0-d5/a2-a6,-(a1)
-	movem.l d0-d5/a2-a6,-(a1)
-	movem.l d0-d5/a2-a6,-(a1)
-	movem.l d0-d5/a2-a6,-(a1)
-	movem.l d0-d5/a2-a6,-(a1)
-	movem.l d0-d5/a2-a6,-(a1)
-	movem.l d0-d5/a2,-(a1)          	; 7 registers
-	subq.l  #1,d6                   	; 68020+: subq.l/bne replaces dbra (faster, 32-bit counter)
+	movem.l d0-d5/a2-a6,-(a0)       						; 11 registers -> clear 44 bytes at once
+	movem.l d0-d5/a2-a6,-(a0)
+	movem.l d0-d5/a2-a6,-(a0)
+	movem.l d0-d5/a2-a6,-(a0)
+	movem.l d0-d5/a2-a6,-(a0)
+	movem.l d0-d5/a2-a6,-(a0)
+	movem.l d0-d5/a2-a6,-(a0)
+	movem.l d0-d5/a2-a6,-(a0)
+	movem.l d0-d5/a2-a6,-(a0)
+	movem.l d0-d5/a2-a6,-(a0)
+	movem.l d0-d5/a2-a6,-(a0)
+	movem.l d0-d5/a2,-(a0)          						; 7 registers
+	subq.l  #1,d6                   						; 68020+: subq.l/bne replaces dbra (faster, 32-bit counter)
 	bne.s   .clearblock
 .clear
-	and.l   #$7F,d7                 	; remainder after 128-longword blocks (7 bits)
+	and.l   #$7F,d7                 						; remainder after 128-longword blocks (7 bits)
 	beq.s   .done
 
 	; d0 is always 0 (set unconditionally above)
 .setword
-	move.l  d0,-(a1)                	; clear memory by one long word at a time
+	move.l  d0,-(a0)                						; clear memory by one long word at a time
 	subq.l  #1,d7
 	bne.s   .setword
 .done
-	movem.l (sp)+,d2-d7/a2-a6       	; restore registers
+	movem.l (sp)+,d2-d7/a1-a6       						; restore registers
 	rts
 
 ;
@@ -425,34 +430,35 @@ _lwmf_ClearScreen::
 ;
 
 _lwmf_BlitClearLines::
-    movem.l d2-d4/a1,-(sp)			; save registers
+    movem.l d2-d4/a1,-(sp)							; save registers
+	lea		CUSTOMREGS,a1							; a1 = CUSTOMREGS base for compact addressing
 
     moveq   #BYTESPERROW,d2
     moveq   #NUMBEROFBITPLANES,d4
-    mulu    d4,d2            		; d2 = BYTESPERROW * NUMBEROFBITPLANES
+    mulu    d4,d2            						; d2 = BYTESPERROW * NUMBEROFBITPLANES
 
 	move.l  d2,d4
-    lsr.l   #1,d4					; (BYTESPERROW * NUMBEROFBITPLANES) >> 1
+    lsr.l   #1,d4									; (BYTESPERROW * NUMBEROFBITPLANES) >> 1
 
 	move.l  d1,d3
 
     ; Calculate target adress
-    mulu    d0,d2            		; d2 = startLine * BYTESPERROW * NUMBEROFBITPLANES
-    add.l   a0,d2            		; d2 = Target address for blitter
+    mulu    d0,d2            						; d2 = startLine * BYTESPERROW * NUMBEROFBITPLANES
+    add.l   a0,d2            						; d2 = Target address for blitter
 
 	bsr     _lwmf_WaitBlitter
 
     ; Set Blitter register
-	move.l  #$01000000,BLTCON0		; enable destination only (both BLTCON0 and BLTCON1 are written!)
-    clr.w	BLTDMOD   				; modulo = 0 (contiguous)
-    move.l  d2,BLTDPTH     			; BLTDPTH = Targetadress
+	move.l  #$01000000,(BLTCON0-CUSTOMREGS,a1)		; enable destination only (both BLTCON0 and BLTCON1 are written!)
+    clr.w	(BLTDMOD-CUSTOMREGS,a1)   				; modulo = 0 (contiguous)
+    move.l  d2,(BLTDPTH-CUSTOMREGS,a1)     			; BLTDPTH = Targetadress
 
     ; Blit
     lsl.w   #6,d3
     or.w    d4,d3
-    move.w  d3,BLTSIZE
+    move.w  d3,(BLTSIZE-CUSTOMREGS,a1)
 
-    movem.l (sp)+,d2-d4/a1			; restore registers
+    movem.l (sp)+,d2-d4/a1							; restore registers
     rts
 
 ;
@@ -489,7 +495,7 @@ _lwmf_SetPixel::
 
 _lwmf_BlitTile::
 	movem.l	d2-d7/a2-a3,-(sp)					; save registers
-	lea		CUSTOMREGS,a2							; a2 = CUSTOMREGS base for compact addressing
+	lea		CUSTOMREGS,a2						; a2 = CUSTOMREGS base for compact addressing
 
 	; --------------------------------------------------
 	; 1) src_bprow = SrcWidth / 8 (single bitplane row)
@@ -616,8 +622,8 @@ _lwmf_BlitTile::
 	; --------------------------------------------------
 	bsr		_lwmf_WaitBlitter
 
-	move.l	a0,(BLTAPTH-CUSTOMREGS,a2)				; source A pointer
-	move.l	a1,(BLTDPTH-CUSTOMREGS,a2)				; destination D pointer
+	move.l	a0,(BLTAPTH-CUSTOMREGS,a2)			; source A pointer
+	move.l	a1,(BLTDPTH-CUSTOMREGS,a2)			; destination D pointer
 
 	; BLTCON0 + BLTCON1 in one longword write
 	swap	d4									; d4 = [BLTCON0 | old]
@@ -643,7 +649,7 @@ _lwmf_BlitTile::
 	add.w	d0,d5								; d5 = Height * 3 = total blitter rows
 	swap	d5									; d5 = [blitHeight | old]
 	move.w	a3,d5								; d5 = [blitHeight | blitWidthWords]
-	move.l	d5,(BLTSIZV-CUSTOMREGS,a2)				; start blit!
+	move.l	d5,(BLTSIZV-CUSTOMREGS,a2)			; start blit!
 
 	movem.l	(sp)+,d2-d7/a2-a3					; restore registers
 	rts

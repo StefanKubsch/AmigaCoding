@@ -49,7 +49,7 @@ struct UCopList* UserCopperList = NULL;
 
 BOOL Init_CopperList(void)
 {
-	if (!(UserCopperList = AllocMem(sizeof(struct UCopList), MEMF_PUBLIC | MEMF_CLEAR)))
+	if (!(UserCopperList = AllocMem(sizeof(struct UCopList), MEMF_CHIP | MEMF_CLEAR)))
 	{
 		return FALSE;
 	}

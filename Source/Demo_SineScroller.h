@@ -91,7 +91,7 @@ BOOL Init_SineScroller(void)
 
 	Font.Length = Font.TextLength * Font.CharOverallWidth;
 
-	if (!(Font.Map = AllocVec(sizeof(WORD) * Font.TextLength, MEMF_ANY)))
+	if (!(Font.Map = AllocVec(sizeof(WORD) * Font.TextLength, NULL)))
 	{
 		return FALSE;
 	}
