@@ -14,7 +14,7 @@
 
 // Enable (set to 1) for debugging
 // When enabled, load per frame will be displayed via color changing of background
-#define DEBUG 				0
+#define DEBUG 				1
 
 // =====================================================================
 // Screen settings
@@ -101,7 +101,6 @@ struct Scrollfont
 	struct lwmf_Image* FontBitmap;
 	char* Text;
 	char* CharMap;
-	WORD* Map;
 	UWORD TextLength;
 	UWORD CharMapLength;
 	UWORD Length;
@@ -111,6 +110,11 @@ struct Scrollfont
 	UBYTE CharHeight;
 	UBYTE CharSpacing;
 	UBYTE CharOverallWidth;
+	WORD *ColumnSrc;
+	WORD *ColumnDst;
+	UWORD ColumnCount;
+	UWORD FirstVisibleColumn;
+	WORD LastScrollX;
 } Font;
 
 // Sine table for scroller Y positions (center=203, amplitude=30)
@@ -129,6 +133,67 @@ static const UBYTE ScrollSinTab[SCREENWIDTH] =
 
 UWORD ScrollerPalette[8] = {0x003, 0xC0D, 0x333, 0x888, 0xFFF, 0x000, 0x000, 0x000};
 
+static UWORD FindFirstVisibleColumn_Binary(WORD ScrollX)
+{
+	const WORD Target = -ScrollX;
+	UWORD Left = 0;
+	UWORD Right = Font.ColumnCount;
+
+	while (Left < Right)
+	{
+		const UWORD Mid = (Left + Right) >> 1;
+
+		if (Font.ColumnDst[Mid] < Target)
+		{
+			Left = Mid + 1;
+		}
+		else
+		{
+			Right = Mid;
+		}
+	}
+
+	if (Left > 0)
+	{
+		--Left;
+	}
+
+	return Left;
+}
+
+static UWORD UpdateFirstVisibleColumn(WORD ScrollX)
+{
+	UWORD i = Font.FirstVisibleColumn;
+
+	if (Font.ColumnCount == 0)
+	{
+		return 0;
+	}
+
+	if (ScrollX > Font.LastScrollX || (Font.LastScrollX - ScrollX) > (Font.Feed << 2))
+	{
+		i = FindFirstVisibleColumn_Binary(ScrollX);
+		Font.FirstVisibleColumn = i;
+		Font.LastScrollX = ScrollX;
+		return i;
+	}
+
+	while (i < Font.ColumnCount)
+	{
+		if ((ScrollX + Font.ColumnDst[i] + Font.Feed) >= 0)
+		{
+			break;
+		}
+
+		++i;
+	}
+
+	Font.FirstVisibleColumn = i;
+	Font.LastScrollX = ScrollX;
+
+	return i;
+}
+
 BOOL Init_SineScroller(void)
 {
 	if (!(Font.FontBitmap = lwmf_LoadImage("gfx/ScrollFont1.iff")))
@@ -136,17 +201,22 @@ BOOL Init_SineScroller(void)
 		return FALSE;
 	}
 
-	// Text & Font settings
 	Font.Text = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!! HAVE FUN WATCHING THE DEMO AND ENJOY YOUR AMIGA !!! (C) DEEP4 2026...";
 	Font.CharMap = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!-,+?*()";
 	Font.CharWidth = 15;
 	Font.CharHeight = 20;
 	Font.CharSpacing = 1;
-	Font.Feed = 2;
+	Font.Feed = 1;
 	Font.CharOverallWidth = Font.CharWidth + Font.CharSpacing;
 	Font.ScrollX = SCREENWIDTH;
 	Font.TextLength = 0;
 	Font.CharMapLength = 0;
+	Font.Length = 0;
+	Font.ColumnSrc = NULL;
+	Font.ColumnDst = NULL;
+	Font.ColumnCount = 0;
+	Font.FirstVisibleColumn = 0;
+	Font.LastScrollX = Font.ScrollX;
 
 	while (Font.Text[Font.TextLength] != 0x00)
 	{
@@ -154,32 +224,84 @@ BOOL Init_SineScroller(void)
 	}
 
 	WORD CharLookup[128];
+	UWORD MapPos = 0;
+	const WORD Feed = Font.Feed;
+	const WORD CharWidth = Font.CharWidth;
+	const WORD CharOverallWidth = Font.CharOverallWidth;
 
 	for (UWORD k = 0; k < 128; ++k)
 	{
 		CharLookup[k] = -1;
 	}
 
-	UWORD MapPos = 0;
-
 	while (Font.CharMap[Font.CharMapLength] != 0x00)
 	{
 		CharLookup[(UBYTE)Font.CharMap[Font.CharMapLength]] = MapPos;
-		MapPos += Font.CharOverallWidth;
+		MapPos += CharOverallWidth;
 		++Font.CharMapLength;
 	}
 
-	Font.Length = Font.TextLength * Font.CharOverallWidth;
+	Font.Length = Font.TextLength * CharOverallWidth;
 
-	if (!(Font.Map = AllocVec(sizeof(WORD) * Font.TextLength, NULL)))
+	// Count
+	for (UWORD i = 0; i < Font.TextLength; ++i)
+	{
+		const UBYTE c = (UBYTE)Font.Text[i];
+		const WORD MapVal = (c < 128) ? CharLookup[c] : -1;
+
+		if (MapVal >= 0)
+		{
+			WORD x1 = 0;
+
+			while (x1 < CharWidth)
+			{
+				++Font.ColumnCount;
+				x1 += Feed;
+			}
+		}
+	}
+
+	if (Font.ColumnCount == 0)
+	{
+		return TRUE;
+	}
+
+	if (!(Font.ColumnSrc = AllocVec(sizeof(WORD) * Font.ColumnCount, NULL)))
 	{
 		return FALSE;
 	}
 
+	if (!(Font.ColumnDst = AllocVec(sizeof(WORD) * Font.ColumnCount, NULL)))
+	{
+		FreeVec(Font.ColumnSrc);
+		Font.ColumnSrc = NULL;
+		return FALSE;
+	}
+
+	// Fill
+	UWORD ColumnIndex = 0;
+
 	for (UWORD i = 0; i < Font.TextLength; ++i)
 	{
 		const UBYTE c = (UBYTE)Font.Text[i];
-		Font.Map[i] = (c < 128) ? CharLookup[c] : -1;
+		const WORD MapVal = (c < 128) ? CharLookup[c] : -1;
+
+		if (MapVal >= 0)
+		{
+			const WORD CharBaseX = i * CharOverallWidth;
+			WORD x1 = 0;
+			WORD srcx = MapVal;
+
+			while (x1 < CharWidth)
+			{
+				Font.ColumnDst[ColumnIndex] = CharBaseX + x1;
+				Font.ColumnSrc[ColumnIndex] = srcx;
+				++ColumnIndex;
+
+				x1 += Feed;
+				srcx += Feed;
+			}
+		}
 	}
 
 	return TRUE;
@@ -187,58 +309,83 @@ BOOL Init_SineScroller(void)
 
 void Draw_SineScroller(UBYTE Buffer)
 {
-	const UWORD ScreenLimit = SCREENWIDTH - Font.Feed;
+	const WORD ScrollX = Font.ScrollX;
+	const WORD Feed = Font.Feed;
+	const WORD CharHeight = Font.CharHeight;
+	const WORD ScreenLimit = SCREENWIDTH - Feed;
+	const UBYTE *SinTab = ScrollSinTab;
+	WORD *ColumnDst = Font.ColumnDst;
+	WORD *ColumnSrc = Font.ColumnSrc;
+	const UWORD ColumnCount = Font.ColumnCount;
 
-	WORD XPos = Font.ScrollX;
-
-	for (UWORD i = 0; i < Font.TextLength; ++i)
+	if (ColumnCount != 0)
 	{
-		const WORD MapVal = Font.Map[i];
+		UWORD i = UpdateFirstVisibleColumn(ScrollX);
 
-		if (MapVal == -1)
+		while (i < ColumnCount)
 		{
-			XPos += Font.CharOverallWidth;
-			continue;
-		}
+			WORD dstTextX = ColumnDst[i];
+			WORD dstX = ScrollX + dstTextX;
+			WORD srcX = ColumnSrc[i];
 
-		if (XPos + Font.CharOverallWidth < 0)
-		{
-			XPos += Font.CharOverallWidth;
-			continue;
-		}
-
-		if (XPos >= SCREENWIDTH)
-		{
-			break;
-		}
-
-		if (XPos >= 0 && XPos < ScreenLimit)
-		{
-			const WORD MapEnd = MapVal + Font.CharWidth;
-
-			for (UWORD x1 = 0, x = MapVal; x < MapEnd; x1 += Font.Feed, x += Font.Feed)
+			if (dstX >= ScreenLimit)
 			{
-				const WORD TempPosX = XPos + x1;
+				break;
+			}
 
-				if (TempPosX >= 0 && TempPosX < ScreenLimit)
-				{
-					BltBitMap(Font.FontBitmap->Image, x, 0, ScreenBitmap[Buffer], TempPosX, ScrollSinTab[TempPosX], Font.Feed, Font.CharHeight, 0xC0, 0x01, NULL);
-				}
-				else if (TempPosX >= ScreenLimit)
+			if (dstX < 0)
+			{
+				++i;
+				continue;
+			}
+
+			const WORD y = SinTab[dstX];
+			WORD width = Feed;
+			UWORD j = i + 1;
+
+			while (j < ColumnCount)
+			{
+				const WORD nextDstTextX = ColumnDst[j];
+				const WORD nextDstX = ScrollX + nextDstTextX;
+				const WORD nextSrcX = ColumnSrc[j];
+
+				if (nextDstX >= ScreenLimit)
 				{
 					break;
 				}
-			}
-		}
 
-		XPos += Font.CharOverallWidth;
+				if (nextDstX < 0)
+				{
+					break;
+				}
+
+				if ((nextDstTextX - dstTextX) != Feed) break;
+				if ((nextSrcX - srcX) != Feed) break;
+
+				WORD dy = SinTab[nextDstX] - y;
+
+				if (dy < 0) dy = -dy;
+				if (dy > 1) break;
+
+				width += Feed;
+				dstTextX = nextDstTextX;
+				srcX = nextSrcX;
+				++j;
+			}
+
+			BltBitMap(Font.FontBitmap->Image, ColumnSrc[i], 0, ScreenBitmap[Buffer], dstX, y, width, CharHeight, 0xC0, 0x01, NULL);
+
+			i = j;
+		}
 	}
 
-	Font.ScrollX -= Font.Feed << 1;
+	Font.ScrollX -= Feed << 1;
 
 	if (Font.ScrollX < -Font.Length)
 	{
 		Font.ScrollX = SCREENWIDTH;
+		Font.FirstVisibleColumn = 0;
+		Font.LastScrollX = Font.ScrollX;
 	}
 }
 
@@ -249,9 +396,16 @@ void Cleanup_SineScroller(void)
 		lwmf_DeleteImage(Font.FontBitmap);
 	}
 
-	if (Font.Map)
+	if (Font.ColumnDst)
 	{
-		FreeVec(Font.Map);
+		FreeVec(Font.ColumnDst);
+		Font.ColumnDst = NULL;
+	}
+
+	if (Font.ColumnSrc)
+	{
+		FreeVec(Font.ColumnSrc);
+		Font.ColumnSrc = NULL;
 	}
 }
 
@@ -710,10 +864,8 @@ int main()
 	{
 		lwmf_OwnBlitter();
 
-		// CLear logo and scroller regions with blitter while CPU updates plasma colors in copper list
-		lwmf_BlitClearLines(0, LOGO_LINES, (long*)ScreenBitmap[CurrentBuffer]->Planes[0]);
-		lwmf_BlitClearLines(SCROLLER_START_LINE, SCROLLER_LINES, (long*)ScreenBitmap[CurrentBuffer]->Planes[0]);
-
+		// CLear screen with blitter while CPU updates plasma colors in copper list
+		lwmf_ClearScreen((long*)ScreenBitmap[CurrentBuffer]->Planes[0]);
 		// CPU updates plasma while blitter clears
 		Update_Plasma();
 
