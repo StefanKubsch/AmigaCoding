@@ -9,6 +9,6 @@
 #include "lwmf_cleanup.h"
 #include "lwmf_images.h"
 #include "lwmf_text.h"
-
+#include "lwmf_ptplayer.h"
 
 #endif /* LWMF_H */

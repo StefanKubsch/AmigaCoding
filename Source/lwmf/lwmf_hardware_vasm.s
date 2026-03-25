@@ -301,16 +301,13 @@ _lwmf_WaitBlitter::
 ;
 
 _lwmf_WaitVertBlank::
-	; Line 303 = $12F: V8=1 (bit 0 of VPOSR+1), V7:V0=$2F (byte at VPOSR+2)
-	; Two-phase check uses byte reads for lower chip bus pressure
 .waithigh
-	btst.b	#0,VPOSR+1			; test V8 - are we on lines 256+?
-	beq.s	.waithigh 			; no, keep waiting
+    btst.b  #0,VPOSR+1        		; wait until V8 = 1 (line 256+)
+    beq.s   .waithigh
 .waitlow
-	move.b	VPOSR+2,d0			; read V7:V0
-	cmp.b	#(303&$FF),d0		; = $2F
-	bne.s	.waitlow
-	rts
+    cmp.b   #(303&$FF),VPOSR+2		; wait until low byte = $2F
+    bne.s   .waitlow
+    rts
 
 ;
 ; void lwmf_ClearMemCPU(__reg("a1") long* StartAddress, __reg("d7") long NumberOfBytes);
@@ -494,165 +491,154 @@ _lwmf_SetPixel::
 ;
 
 _lwmf_BlitTile::
-	movem.l	d2-d7/a2-a3,-(sp)					; save registers
-	lea		CUSTOMREGS,a2						; a2 = CUSTOMREGS base for compact addressing
+    movem.l d2-d7/a2,-(sp)                    ; a3 no longer needed
+    lea     CUSTOMREGS,a2
 
-	; --------------------------------------------------
-	; 1) src_bprow = SrcWidth / 8 (single bitplane row)
-	;    src_row_bytes = src_bprow * NUMBEROFBITPLANES (interleaved)
-	;    68020: keep src_bprow in d7 for modulo calc later,
-	;    compute interleaved stride with lsl+add (replaces mulu)
-	; --------------------------------------------------
-	move.w	d6,d7								; d7 = SrcWidth (pixels)
-	lsr.w	#3,d7								; d7 = SrcWidth/8 = src_bprow (bytes per bitplane row)
-	move.w	d7,d6								; d6 = src_bprow (preserve for modulo calc in step 9)
-	; 68020+: x*3 = x + (x<<1) — replaces mulu.w #NUMBEROFBITPLANES
-	add.w	d7,d7								; d7 = src_bprow * 2
-	add.w	d6,d7								; d7 = src_bprow * 3 = src_row_bytes (interleaved)
+    ; --------------------------------------------------
+    ; 1) src_bprow = SrcWidth / 8
+    ;    src_row_bytes = src_bprow * NUMBEROFBITPLANES
+    ; --------------------------------------------------
+    move.w  d6,d7                             ; d7 = SrcWidth
+    lsr.w   #3,d7                             ; d7 = src_bprow
+    move.w  d7,d6                             ; d6 = src_bprow (keep for SrcModulo)
+    add.w   d7,d7                             ; d7 = src_bprow * 2
+    add.w   d6,d7                             ; d7 = src_row_bytes (*3)
 
-	; --------------------------------------------------
-	; 2) Source pointer: a0 += SrcY * src_row_bytes + (SrcX & ~15) / 8
-	;    68020: use 32-bit scale-factor addressing where beneficial
-	; --------------------------------------------------
-	move.w	d0,a3								; a3 = SrcX (preserve for later)
-	; 68020+: mulu.w result is 32-bit already, no ext needed
-	mulu.w	d7,d1								; d1 = SrcY * src_row_bytes
-	adda.l	d1,a0								; a0 += row offset
-	move.w	d0,d1
-	andi.w	#WORD_ALIGN_MASK,d1					; align SrcX down to word boundary
-	lsr.w	#3,d1								; byte offset of that word
-	; 68020+: add.w with address register auto-extends to 32-bit
-	adda.w	d1,a0								; a0 = source pointer (word-aligned)
+    ; --------------------------------------------------
+    ; 2) Source pointer
+    ;    a0 += SrcY * src_row_bytes + (SrcX & ~15) / 8
+    ; --------------------------------------------------
+    mulu.w  d7,d1                             ; d1 = SrcY * src_row_bytes
+    adda.l  d1,a0
+    move.w  d0,d1
+    andi.w  #WORD_ALIGN_MASK,d1
+    lsr.w   #3,d1
+    adda.w  d1,a0
 
-	; --------------------------------------------------
-	; 3) Dest pointer: a1 += DstY * SCREENWIDTHTOTAL + (DstX & ~15) / 8
-	; --------------------------------------------------
-	mulu.w	#SCREENWIDTHTOTAL,d3				; d3 = DstY * SCREENWIDTHTOTAL
-	adda.l	d3,a1								; a1 += row offset
-	move.w	d2,d3
-	andi.w	#WORD_ALIGN_MASK,d3					; align DstX down to word boundary
-	lsr.w	#3,d3								; byte offset
-	; 68020+: add.w with address register auto-extends to 32-bit
-	adda.w	d3,a1								; a1 = dest pointer (word-aligned)
+    ; --------------------------------------------------
+    ; 3) Destination pointer
+    ;    a1 += DstY * SCREENWIDTHTOTAL + (DstX & ~15) / 8
+    ; --------------------------------------------------
+    mulu.w  #SCREENWIDTHTOTAL,d3
+    adda.l  d3,a1
+    move.w  d2,d3
+    andi.w  #WORD_ALIGN_MASK,d3
+    lsr.w   #3,d3
+    adda.w  d3,a1
 
-	; --------------------------------------------------
-	; 4) Barrel shift = ((DstX & 15) - (SrcX & 15)) & 15
-	; --------------------------------------------------
-	move.w	a3,d3								; d3 = SrcX
-	andi.w	#$F,d3								; d3 = srcStartBit
-	move.w	d2,d1								; d1 = DstX
-	andi.w	#$F,d1								; d1 = dstStartBit
-	sub.w	d3,d1								; d1 = dstStartBit - srcStartBit (signed)
-	andi.w	#$F,d1								; d1 = barrel shift (0..15)
+    ; --------------------------------------------------
+    ; 4) shift = ((DstX & 15) - (SrcX & 15)) & 15
+    ;    d3 = srcStartBit
+    ;    d1 = shift
+    ; --------------------------------------------------
+    move.w  d0,d3
+    andi.w  #$000F,d3
+    move.w  d2,d1
+    andi.w  #$000F,d1
+    sub.w   d3,d1
+    andi.w  #$000F,d1
 
-	; --------------------------------------------------
-	; 5) Blit width in words
-	;    srcWidthWords  = (srcStartBit + Width + 15) >> 4
-	;    blitWidthWords = srcWidthWords + (shift ? 1 : 0)
-	; --------------------------------------------------
-	move.w	d3,d0								; d0 = srcStartBit
-	add.w	d4,d0								; d0 = srcStartBit + Width
-	move.w	d0,d2								; d2 = srcStartBit + Width (save for last mask)
-	add.w	#15,d0
-	lsr.w	#4,d0								; d0 = srcWidthWords
+    ; --------------------------------------------------
+    ; 5) blitWidthWords
+    ;    srcWidthWords  = (srcStartBit + Width + 15) >> 4
+    ;    +1 if shift != 0
+    ; --------------------------------------------------
+    move.w  d3,d0
+    add.w   d4,d0                             ; d0 = srcStartBit + Width
+    move.w  d0,d2                             ; keep for LWM calc
+    add.w   #$000F,d0
+    lsr.w   #4,d0                             ; d0 = srcWidthWords
+    tst.w   d1
+    beq.s   .noextra
+    addq.w  #1,d0
+.noextra
+    move.w  d0,d7                             ; d7 = blitWidthWords
 
-	tst.w	d1
-	beq.s	.noExtra
-	addq.w	#1,d0								; extra word for shifted output
-.noExtra:
-	move.w	d0,a3								; a3 = blitWidthWords (save)
+    ; --------------------------------------------------
+    ; 6) BLTAFWM = $FFFF >> srcStartBit
+    ; --------------------------------------------------
+    moveq   #-1,d0
+    lsr.w   d3,d0                             ; d0 = FWM
 
-	; --------------------------------------------------
-	; 6) First word mask: BLTAFWM = $FFFF >> srcStartBit
-	;    Masks are applied to source A BEFORE the barrel
-	;    shift, so they must be in source coordinates.
-	; --------------------------------------------------
-	moveq	#-1,d0								; d0 = $FFFF
-	lsr.w	d3,d0								; d0 = first word mask
+    ; --------------------------------------------------
+    ; 7) BLTALWM
+    ;    if shift != 0 => extra word, so LWM = 0
+    ; --------------------------------------------------
+    tst.w   d1
+    beq.s   .calcLWM
+    moveq   #0,d3                             ; d3 = LWM
+    bra.s   .masksReady
 
-	; --------------------------------------------------
-	; 7) Last word mask (source space)
-	;    srcEndBit = (srcStartBit + Width - 1) & 15
-	;    BLTALWM  = $FFFF << (15 - srcEndBit)
-	;
-	;    When shift != 0 an extra word is appended. That
-	;    extra word has no source data, so BLTALWM = $0000
-	;    to prevent stale A-channel data from leaking in.
-	; --------------------------------------------------
-	tst.w	d1									; shift == 0?
-	beq.s	.calcLWM
-	moveq	#0,d3								; extra word -> block all source bits
-	bra.s	.masksReady
 .calcLWM:
-	move.w	d2,d3								; d3 = srcStartBit + Width
-	subq.w	#1,d3
-	andi.w	#$F,d3								; d3 = srcEndBit (0..15)
-	moveq	#15,d4
-	sub.w	d3,d4								; d4 = 15 - srcEndBit
-	moveq	#-1,d3								; d3 = $FFFF
-	lsl.w	d4,d3								; d3 = last word mask
+    move.w  d2,d3
+    subq.w  #1,d3
+    andi.w  #$000F,d3                         ; d3 = srcEndBit
+    eori.w  #$000F,d3                         ; d3 = 15 - srcEndBit
+    moveq   #-1,d4
+    lsl.w   d3,d4
+    move.w  d4,d3                             ; d3 = LWM
+
 .masksReady:
+    ; d0 = FWM
+    ; d3 = LWM
+    ; d1 = shift
 
-	; d0 = BLTAFWM, d3 = BLTALWM, d1 = barrel shift
+    ; --------------------------------------------------
+    ; 8) BLTCON0 = (shift << 12) | $09F0
+    ; --------------------------------------------------
+    move.w  d1,d4
+	lsl.w   #4,d4
+	lsl.w   #8,d4
+    ori.w   #BLTCON0_COPY_A_TO_D,d4
 
-	; --------------------------------------------------
-	; 8) BLTCON0 = (shift << 12) | $09F0  (USE A+D, LF = D=A)
-	;    68020+: use lsl.w #8 + lsl.w #4 decomposition
-	;    (avoids ror.w pipeline stall on 68020)
-	; --------------------------------------------------
-	move.w	d1,d4								; d4 = shift (0..15)
-	lsl.w	#8,d4								; shift into bits 11..8
-	lsl.w	#4,d4								; shift into bits 15..12
-	ori.w	#BLTCON0_COPY_A_TO_D,d4				; d4 = BLTCON0
+    ; --------------------------------------------------
+    ; 9) Modulos
+    ;    SrcModulo = src_bprow - blitWidthBytes
+    ;    DstModulo = BYTESPERROW - blitWidthBytes
+    ; --------------------------------------------------
+    move.w  d7,d1
+    add.w   d1,d1                             ; d1 = blitWidthBytes
 
-	; --------------------------------------------------
-	; 9) Modulos = single-plane row width - (blitWidthWords * 2)
-	;    68020+: d6 still holds src_bprow from step 1
-	;    (eliminates the expensive divu.w #NUMBEROFBITPLANES)
-	; --------------------------------------------------
-	move.w	a3,d1								; d1 = blitWidthWords
-	add.w	d1,d1								; d1 = blitWidthBytes
-	move.w	d6,d2								; d2 = src_bprow (single-plane row width from step 1)
-	sub.w	d1,d2								; d2 = SrcModulo (per bitplane row)
-	move.w	#BYTESPERROW,d7
-	sub.w	d1,d7								; d7 = DstModulo (per bitplane row)
+    move.w  d6,d2
+    sub.w   d1,d2                             ; d2 = SrcModulo
 
-	; --------------------------------------------------
-	; 10) Program blitter and start
-	; --------------------------------------------------
-	bsr		_lwmf_WaitBlitter
+    move.w  #BYTESPERROW,d6
+    sub.w   d1,d6                             ; d6 = DstModulo
 
-	move.l	a0,(BLTAPTH-CUSTOMREGS,a2)			; source A pointer
-	move.l	a1,(BLTDPTH-CUSTOMREGS,a2)			; destination D pointer
+    ; --------------------------------------------------
+    ; 10) Wait + program blitter
+    ; --------------------------------------------------
+    bsr     _lwmf_WaitBlitter
 
-	; BLTCON0 + BLTCON1 in one longword write
-	swap	d4									; d4 = [BLTCON0 | old]
-	clr.w	d4									; d4 = [BLTCON0 | 0000] (BLTCON1 = 0)
-	move.l	d4,(BLTCON0-CUSTOMREGS,a2)
+    move.l  a0,(BLTAPTH-CUSTOMREGS,a2)
+    move.l  a1,(BLTDPTH-CUSTOMREGS,a2)
 
-	; BLTAFWM + BLTALWM in one longword write
-	swap	d0									; d0 = [FWM | old]
-	move.w	d3,d0								; d0 = [FWM | LWM]
-	move.l	d0,(BLTAFWM-CUSTOMREGS,a2)
+    ; BLTCON0 + BLTCON1
+    swap    d4
+    clr.w   d4
+    move.l  d4,(BLTCON0-CUSTOMREGS,a2)
 
-	; BLTAMOD + BLTDMOD in one longword write
-	swap	d2									; d2 = [SrcMod | old]
-	move.w	d7,d2								; d2 = [SrcMod | DstMod]
-	move.l	d2,(BLTAMOD-CUSTOMREGS,a2)
+    ; BLTAFWM + BLTALWM
+    swap    d0
+    move.w  d3,d0
+    move.l  d0,(BLTAFWM-CUSTOMREGS,a2)
 
-	; BLTSIZV + BLTSIZH in one longword write (BLTSIZH write triggers blit)
-	; Height must be multiplied by NUMBEROFBITPLANES for interleaved bitmaps:
-	; each pixel row spans NUMBEROFBITPLANES consecutive bitplane rows in memory.
-	; 68020+: x*3 = x + (x<<1) — replaces mulu.w #NUMBEROFBITPLANES
-	move.w	d5,d0								; d0 = Height
-	add.w	d5,d5								; d5 = Height * 2
-	add.w	d0,d5								; d5 = Height * 3 = total blitter rows
-	swap	d5									; d5 = [blitHeight | old]
-	move.w	a3,d5								; d5 = [blitHeight | blitWidthWords]
-	move.l	d5,(BLTSIZV-CUSTOMREGS,a2)			; start blit!
+    ; BLTAMOD + BLTDMOD
+    swap    d2
+    move.w  d6,d2
+    move.l  d2,(BLTAMOD-CUSTOMREGS,a2)
 
-	movem.l	(sp)+,d2-d7/a2-a3					; restore registers
-	rts
+    ; BLTSIZV + BLTSIZH
+    ; total rows = Height * NUMBEROFBITPLANES = Height * 3
+    move.w  d5,d0
+    add.w   d5,d5
+    add.w   d0,d5
+    swap    d5
+    move.w  d7,d5
+    move.l  d5,(BLTSIZV-CUSTOMREGS,a2)
+
+    movem.l (sp)+,d2-d7/a2
+    rts
 
 ; ***************************************************************************************************
 ; * Variables                                                                                       *

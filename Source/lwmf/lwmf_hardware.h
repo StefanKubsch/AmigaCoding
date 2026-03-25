@@ -38,5 +38,22 @@ void lwmf_CheckCPU(void)
 	}
 }
 
+static ULONG lwmf_GetVBR(void)
+{
+    extern struct ExecBase *SysBase;
+
+	static const UWORD code[] =
+	{
+        0x4e7a, 0x0801,   /* movec.l vbr,d0 */
+        0x4e73            /* rte */
+    };
+
+    if (SysBase->AttnFlags & AFF_68010)
+	{
+        return Supervisor((APTR)code);
+	}
+
+    return 0;
+}
 
 #endif /* LWMF_HARDWARE_H */

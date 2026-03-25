@@ -8,6 +8,8 @@
 #include <clib/exec_protos.h>
 #include <clib/graphics_protos.h>
 #include <clib/datatypes_protos.h>
+#include <proto/dos.h>
+#include <hardware/custom.h>
 
 //
 // Global symbols for our assembler functions

@@ -14,7 +14,7 @@
 
 // Enable (set to 1) for debugging
 // When enabled, load per frame will be displayed via color changing of background
-#define DEBUG 				1
+#define DEBUG 				0
 
 // =====================================================================
 // Screen settings
@@ -133,65 +133,61 @@ static const UBYTE ScrollSinTab[SCREENWIDTH] =
 
 UWORD ScrollerPalette[8] = {0x003, 0xC0D, 0x333, 0x888, 0xFFF, 0x000, 0x000, 0x000};
 
-static UWORD FindFirstVisibleColumn_Binary(WORD ScrollX)
-{
-	const WORD Target = -ScrollX;
-	UWORD Left = 0;
-	UWORD Right = Font.ColumnCount;
-
-	while (Left < Right)
-	{
-		const UWORD Mid = (Left + Right) >> 1;
-
-		if (Font.ColumnDst[Mid] < Target)
-		{
-			Left = Mid + 1;
-		}
-		else
-		{
-			Right = Mid;
-		}
-	}
-
-	if (Left > 0)
-	{
-		--Left;
-	}
-
-	return Left;
-}
-
 static UWORD UpdateFirstVisibleColumn(WORD ScrollX)
 {
-	UWORD i = Font.FirstVisibleColumn;
-
-	if (Font.ColumnCount == 0)
+    if (Font.ColumnCount == 0)
 	{
-		return 0;
+        return 0;
 	}
 
-	if (ScrollX > Font.LastScrollX || (Font.LastScrollX - ScrollX) > (Font.Feed << 2))
-	{
-		i = FindFirstVisibleColumn_Binary(ScrollX);
-		Font.FirstVisibleColumn = i;
-		Font.LastScrollX = ScrollX;
-		return i;
-	}
+    UWORD i;
 
-	while (i < Font.ColumnCount)
+    if (ScrollX > Font.LastScrollX || (Font.LastScrollX - ScrollX) > (Font.Feed << 2))
 	{
-		if ((ScrollX + Font.ColumnDst[i] + Font.Feed) >= 0)
+        const WORD Target = -ScrollX;
+        UWORD Left = 0;
+		UWORD Right = Font.ColumnCount;
+
+        while (Left < Right)
 		{
-			break;
+            const UWORD Mid = (Left + Right) >> 1;
+
+            if (Font.ColumnDst[Mid] < Target)
+			{
+                Left = Mid + 1;
+			}
+			else
+            {
+				Right = Mid;
+			}
+        }
+
+        if (Left > 0)
+		{
+			--Left;
 		}
 
-		++i;
-	}
+        i = Left;
+    }
+	else
+	{
+        i = Font.FirstVisibleColumn;
 
-	Font.FirstVisibleColumn = i;
-	Font.LastScrollX = ScrollX;
+        while (i < Font.ColumnCount)
+		{
+            if ((ScrollX + Font.ColumnDst[i] + Font.Feed) >= 0)
+			{
+                break;
+			}
 
-	return i;
+			++i;
+        }
+    }
+
+    Font.FirstVisibleColumn = i;
+    Font.LastScrollX = ScrollX;
+
+    return i;
 }
 
 BOOL Init_SineScroller(void)
@@ -201,12 +197,12 @@ BOOL Init_SineScroller(void)
 		return FALSE;
 	}
 
-	Font.Text = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!! HAVE FUN WATCHING THE DEMO AND ENJOY YOUR AMIGA !!! (C) DEEP4 2026...";
+	Font.Text = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!! HAVE FUN WATCHING THE DEMO AND ENJOY YOUR AMIGA !!! MUSIC - BEAMS OF LIGHT BY WALKMAN 1989...CODE AND GFX - DEEP4 2026...";
 	Font.CharMap = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!-,+?*()";
 	Font.CharWidth = 15;
 	Font.CharHeight = 20;
 	Font.CharSpacing = 1;
-	Font.Feed = 1;
+	Font.Feed = 2;
 	Font.CharOverallWidth = Font.CharWidth + Font.CharSpacing;
 	Font.ScrollX = SCREENWIDTH;
 	Font.TextLength = 0;
@@ -316,17 +312,22 @@ void Draw_SineScroller(UBYTE Buffer)
 	const UBYTE *SinTab = ScrollSinTab;
 	WORD *ColumnDst = Font.ColumnDst;
 	WORD *ColumnSrc = Font.ColumnSrc;
-	const UWORD ColumnCount = Font.ColumnCount;
+	WORD *DstEnd = ColumnDst + Font.ColumnCount;
 
-	if (ColumnCount != 0)
+	struct BitMap *SrcBitmap = Font.FontBitmap->Image;
+	struct BitMap *DstBitmap = ScreenBitmap[Buffer];
+
+	if (ColumnDst != DstEnd)
 	{
 		UWORD i = UpdateFirstVisibleColumn(ScrollX);
+		WORD *dstPtr = ColumnDst + i;
+		WORD *srcPtr = ColumnSrc + i;
 
-		while (i < ColumnCount)
+		while (dstPtr < DstEnd)
 		{
-			WORD dstTextX = ColumnDst[i];
+			WORD dstTextX = *dstPtr;
 			WORD dstX = ScrollX + dstTextX;
-			WORD srcX = ColumnSrc[i];
+			WORD srcX = *srcPtr;
 
 			if (dstX >= ScreenLimit)
 			{
@@ -335,47 +336,61 @@ void Draw_SineScroller(UBYTE Buffer)
 
 			if (dstX < 0)
 			{
-				++i;
+				++dstPtr;
+				++srcPtr;
 				continue;
 			}
 
 			const WORD y = SinTab[dstX];
 			WORD width = Feed;
-			UWORD j = i + 1;
+			WORD lastDstTextX = dstTextX;
+			WORD lastSrcX = srcX;
+			WORD *nextDstPtr = dstPtr + 1;
+			WORD *nextSrcPtr = srcPtr + 1;
 
-			while (j < ColumnCount)
+			while (nextDstPtr < DstEnd)
 			{
-				const WORD nextDstTextX = ColumnDst[j];
+				const WORD nextDstTextX = *nextDstPtr;
 				const WORD nextDstX = ScrollX + nextDstTextX;
-				const WORD nextSrcX = ColumnSrc[j];
+				const WORD nextSrcX = *nextSrcPtr;
+				WORD dy;
 
-				if (nextDstX >= ScreenLimit)
-				{
+				if (nextDstX >= ScreenLimit) {
 					break;
 				}
 
-				if (nextDstX < 0)
-				{
+				if (nextDstX < 0) {
 					break;
 				}
 
-				if ((nextDstTextX - dstTextX) != Feed) break;
-				if ((nextSrcX - srcX) != Feed) break;
+				if ((nextDstTextX - lastDstTextX) != Feed) {
+					break;
+				}
 
-				WORD dy = SinTab[nextDstX] - y;
+				if ((nextSrcX - lastSrcX) != Feed) {
+					break;
+				}
 
-				if (dy < 0) dy = -dy;
-				if (dy > 1) break;
+				dy = SinTab[nextDstX] - y;
+
+				if (dy < 0) {
+					dy = -dy;
+				}
+
+				if (dy > 1) {
+					break;
+				}
 
 				width += Feed;
-				dstTextX = nextDstTextX;
-				srcX = nextSrcX;
-				++j;
+				lastDstTextX = nextDstTextX;
+				lastSrcX = nextSrcX;
+				++nextDstPtr;
+				++nextSrcPtr;
 			}
 
-			BltBitMap(Font.FontBitmap->Image, ColumnSrc[i], 0, ScreenBitmap[Buffer], dstX, y, width, CharHeight, 0xC0, 0x01, NULL);
-
-			i = j;
+			BltBitMap(SrcBitmap, srcX, 0, DstBitmap, dstX, y, width, CharHeight, 0xC0, 0x01, NULL);
+			dstPtr = nextDstPtr;
+			srcPtr = nextSrcPtr;
 		}
 	}
 
@@ -472,33 +487,6 @@ UWORD ScrollBPL3PTL_Idx = 0;
 
 #define PLASMA_COLS 40
 #define LINE_WORDS (2 + 2 + 2 * PLASMA_COLS + 2)
-
-// Wave sine table (256 entries, values 0..63)
-static const UBYTE PlasmaSin[256] =
-{
-	32,32,33,34,35,35,36,37,38,38,39,40,41,41,42,43,44,44,45,46,46,47,48,48,49,50,50,51,51,52,53,53,
-	54,54,55,55,56,56,57,57,58,58,59,59,59,60,60,60,61,61,61,61,62,62,62,62,62,63,63,63,63,63,63,63,
-	63,63,63,63,63,63,63,63,62,62,62,62,62,61,61,61,61,60,60,60,59,59,59,58,58,57,57,56,56,55,55,54,
-	54,53,53,52,51,51,50,50,49,48,48,47,46,46,45,44,44,43,42,41,41,40,39,38,38,37,36,35,35,34,33,32,
-	32,31,30,29,28,28,27,26,25,25,24,23,22,22,21,20,19,19,18,17,17,16,15,15,14,13,13,12,12,11,10,10,
-	 9, 9, 8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 4, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0,
-	 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9,
-	 9,10,10,11,12,12,13,13,14,15,15,16,17,17,18,19,19,20,21,22,22,23,24,25,25,26,27,28,28,29,30,31
-};
-
-// 2D RGB plasma: base table (64-entry period, doubled to 128)
-static const UBYTE CompBase[128] =
-{
-	8, 8, 9,10,10,11,12,12,13,13,14,14,14,15,15,15,15,15,15,15,14,14,14,13,13,12,12,11,10,10, 9, 8,
-	 8, 7, 6, 5, 5, 4, 3, 3, 2, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 7,
-	 8, 8, 9,10,10,11,12,12,13,13,14,14,14,15,15,15,15,15,15,15,14,14,14,13,13,12,12,11,10,10, 9, 8,
-	 8, 7, 6, 5, 5, 4, 3, 3, 2, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 7
-};
-
-static UBYTE PlasmaFrameCommon = 0;
-static UBYTE PlasmaFrameRed = 0;
-static UBYTE PlasmaFrameGreen = 90;
-static UBYTE PlasmaFrameBlue = 60;
 
 // VPOS offset for PAL display (first visible line = $2C = 44)
 #define VPOS_OFFSET     		0x2C
@@ -704,21 +692,44 @@ void Update_BitplanePointers(UBYTE Buffer)
 	CopperList[ScrollBPL3PTL_Idx] = (UWORD)(addr & 0xFFFF);
 }
 
+// Wave sine table (256 entries, values 0..63)
+static const UBYTE PlasmaSin[256] =
+{
+	32,32,33,34,35,35,36,37,38,38,39,40,41,41,42,43,44,44,45,46,46,47,48,48,49,50,50,51,51,52,53,53,
+	54,54,55,55,56,56,57,57,58,58,59,59,59,60,60,60,61,61,61,61,62,62,62,62,62,63,63,63,63,63,63,63,
+	63,63,63,63,63,63,63,63,62,62,62,62,62,61,61,61,61,60,60,60,59,59,59,58,58,57,57,56,56,55,55,54,
+	54,53,53,52,51,51,50,50,49,48,48,47,46,46,45,44,44,43,42,41,41,40,39,38,38,37,36,35,35,34,33,32,
+	32,31,30,29,28,28,27,26,25,25,24,23,22,22,21,20,19,19,18,17,17,16,15,15,14,13,13,12,12,11,10,10,
+	 9, 9, 8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 4, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0,
+	 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9,
+	 9,10,10,11,12,12,13,13,14,15,15,16,17,17,18,19,19,20,21,22,22,23,24,25,25,26,27,28,28,29,30,31
+};
+
+// 2D RGB plasma: base table (64-entry period, doubled to 128)
+static const UBYTE CompBase[128] =
+{
+	8, 8, 9,10,10,11,12,12,13,13,14,14,14,15,15,15,15,15,15,15,14,14,14,13,13,12,12,11,10,10, 9, 8,
+	 8, 7, 6, 5, 5, 4, 3, 3, 2, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 7,
+	 8, 8, 9,10,10,11,12,12,13,13,14,14,14,15,15,15,15,15,15,15,14,14,14,13,13,12,12,11,10,10, 9, 8,
+	 8, 7, 6, 5, 5, 4, 3, 3, 2, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 7
+};
+
 void Update_Plasma(void)
 {
-	UBYTE idx3 = PlasmaFrameCommon;
+	static UBYTE PlasmaFrameRed = 0;
+	static UBYTE PlasmaFrameGreen = 90;
+
 	UBYTE idx2 = PlasmaFrameRed;
 	UBYTE idx5 = PlasmaFrameGreen;
-	UBYTE idx11 = PlasmaFrameBlue;
 
 	UWORD *lineBase = &CopperList[PlasmaStart];
 
 	for (UWORD row = 0; row < PLASMA_LINES; ++row)
 	{
-		UBYTE common = PlasmaSin[idx3] >> 2;
-		UBYTE r_off = (PlasmaSin[idx2] + common) & 63;
-		UBYTE g_off = (PlasmaSin[idx5] + common) & 63;
-		UBYTE b_off = (PlasmaSin[idx11] + common) & 63;
+		UBYTE r_off = PlasmaSin[idx2] & 127;
+		UBYTE g_off = PlasmaSin[idx5] & 127;
+		// generate blue offset as average of red and green for better color distribution
+		UBYTE b_off = ((UBYTE)(((int)r_off + (int)g_off) >> 1)) & 127;
 
 		const UBYTE *rp = &CompBase[r_off];
 		const UBYTE *gp = &CompBase[g_off];
@@ -776,17 +787,58 @@ void Update_Plasma(void)
 		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
 		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
 
-		idx3 += 3;
 		idx2 += 2;
 		idx5 += 5;
-		idx11 += 11;
 		lineBase += LINE_WORDS;
 	}
 
-	PlasmaFrameCommon += 3;
 	PlasmaFrameRed += 3;
 	PlasmaFrameGreen += 2;
-	PlasmaFrameBlue += 5;
+}
+
+// =====================================================================
+// MODPlayer (ptplayer)
+// =====================================================================
+
+struct Custom *custom = (struct Custom *)0xDFF000;
+
+APTR MODFile;
+LONG MODSize;
+
+BOOL Init_ModPlayer(void)
+{
+    MODFile = lwmf_LoadMODFile("sfx/beamsoflight.mod", &MODSize);
+
+	if (!MODFile)
+	{
+        PutStr("Could not load modfile.\n");
+        return FALSE;
+    }
+
+	// Get VBR for ptplayer usage
+	ULONG VBR = lwmf_GetVBR();
+	// Install custom VBR handler for ptplayer (required for AGA compatibility and to avoid conflicts with OS handlers)
+	mt_install(custom, (APTR)VBR, 1);
+
+	return TRUE;
+}
+
+void Start_MODPlayer(void)
+{
+	mt_init(custom, MODFile, NULL, 0);
+	mt_Enable = 1;
+}
+
+void Stop_MODPlayer(void)
+{
+	mt_Enable = 0;
+    mt_end(custom);
+}
+
+void Cleanup_ModPlayer(void)
+{
+    mt_remove(custom);
+    FreeMem(MODFile, MODSize);
 }
 
 // =====================================================================
@@ -811,6 +863,7 @@ void Cleanup_All(void)
 		}
 	}
 
+	Cleanup_ModPlayer();
 	lwmf_CleanupAll();
 }
 
@@ -823,6 +876,12 @@ int main()
 
 	if (lwmf_LoadDatatypesLib() != 0)
 	{
+		return 20;
+	}
+
+	if (!Init_ModPlayer())
+	{
+		Cleanup_All();
 		return 20;
 	}
 
@@ -857,6 +916,8 @@ int main()
 
 	Init_2DStarfield();
 
+	Start_MODPlayer();
+
 	UBYTE CurrentBuffer = 1;
 	Update_BitplanePointers(0);
 
@@ -886,6 +947,8 @@ int main()
 		lwmf_WaitVertBlank();
 		CurrentBuffer ^= 1;
 	}
+
+	Stop_MODPlayer();
 
 	Cleanup_All();
 	return 0;

@@ -10,6 +10,8 @@ For better handling of reusable code, I am writing a framework called "lwmf" - l
 
 Performance-critical parts are done in assembly, like memory clearing, setting pixels etc.
 
+For MOD Support I use the fantastic ptplayer (Protracker) library by Frank Wille (https://aminet.net/package/mus/play/ptplayer), that I included in my lwmf.
+
 Used compiler:
 
 vbcc 0.9h Patch 3
@@ -35,5 +37,6 @@ I test my code on:
 Useful links:
 
 68000 instructions overview - http://68k.hax.com/
+
 Amiga registers documentation - http://amigadev.elowar.com/read/ADCD_2.1/Hardware_Manual_guide/node0060.html
 
