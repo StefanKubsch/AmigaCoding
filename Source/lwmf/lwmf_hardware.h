@@ -38,9 +38,14 @@ void lwmf_CheckCPU(void)
 	}
 }
 
+//
+// Get proper VBR by using Amiga SUPERVISOR Mode.
+// VBR can be moved on 68010+ CPUs, e.g. to FastMEM and it´s required to get the correct VBR for ptplayer to work properly (and be AGA compatible).
+//
+
 static ULONG lwmf_GetVBR(void)
 {
-    extern struct ExecBase *SysBase;
+    struct ExecBase* SysBase = *((struct ExecBase**)4L);
 
 	static const UWORD code[] =
 	{
@@ -55,5 +60,6 @@ static ULONG lwmf_GetVBR(void)
 
     return 0;
 }
+
 
 #endif /* LWMF_HARDWARE_H */

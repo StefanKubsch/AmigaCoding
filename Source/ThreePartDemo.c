@@ -36,6 +36,12 @@
 struct BitMap* ScreenBitmap[2] = { NULL, NULL };
 
 // =====================================================================
+// MODPlayer (ptplayer)
+// =====================================================================
+
+struct MODFile MOD_Demosong;
+
+// =====================================================================
 // Bouncing Text Logo
 // =====================================================================
 
@@ -797,51 +803,6 @@ void Update_Plasma(void)
 }
 
 // =====================================================================
-// MODPlayer (ptplayer)
-// =====================================================================
-
-struct Custom *custom = (struct Custom *)0xDFF000;
-
-APTR MODFile;
-LONG MODSize;
-
-BOOL Init_ModPlayer(void)
-{
-    MODFile = lwmf_LoadMODFile("sfx/beamsoflight.mod", &MODSize);
-
-	if (!MODFile)
-	{
-        PutStr("Could not load modfile.\n");
-        return FALSE;
-    }
-
-	// Get VBR for ptplayer usage
-	ULONG VBR = lwmf_GetVBR();
-	// Install custom VBR handler for ptplayer (required for AGA compatibility and to avoid conflicts with OS handlers)
-	mt_install(custom, (APTR)VBR, 1);
-
-	return TRUE;
-}
-
-void Start_MODPlayer(void)
-{
-	mt_init(custom, MODFile, NULL, 0);
-	mt_Enable = 1;
-}
-
-void Stop_MODPlayer(void)
-{
-	mt_Enable = 0;
-    mt_end(custom);
-}
-
-void Cleanup_ModPlayer(void)
-{
-    mt_remove(custom);
-    FreeMem(MODFile, MODSize);
-}
-
-// =====================================================================
 // Cleanup & Main
 // =====================================================================
 
@@ -863,7 +824,7 @@ void Cleanup_All(void)
 		}
 	}
 
-	Cleanup_ModPlayer();
+	lwmf_CleanupModPlayer(&MOD_Demosong);
 	lwmf_CleanupAll();
 }
 
@@ -879,7 +840,7 @@ int main()
 		return 20;
 	}
 
-	if (!Init_ModPlayer())
+	if (!lwmf_InitModPlayer(&MOD_Demosong, "sfx/beamsoflight.mod"))
 	{
 		Cleanup_All();
 		return 20;
@@ -916,7 +877,7 @@ int main()
 
 	Init_2DStarfield();
 
-	Start_MODPlayer();
+	lwmf_StartMODPlayer(&MOD_Demosong);
 
 	UBYTE CurrentBuffer = 1;
 	Update_BitplanePointers(0);
@@ -948,7 +909,7 @@ int main()
 		CurrentBuffer ^= 1;
 	}
 
-	Stop_MODPlayer();
+	lwmf_StopMODPlayer(&MOD_Demosong);
 
 	Cleanup_All();
 	return 0;
