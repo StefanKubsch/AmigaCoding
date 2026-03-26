@@ -34,6 +34,7 @@ BOOL lwmf_CreateViewPort(const ULONG Width, const ULONG Height, const int Number
 	{
 		if (!(BufferBitmap[i] = AllocBitMap(Width, Height, NumberOfBitPlanes, BMF_INTERLEAVED | BMF_CLEAR, NULL)))
 		{
+	        PutStr("Could not allocate BufferBitmap.\n");
 			return FALSE;
 		}
 
@@ -67,6 +68,7 @@ void lwmf_CleanupViewPort(void)
 		if (BufferBitmap[i])
 		{
 			FreeBitMap(BufferBitmap[i]);
+			BufferBitmap[i] = NULL;
 		}
 	}
 

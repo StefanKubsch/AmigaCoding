@@ -24,7 +24,6 @@ struct MODFile
 {
 	APTR File;
 	LONG Size;
-    BOOL Paused;
 };
 
 static APTR lwmf_LoadMODFile(const STRPTR Filename, LONG *Size_Out)
@@ -32,53 +31,57 @@ static APTR lwmf_LoadMODFile(const STRPTR Filename, LONG *Size_Out)
     BPTR FileHandle = Open(Filename, MODE_OLDFILE);
 
     if (!FileHandle)
-	{
+    {
         return NULL;
-	}
+    }
 
-    LONG LastPos = Seek(FileHandle, 0, OFFSET_END);
+    struct FileInfoBlock *FIB = AllocDosObject(DOS_FIB, NULL);
 
-    if (LastPos == -1)
-	{
+    if (!FIB)
+    {
         Close(FileHandle);
         return NULL;
     }
 
-    LONG Size = Seek(FileHandle, 0, OFFSET_CURRENT);
-
-	if (Size <= 0)
-	{
+    if (!ExamineFH(FileHandle, FIB))
+    {
+        FreeDosObject(DOS_FIB, FIB);
         Close(FileHandle);
         return NULL;
     }
 
-    if (Seek(FileHandle, 0, OFFSET_BEGINNING) == -1)
-	{
+    const LONG Size = FIB->fib_Size;
+
+    FreeDosObject(DOS_FIB, FIB);
+    FIB = NULL;
+
+    if (Size <= 0)
+    {
         Close(FileHandle);
         return NULL;
     }
 
-    APTR Buffer = AllocMem(Size, MEMF_CHIP);
+    APTR Buffer = AllocMem(Size, MEMF_CHIP | MEMF_CLEAR);
 
     if (!Buffer)
-	{
+    {
         Close(FileHandle);
         return NULL;
     }
 
     if (Read(FileHandle, Buffer, Size) != Size)
-	{
-        FreeMem(Buffer, Size);
+    {
         Close(FileHandle);
+        FreeMem(Buffer, Size);
         return NULL;
     }
 
     Close(FileHandle);
 
     if (Size_Out)
-	{
+    {
         *Size_Out = Size;
-	}
+    }
 
     return Buffer;
 }
@@ -86,24 +89,23 @@ static APTR lwmf_LoadMODFile(const STRPTR Filename, LONG *Size_Out)
 BOOL lwmf_InitModPlayer(struct MODFile *mod, const STRPTR Filename)
 {
 	// Load MOD file into memory
-	mod->File = lwmf_LoadMODFile(Filename, &mod->Size);
-
-	if (!mod->File)
+	if (!(mod->File = lwmf_LoadMODFile(Filename, &mod->Size)))
 	{
         PutStr("Could not load modfile.\n");
         return FALSE;
     }
 
 	// Get VBR for ptplayer usage
-	ULONG VBR = lwmf_GetVBR();
+	const ULONG VBR = lwmf_GetVBR();
+
+    // CIA clock is PAL or NTSC?
+    const UBYTE PALFlag = SysBase->PowerSupplyFrequency < 59;
 
 	// Install custom VBR handler for ptplayer (required for AGA compatibility and to avoid conflicts with OS handlers)
-	mt_install(ptplayer_custom, (APTR)VBR, 1);
+	mt_install(ptplayer_custom, (APTR)VBR, PALFlag);
 
     // Init ptplayer with the loaded MOD file; no separate sample loading, ptplayer will handle it internally
 	mt_init(ptplayer_custom, mod->File, NULL, 0);
-
-	mod->Paused = FALSE;
 
 	return TRUE;
 }
@@ -111,26 +113,27 @@ BOOL lwmf_InitModPlayer(struct MODFile *mod, const STRPTR Filename)
 void lwmf_StartMODPlayer(struct MODFile *mod)
 {
 	mt_Enable = 1;
-	mod->Paused = FALSE;
 }
 
 void lwmf_PauseMODPlayer(struct MODFile *mod)
 {
 	mt_Enable = 0;
-	mod->Paused = TRUE;
 }
 
 void lwmf_StopMODPlayer(struct MODFile *mod)
 {
     mt_end(ptplayer_custom);
-   	mt_Enable = 0;
-	mod->Paused = FALSE;
 }
 
 void lwmf_CleanupModPlayer(struct MODFile *mod)
 {
-	mt_remove(ptplayer_custom);
-    FreeMem(mod->File, mod->Size);
+    if (mod->File)
+	{
+        FreeMem(mod->File, mod->Size);
+        mod->File = NULL;
+	}
+
+   	mt_remove(ptplayer_custom);
 }
 
 

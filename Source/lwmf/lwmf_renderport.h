@@ -18,6 +18,7 @@ BOOL lwmf_CreateRenderPort(const UWORD NumberOfVertices, const UWORD AreaWidth, 
 
 	if (!(TmpRasBuffer = AllocVec(RasSize, MEMF_CHIP | MEMF_CLEAR)))
 	{
+        PutStr("Could not allocate TmpRasBuffer.\n");
 		return FALSE;
 	}
 
@@ -27,6 +28,7 @@ BOOL lwmf_CreateRenderPort(const UWORD NumberOfVertices, const UWORD AreaWidth, 
 	// We need to allocate 5bytes per vertex
 	if (!(AreaBuffer = AllocVec(5 * NumberOfVertices, MEMF_CHIP | MEMF_CLEAR)))
 	{
+        PutStr("Could not allocate AreaBuffer.\n");
 		return FALSE;
 	}
 

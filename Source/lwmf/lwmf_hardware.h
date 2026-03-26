@@ -16,6 +16,8 @@ volatile UWORD* const SPR0PTL		= (volatile UWORD* const) 0xDFF122;
 // Misc
 volatile UWORD* const COLOR00		= (volatile UWORD* const) 0xDFF180;
 
+extern struct ExecBase *SysBase;
+
 // Define a "blank" sprite for mouse pointer
 // "__chip" tells vbcc to store an array or variable in Chipmem!
 __chip UWORD BlankMousePointer[4] =
@@ -24,18 +26,16 @@ __chip UWORD BlankMousePointer[4] =
 	0x0000, 0x0000
 };
 
-BOOL FastCPUFlag = FALSE;
-
-void lwmf_CheckCPU(void)
+BOOL lwmf_CheckFastCPU(void)
 {
-	struct ExecBase* SysBase = *((struct ExecBase**)4L);
-
 	// Check if CPU is a 68020, 030, 040, 060 (this is the "0x80")
 	// If yes, we can calculate more stuff...
 	if (SysBase->AttnFlags & AFF_68020 || SysBase->AttnFlags & AFF_68030 || SysBase->AttnFlags & AFF_68040 || SysBase->AttnFlags & 0x80)
 	{
-		FastCPUFlag = TRUE;
+		return TRUE;
 	}
+
+	return FALSE;
 }
 
 //
@@ -45,8 +45,6 @@ void lwmf_CheckCPU(void)
 
 static ULONG lwmf_GetVBR(void)
 {
-    struct ExecBase* SysBase = *((struct ExecBase**)4L);
-
 	static const UWORD code[] =
 	{
         0x4e7a, 0x0801,   /* movec.l vbr,d0 */

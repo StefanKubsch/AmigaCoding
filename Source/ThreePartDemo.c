@@ -379,11 +379,8 @@ void Draw_SineScroller(UBYTE Buffer)
 
 				dy = SinTab[nextDstX] - y;
 
-				if (dy < 0) {
-					dy = -dy;
-				}
-
-				if (dy > 1) {
+				if (SinTab[nextDstX] != y)
+				{
 					break;
 				}
 
@@ -811,6 +808,8 @@ void Cleanup_All(void)
 	Cleanup_SineScroller();
 	Cleanup_TextLogo();
 
+	lwmf_CleanupModPlayer(&MOD_Demosong);
+
 	if (CopperList)
 	{
 		FreeVec(CopperList);
@@ -824,7 +823,6 @@ void Cleanup_All(void)
 		}
 	}
 
-	lwmf_CleanupModPlayer(&MOD_Demosong);
 	lwmf_CleanupAll();
 }
 
@@ -837,6 +835,7 @@ int main()
 
 	if (lwmf_LoadDatatypesLib() != 0)
 	{
+		Cleanup_All();
 		return 20;
 	}
 
@@ -845,8 +844,6 @@ int main()
 		Cleanup_All();
 		return 20;
 	}
-
-	lwmf_TakeOverOS();
 
 	for (UBYTE i = 0; i < 2; ++i)
 	{
@@ -863,19 +860,21 @@ int main()
 		return 20;
 	}
 
-	if (!Init_CopperList())
-	{
-		Cleanup_All();
-		return 20;
-	}
-
 	if (!Init_SineScroller())
 	{
 		Cleanup_All();
 		return 20;
 	}
 
+	if (!Init_CopperList())
+	{
+		Cleanup_All();
+		return 20;
+	}
+
 	Init_2DStarfield();
+
+	lwmf_TakeOverOS();
 
 	lwmf_StartMODPlayer(&MOD_Demosong);
 

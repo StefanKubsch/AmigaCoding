@@ -18,6 +18,7 @@ struct BitMap* lwmf_BitmapCopy(struct BitMap* SourceBM)
 
 	if (!(TargetBM = AllocBitMap(Width = GetBitMapAttr(SourceBM, BMA_WIDTH), Height = GetBitMapAttr(SourceBM, BMA_HEIGHT), GetBitMapAttr(SourceBM, BMA_DEPTH), GetBitMapAttr(SourceBM, BMA_FLAGS), NULL)))
 	{
+        PutStr("Could not allocate TargetBM.\n");
 		return NULL;
 	}
 
@@ -34,12 +35,14 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 
 	if (!(TempImage = AllocMem(sizeof(struct lwmf_Image), MEMF_CLEAR)))
 	{
+        PutStr("Could not allocate TempImage.\n");
 		return NULL;
 	}
 
 	if (!(dtObject = NewDTObject(Filename, DTA_GroupID, GID_PICTURE, PDTA_Remap, FALSE, TAG_END)))
 	{
 		FreeMem(TempImage, sizeof(struct lwmf_Image));
+        PutStr("Could not load image.\n");
 		return NULL;
 	}
 
@@ -50,6 +53,7 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 	{
 		DisposeDTObject(dtObject);
 		FreeMem(TempImage, sizeof(struct lwmf_Image));
+		PutStr("Could not copy bitmap.\n");
 		return NULL;
 	}
 
@@ -57,6 +61,7 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 	TempImage->Height = GetBitMapAttr(TempImage->Image, BMA_HEIGHT);
 
 	DisposeDTObject(dtObject);
+
 	return TempImage;
 }
 
@@ -70,6 +75,7 @@ void lwmf_DeleteImage(struct lwmf_Image* Image)
 		}
 
 		FreeMem(Image, sizeof(struct lwmf_Image));
+		Image = NULL;
 	}
 }
 
