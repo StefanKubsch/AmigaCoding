@@ -26,38 +26,5 @@ __chip UWORD BlankMousePointer[4] =
 	0x0000, 0x0000
 };
 
-BOOL lwmf_CheckFastCPU(void)
-{
-	// Check if CPU is a 68020, 030, 040, 060 (this is the "0x80")
-	// If yes, we can calculate more stuff...
-	if (SysBase->AttnFlags & AFF_68020 || SysBase->AttnFlags & AFF_68030 || SysBase->AttnFlags & AFF_68040 || SysBase->AttnFlags & 0x80)
-	{
-		return TRUE;
-	}
-
-	return FALSE;
-}
-
-//
-// Get proper VBR by using Amiga SUPERVISOR Mode.
-// VBR can be moved on 68010+ CPUs, e.g. to FastMEM and it´s required to get the correct VBR for ptplayer to work properly (and be AGA compatible).
-//
-
-static ULONG lwmf_GetVBR(void)
-{
-	static const UWORD code[] =
-	{
-        0x4e7a, 0x0801,   /* movec.l vbr,d0 */
-        0x4e73            /* rte */
-    };
-
-    if (SysBase->AttnFlags & AFF_68010)
-	{
-        return Supervisor((APTR)code);
-	}
-
-    return 0;
-}
-
 
 #endif /* LWMF_HARDWARE_H */

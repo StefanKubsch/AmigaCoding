@@ -9,7 +9,6 @@
 #include <clib/graphics_protos.h>
 #include <clib/datatypes_protos.h>
 #include <proto/dos.h>
-#include <hardware/custom.h>
 
 //
 // Global symbols for our assembler functions
@@ -17,6 +16,7 @@
 
 // Hardware
 
+long lwmf_GetVBR(void);
 UWORD lwmf_LoadGraphicsLib(void);
 UWORD lwmf_LoadDatatypesLib(void);
 void lwmf_CloseLibraries();
@@ -31,10 +31,6 @@ void lwmf_ClearScreen(__reg("a0") long* StartAddress);
 void lwmf_BlitClearLines(__reg("d0") UWORD StartLine, __reg("d1") UWORD NumberOfLines, __reg("a0") long* Target);
 void lwmf_SetPixel(__reg("d0") WORD PosX, __reg("d1") WORD PosY,  __reg("d2") UBYTE Color,  __reg("a0") long* Target);
 void lwmf_BlitTile(__reg("a0") long* SrcAddr, __reg("d0") WORD SrcX, __reg("d1") WORD SrcY, __reg("a1") long* DstAddr, __reg("d2") WORD PosX, __reg("d3") WORD PosY, __reg("d4") WORD Width, __reg("d5") WORD Height, __reg("d6") WORD SrcWidth);
-
-// Math
-
-ULONG lwmf_Random(void);
 
 //
 // External variables as defined in assembler sources

@@ -4,6 +4,7 @@
 #define GFX_COPINIT	0x26
 #define GFX_ACTIVIEW	0x22
 #define MINVERSION	0x27
+#define LVOSupervisor	0xffffffffffffffe2
 #define LVOCloseLibrary	0xfffffffffffffe62
 #define LVOOpenLibrary	0xfffffffffffffdd8
 #define LVOSetTaskPri	0xfffffffffffffed4
@@ -36,7 +37,9 @@
 #define BLTCON0	0xdff040
 #define ADKCONR	0xdff010
 #define ADKCON	0xdff09e
+#define ATTNFLAGS	0x128
 #define CUSTOMREGS	0xdff000
+#define SYSBASE	0x4
 #define EXECBASE	0x4
 #define SCREENCLRSIZECPU	0x7800
 #define SCREENCLRSIZEBLT	0x6014

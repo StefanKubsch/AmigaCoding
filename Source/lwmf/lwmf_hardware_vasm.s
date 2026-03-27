@@ -28,7 +28,11 @@ SCREENCLRSIZECPU    equ     SCREENWIDTHTOTAL*SCREENHEIGHT			 	; size for cpu par
 ; CUSTOMREGS registers
 
 EXECBASE            equ     $4
+SYSBASE         	equ     $4
+
 CUSTOMREGS		    equ     $00DFF000		; Base address of CUSTOM registers
+
+ATTNFLAGS       	equ     296				; ExecBase->AttnFlags
 
 ADKCON              equ     $00DFF09E		; Audio/Disk control read/write
 ADKCONR             equ     $00DFF010		; Audio/Disk control read
@@ -69,6 +73,7 @@ LVOFindTask         equ     -294
 LVOSetTaskPri       equ     -300
 LVOOpenLibrary      equ     -552
 LVOCloseLibrary     equ     -414
+LVOSupervisor       equ     -30
 
 ; Constants
 
@@ -102,6 +107,36 @@ BLTCON0_COPY_A_TO_D  EQU $09F0
 ; the label externally visible (refer to xdef).
 
 ; **************************************************************************
+; * System / Helperfunctions                                               *
+; **************************************************************************
+
+;
+; long lwmf_GetVBR(void);
+;
+
+_lwmf_GetVBR::
+        movem.l a5-a6,-(sp)           ; save registers on stack
+
+        move.l  SYSBASE.w,a6          ; get SysBase
+        btst    #0,ATTNFLAGS(a6)      ; check for 68010+ cpu
+        beq.s   .no_vbr               ; jump if not supported
+
+        lea     .supercode(pc),a5     ; load supervisor code address
+        jsr     LVOSupervisor(a6)     ; call supervisor function
+        bra.s   .done                 ; skip fallback return
+
+.no_vbr:
+        moveq   #0,d0                 ; return 0
+
+.done:
+        movem.l (sp)+,a5-a6           ; restore registers
+        rts                           ; return
+
+.supercode:
+        movec.l vbr,d0                ; get vbr
+        rte                           ; return from exception
+
+; **************************************************************************
 ; * Library handling                                                       *
 ; **************************************************************************
 
@@ -113,18 +148,21 @@ _lwmf_LoadGraphicsLib::
 	move.l	a6,-(sp)                ; save register on stack
 	move.l	EXECBASE.w,a6           ; use exec base address
 
-	lea     gfxlib(pc),a1
-	moveq   #MINVERSION,d0
-	jsr     LVOOpenLibrary(a6)
-	move.l  d0,_GfxBase             ; store adress of GfxBase in variable
-	bne.s   .success
+	lea     gfxlib(pc),a1			; load graphics library name
+	moveq   #MINVERSION,d0			; set minimum library version
+	jsr     LVOOpenLibrary(a6)		; open graphics library
+	move.l  d0,_GfxBase				; store address of GfxBase in variable
+	beq.s   .error					; jump if library open failed
 
-	moveq   #20,d0                  ; return with error
-	bra.s	.exit
-.success
-	moveq	#0,d0					; return with success
+	moveq   #0,d0					; return with success
+	bra.s   .exit
+
+.error
+	clr.l   _GfxBase				; clear GfxBase variable
+	moveq   #20,d0					; return with error
+
 .exit
-	move.l	(sp)+,a6                ; restore register
+	move.l	(sp)+,a6				; restore register
 	rts
 
 ;
@@ -135,16 +173,19 @@ _lwmf_LoadDatatypesLib::
 	move.l	a6,-(sp)                ; save register on stack
 	move.l	EXECBASE.w,a6           ; use exec base address
 
-	lea     datatypeslib(pc),a1
-	moveq   #MINVERSION,d0
-	jsr     LVOOpenLibrary(a6)
-	move.l  d0,_DataTypesBase 		; store adress of DataTypeBase in variable
-	bne.s   .success
+	lea     datatypeslib(pc),a1		; load datatypes library name
+	moveq   #MINVERSION,d0			; set minimum library version
+	jsr     LVOOpenLibrary(a6)		; open datatypes library
+	move.l  d0,_DataTypesBase		; store address of DataTypesBase in variable
+	beq.s   .error					; jump if library open failed
 
-	moveq   #20,d0                  ; return with error
-	bra.s	.exit
-.success
-	moveq	#0,d0					; return with success
+	moveq   #0,d0					; return with success
+	bra.s   .exit
+
+.error
+	clr.l   _DataTypesBase			; clear DataTypesBase variable
+	moveq   #20,d0					; return with error
+
 .exit
 	move.l	(sp)+,a6                ; restore register
 	rts
@@ -154,20 +195,22 @@ _lwmf_LoadDatatypesLib::
 ;
 
 _lwmf_CloseLibraries::
+	move.l  a6,-(sp)                ; save register on stack
 	move.l  EXECBASE.w,a6           ; use exec base address
 
-	move.l  _DataTypesBase(pc),d0
+	move.l  _DataTypesBase(pc),a1   ; load DataTypesBase
 	beq.s   .checkgfx               ; skip if not open
-	move.l  d0,a1
-	jsr     LVOCloseLibrary(a6)
-	clr.l   _DataTypesBase
+	jsr     LVOCloseLibrary(a6)     ; close datatypes library
+	clr.l   _DataTypesBase          ; clear DataTypesBase variable
+
 .checkgfx
-	move.l  _GfxBase(pc),d0
+	move.l  _GfxBase(pc),a1         ; load GfxBase
 	beq.s   .done                   ; skip if not open
-	move.l  d0,a1
-	jsr     LVOCloseLibrary(a6)
-	clr.l   _GfxBase
+	jsr     LVOCloseLibrary(a6)     ; close graphics library
+	clr.l   _GfxBase                ; clear GfxBase variable
+
 .done
+	move.l  (sp)+,a6                ; restore register
 	rts
 
 ; **************************************************************************
@@ -252,7 +295,7 @@ _lwmf_ReleaseOS::
    	rts
 
 ; **************************************************************************
-; * System functions                                                       *
+; * Graphics functions                                                     *
 ; **************************************************************************
 
 ;

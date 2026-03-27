@@ -10,5 +10,6 @@
 #include "lwmf_images.h"
 #include "lwmf_text.h"
 #include "lwmf_ptplayer.h"
+#include "lwmf_math.h"
 
 #endif /* LWMF_H */

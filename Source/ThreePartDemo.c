@@ -13,7 +13,7 @@
 #include "lwmf/lwmf.h"
 
 // Enable (set to 1) for debugging
-// When enabled, load per frame will be displayed via color changing of background
+// When enabled, load per frame will be displayed via Color changing of background
 #define DEBUG 				0
 
 // =====================================================================
@@ -47,7 +47,7 @@ struct MODFile MOD_Demosong;
 
 struct lwmf_Image* LogoBitmap = NULL;
 
-// Saved color palette
+// Saved Color palette
 UWORD LogoPalette[8] = {0x003, 0x368, 0x134, 0x012, 0x246,	0x146, 0x123, 0x001};
 
 #define LOGO_WIDTH  192
@@ -428,47 +428,7 @@ void Cleanup_SineScroller(void)
 }
 
 // =====================================================================
-// 2D Starfield
-// =====================================================================
-
-struct StarStruct2D
-{
-	UWORD x;
-	UBYTE y;
-	UBYTE z;
-} Stars2D[100];
-
-void Init_2DStarfield(void)
-{
-	for (UBYTE i = 0; i < 100; ++i)
-	{
-		Stars2D[i].x = lwmf_Random() % SCREENWIDTH;
-		Stars2D[i].y = lwmf_Random() % (SCREENHEIGHT - WHITE_LINE_2) + WHITE_LINE_2;
-		Stars2D[i].z = lwmf_Random() % 3 + 1;
-	}
-}
-
-void Draw_2DStarfield(UBYTE Buffer)
-{
-	for (UBYTE i = 100; i-- > 0; )
-	{
-		struct StarStruct2D* const s = &Stars2D[i];
-		s->x += s->z << 1;
-
-		if (s->x >= SCREENWIDTH)
-		{
-			UWORD rnd = lwmf_Random();
-			s->x = 0;
-			s->y = (rnd & 0xFF) % (SCREENHEIGHT - WHITE_LINE_2) + WHITE_LINE_2;
-			s->z = ((rnd >> 8) % 3) + 1; // 0..2 + 1
-		}
-
-		lwmf_SetPixel(s->x, s->y, s->z + 1, (long*)ScreenBitmap[Buffer]->Planes[0]);
-	}
-}
-
-// =====================================================================
-// Copper & Plasma
+// Copper
 // =====================================================================
 
 UWORD* CopperList = NULL;
@@ -491,7 +451,7 @@ UWORD ScrollBPL3PTL_Idx = 0;
 #define PLASMA_COLS 40
 #define LINE_WORDS (2 + 2 + 2 * PLASMA_COLS + 2)
 
-// VPOS offset for PAL display (first visible line = $2C = 44)
+// VPOS offset for PAL display (first visible Line = $2C = 44)
 #define VPOS_OFFSET     		0x2C
 
 // VPOS helpers
@@ -502,9 +462,82 @@ UWORD ScrollBPL3PTL_Idx = 0;
 #define SCROLLER_VPOS_START 	VPOS_OFFSET + SCROLLER_START_LINE
 #define SCROLLER_BPLPOINTER		SCROLLER_START_LINE * BYTESPERROW * NUMBEROFBITPLANES
 
+// =====================================================================
+// Morning sky copper background
+// =====================================================================
+
+typedef struct
+{
+	UWORD Line;
+	UWORD Color;
+} SKYKEY;
+
+static const SKYKEY SkyKeys[] =
+{
+	// Line, RGB4 Color
+	{   0, 0x012 }, // very dark blue
+	{  28, 0x124 }, // blue-violet
+	{  56, 0x336 }, // purple
+	{  84, 0x648 }, // warm purple
+	{ 112, 0xA63 }, // sunrise orange
+	{ 140, 0xD95 }, // bright peach
+	{ 168, 0xCB8 }, // pale warm sky
+	{ 196, 0x9BD }, // light cyan
+	{ 224, 0x8CF }, // bright sky blue
+	{ 255, 0xBDF }  // pale morning blue
+};
+
+static UWORD SkyColorForLine(UWORD y, UWORD totalLines)
+{
+	if (y == 0)
+	{
+		return SkyKeys[0].Color;
+	}
+
+	UWORD p = (UWORD)(((ULONG)y * SCREENHEIGHT) / (ULONG)(totalLines - 1));
+
+	for (UWORD i = 0; i < (sizeof(SkyKeys) / sizeof(SkyKeys[0])) - 1; ++i)
+	{
+		UWORD p0 = SkyKeys[i].Line;
+		UWORD p1 = SkyKeys[i + 1].Line;
+
+		if (p >= p0 && p <= p1)
+		{
+			const UWORD Span = p1 - p0;
+			const UWORD t = p - p0;
+
+			if (!Span)
+			{
+				return SkyKeys[i].Color;
+			}
+
+			return RGB4_Lerp(SkyKeys[i].Color, SkyKeys[i + 1].Color, t, Span);
+		}
+	}
+
+	return SkyKeys[(sizeof(SkyKeys) / sizeof(SkyKeys[0])) - 1].Color;
+}
+
+static void AddSkyLine(UWORD **cl, UWORD y)
+{
+	const UWORD VPOS = VPOS_OFFSET + y;
+
+	// VPOS wrap at 256
+	if (VPOS == 256)
+	{
+		*(*cl)++ = 0xFFDF;
+		*(*cl)++ = 0xFFFE;
+	}
+
+	*(*cl)++ = ((VPOS & 0xFF) << 8) | 0x07;
+	*(*cl)++ = 0xFFFE;
+	*(*cl)++ = 0x180;
+	*(*cl)++ = SkyColorForLine(y, SCREENHEIGHT);
+}
+
 BOOL Init_CopperList(void)
 {
-	const UWORD CopperListLength = 80 + (PLASMA_LINES * LINE_WORDS) + 30;
+	const ULONG CopperListLength = 80 + (PLASMA_LINES * LINE_WORDS) + (SCREENHEIGHT * 4) + 64;
 
 	if (!(CopperList = (UWORD*)AllocVec(CopperListLength * sizeof(UWORD), MEMF_CHIP | MEMF_CLEAR)))
 	{
@@ -517,54 +550,70 @@ BOOL Init_CopperList(void)
 	// Slow fetch mode (AGA compatibility)
 	CopperList[Index++] = 0x1FC;
 	CopperList[Index++] = 0x0000;
+
 	// Display window top/left (PAL DIWSTRT)
 	CopperList[Index++] = 0x8E;
 	CopperList[Index++] = 0x2C81;
+
 	// Display window bottom/right (PAL DIWSTOP)
 	CopperList[Index++] = 0x90;
 	CopperList[Index++] = 0x2CC1;
+
 	// DDFSTRT
 	CopperList[Index++] = 0x92;
 	CopperList[Index++] = 0x0038;
+
 	// DDFSTOP
 	CopperList[Index++] = 0x94;
 	CopperList[Index++] = 0x00D0;
-	// BPLCON0 - 3 bitplanes + color (logo region)
+
+	// BPLCON0 - 3 bitplanes + Color (logo region)
 	CopperList[Index++] = 0x100;
 	CopperList[Index++] = 0x3200;
+
 	// BPLCON1
 	CopperList[Index++] = 0x102;
 	CopperList[Index++] = 0x0000;
+
 	// BPLCON2
 	CopperList[Index++] = 0x104;
 	CopperList[Index++] = 0x0000;
+
 	// BPLCON3
 	CopperList[Index++] = 0x106;
 	CopperList[Index++] = 0x0C00;
+
 	// BPL1MOD (interleaved: skip over other planes' rows)
 	CopperList[Index++] = 0x108;
 	CopperList[Index++] = INTERLEAVEDMOD;
+
 	// BPL2MOD
 	CopperList[Index++] = 0x10A;
 	CopperList[Index++] = INTERLEAVEDMOD;
+
 	// BPL1PTH/PTL (updated each frame)
 	CopperList[Index++] = 0x0E0;
 	BPL1PTH_Idx = Index;
 	CopperList[Index++] = 0x0000;
+
 	CopperList[Index++] = 0x0E2;
 	BPL1PTL_Idx = Index;
 	CopperList[Index++] = 0x0000;
+
 	// BPL2PTH/PTL
 	CopperList[Index++] = 0x0E4;
 	BPL2PTH_Idx = Index;
 	CopperList[Index++] = 0x0000;
+
 	CopperList[Index++] = 0x0E6;
 	BPL2PTL_Idx = Index;
 	CopperList[Index++] = 0x0000;
+
 	// BPL3PTH/PTL
 	CopperList[Index++] = 0x0E8;
 	BPL3PTH_Idx = Index;
 	CopperList[Index++] = 0x0000;
+
 	CopperList[Index++] = 0x0EA;
 	BPL3PTL_Idx = Index;
 	CopperList[Index++] = 0x0000;
@@ -576,11 +625,22 @@ BOOL Init_CopperList(void)
 		CopperList[Index++] = LogoPalette[c];
 	}
 
-	// --- White line 1 (between logo and plasma) ---
+	// Copper sky in logo region
+	UWORD *cl = &CopperList[Index];
+
+	for (UWORD y = 0; y < WHITE_LINE_1; ++y)
+	{
+		AddSkyLine(&cl, y);
+	}
+
+	Index = (UWORD)(cl - CopperList);
+
+	// --- White Line 1 (between logo and plasma) ---
 	CopperList[Index++] = (WHITE1_VPOS << 8) | 0x07;
 	CopperList[Index++] = 0xFFFE;
 	CopperList[Index++] = 0x180;
 	CopperList[Index++] = 0xFFF;
+
 	// Switch to 0 bitplanes for plasma (copper-only colors)
 	CopperList[Index++] = (PLASMA_VPOS_START << 8) | 0x07;
 	CopperList[Index++] = 0xFFFE;
@@ -594,7 +654,7 @@ BOOL Init_CopperList(void)
 
 	for (UWORD i = 0; i < PLASMA_LINES; ++i)
 	{
-		// Pre-color: set COLOR00 before WAIT
+		// Pre-Color: set COLOR00 before WAIT
 		CopperList[Index++] = 0x180;
 		CopperList[Index++] = 0x000;
 
@@ -609,52 +669,78 @@ BOOL Init_CopperList(void)
 			CopperList[Index++] = 0x000;
 		}
 
-		// End-of-line WAIT
+		// End-of-Line WAIT
 		CopperList[Index++] = ((PLASMA_VPOS_START + i) << 8) | 0xDF;
 		CopperList[Index++] = 0xFFFE;
 	}
 
-	// --- White line 2 (between plasma and scroller) ---
+	// --- White Line 2 (between plasma and scroller) ---
 	CopperList[Index++] = (WHITE2_VPOS << 8) | 0x07;
 	CopperList[Index++] = 0xFFFE;
 	CopperList[Index++] = 0x180;
 	CopperList[Index++] = 0xFFF;
-	// BPLCON0 Switch to 3 bitplane for scroller
+
+	// Preload first sky Color for the Line BELOW white Line 2
+	CopperList[Index++] = (WHITE2_VPOS << 8) | 0xE3;
+	CopperList[Index++] = 0xFFFE;
+	CopperList[Index++] = 0x180;
+	CopperList[Index++] = SkyColorForLine(WHITE_LINE_2 + 1, SCREENHEIGHT);
+
+	// BPLCON0 Switch to 3 bitplanes for scroller
 	CopperList[Index++] = (SCROLLER_VPOS_START << 8) | 0x07;
 	CopperList[Index++] = 0xFFFE;
 	CopperList[Index++] = 0x100;
 	CopperList[Index++] = 0x3200;
-	// BPLCON1
+
+	// BPL1PTH/PTL
 	CopperList[Index++] = 0x0E0;
 	ScrollBPL1PTH_Idx = Index;
 	CopperList[Index++] = 0x0000;
+
 	CopperList[Index++] = 0x0E2;
 	ScrollBPL1PTL_Idx = Index;
 	CopperList[Index++] = 0x0000;
-	// BPLCON2
+
+	// BPL2PTH/PTL
 	CopperList[Index++] = 0x0E4;
 	ScrollBPL2PTH_Idx = Index;
 	CopperList[Index++] = 0x0000;
+
 	CopperList[Index++] = 0x0E6;
 	ScrollBPL2PTL_Idx = Index;
 	CopperList[Index++] = 0x0000;
-	// BPLCON3
+
+	// BPL3PTH/PTL
 	CopperList[Index++] = 0x0E8;
 	ScrollBPL3PTH_Idx = Index;
 	CopperList[Index++] = 0x0000;
+
 	CopperList[Index++] = 0x0EA;
 	ScrollBPL3PTL_Idx = Index;
 	CopperList[Index++] = 0x0000;
 
-	// COLOR00-COLOR07 (scroller palette)
-	for (UBYTE c = 0; c < 8; ++c)
+	// COLOR01-COLOR07 only
+	// COLOR00 stays reserved for the copper sky behind the scroller
+	for (UBYTE c = 1; c < 8; ++c)
 	{
 		CopperList[Index++] = 0x180 + c * 2;
 		CopperList[Index++] = ScrollerPalette[c];
 	}
+
+	// Copper sky behind scroller and below it
+	cl = &CopperList[Index];
+
+	for (UWORD y = WHITE_LINE_2 + 1; y < SCREENHEIGHT; ++y)
+	{
+		AddSkyLine(&cl, y);
+	}
+
+	Index = (UWORD)(cl - CopperList);
+
 	// VPOS wrap for lines > 255
 	CopperList[Index++] = 0xFFDF;
 	CopperList[Index++] = 0xFFFE;
+
 	// Copper list end
 	CopperList[Index++] = 0xFFFF;
 	CopperList[Index++] = 0xFFFE;
@@ -695,6 +781,10 @@ void Update_BitplanePointers(UBYTE Buffer)
 	CopperList[ScrollBPL3PTL_Idx] = (UWORD)(addr & 0xFFFF);
 }
 
+// =====================================================================
+// Copper & Plasma
+// =====================================================================
+
 // Wave sine table (256 entries, values 0..63)
 static const UBYTE PlasmaSin[256] =
 {
@@ -731,7 +821,7 @@ void Update_Plasma(void)
 	{
 		UBYTE r_off = PlasmaSin[idx2] & 127;
 		UBYTE g_off = PlasmaSin[idx5] & 127;
-		// generate blue offset as average of red and green for better color distribution
+		// generate blue offset as average of red and green for better Color distribution
 		UBYTE b_off = ((UBYTE)(((int)r_off + (int)g_off) >> 1)) & 127;
 
 		const UBYTE *rp = &CompBase[r_off];
@@ -872,8 +962,6 @@ int main()
 		return 20;
 	}
 
-	Init_2DStarfield();
-
 	lwmf_TakeOverOS();
 
 	lwmf_StartMODPlayer(&MOD_Demosong);
@@ -884,17 +972,14 @@ int main()
 	while (*CIAA_PRA & 0x40)
 	{
 		lwmf_OwnBlitter();
-
 		// CLear screen with blitter while CPU updates plasma colors in copper list
 		lwmf_ClearScreen((long*)ScreenBitmap[CurrentBuffer]->Planes[0]);
 		// CPU updates plasma while blitter clears
 		Update_Plasma();
-
 		lwmf_DisownBlitter();
 
 		// Draw effects into backbuffer
 		Draw_TextLogo(CurrentBuffer);
-		Draw_2DStarfield(CurrentBuffer);
 		Draw_SineScroller(CurrentBuffer);
 
 		if (DEBUG == 1)
