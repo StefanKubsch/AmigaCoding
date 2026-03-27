@@ -138,62 +138,53 @@ static const UBYTE ScrollSinTab[SCREENWIDTH] =
 };
 
 UWORD ScrollerPalette[8] = {0x003, 0xC0D, 0x333, 0x888, 0xFFF, 0x000, 0x000, 0x000};
+static WORD SameYRunEnd[SCREENWIDTH];
 
-static UWORD UpdateFirstVisibleColumn(WORD ScrollX)
+static void BuildExactSineRunEnds(const UBYTE *SinTab, WORD ScreenLimit, WORD Feed)
 {
-    if (Font.ColumnCount == 0)
+	if (Feed <= 0 || ScreenLimit <= 0)
 	{
-        return 0;
+		return;
 	}
 
-    UWORD i;
+	WORD phaseCount = Feed;
 
-    if (ScrollX > Font.LastScrollX || (Font.LastScrollX - ScrollX) > (Font.Feed << 2))
+	if (phaseCount > ScreenLimit)
 	{
-        const WORD Target = -ScrollX;
-        UWORD Left = 0;
-		UWORD Right = Font.ColumnCount;
+		phaseCount = ScreenLimit;
+	}
 
-        while (Left < Right)
+	for (WORD phase = 0; phase < phaseCount; ++phase)
+	{
+		WORD x = phase;
+
+		while ((x + Feed) < ScreenLimit)
 		{
-            const UWORD Mid = (Left + Right) >> 1;
-
-            if (Font.ColumnDst[Mid] < Target)
-			{
-                Left = Mid + 1;
-			}
-			else
-            {
-				Right = Mid;
-			}
-        }
-
-        if (Left > 0)
-		{
-			--Left;
+			x += Feed;
 		}
 
-        i = Left;
-    }
-	else
-	{
-        i = Font.FirstVisibleColumn;
+		WORD runEnd = x;
+		UBYTE y = SinTab[x];
+		SameYRunEnd[x] = x;
 
-        while (i < Font.ColumnCount)
+		x -= Feed;
+
+		while (x >= 0)
 		{
-            if ((ScrollX + Font.ColumnDst[i] + Font.Feed) >= 0)
+			if (SinTab[x] == y)
 			{
-                break;
+				SameYRunEnd[x] = runEnd;
+			}
+			else
+			{
+				runEnd = x;
+				y = SinTab[x];
+				SameYRunEnd[x] = x;
 			}
 
-			++i;
-        }
-    }
-
-    Font.FirstVisibleColumn = i;
-    Font.LastScrollX = ScrollX;
-
-    return i;
+			x -= Feed;
+		}
+	}
 }
 
 BOOL Init_SineScroller(void)
@@ -306,16 +297,79 @@ BOOL Init_SineScroller(void)
 		}
 	}
 
+	BuildExactSineRunEnds(ScrollSinTab, SCREENWIDTH - Font.Feed, Font.Feed);
+
 	return TRUE;
+}
+
+static UWORD UpdateFirstVisibleColumn(WORD ScrollX)
+{
+    if (Font.ColumnCount == 0)
+	{
+        return 0;
+	}
+
+    UWORD i;
+
+    if (ScrollX > Font.LastScrollX || (Font.LastScrollX - ScrollX) > (Font.Feed << 2))
+	{
+        const WORD Target = -ScrollX;
+        UWORD Left = 0;
+		UWORD Right = Font.ColumnCount;
+
+        while (Left < Right)
+		{
+            const UWORD Mid = (Left + Right) >> 1;
+
+            if (Font.ColumnDst[Mid] < Target)
+			{
+                Left = Mid + 1;
+			}
+			else
+            {
+				Right = Mid;
+			}
+        }
+
+        if (Left > 0)
+		{
+			--Left;
+		}
+
+        i = Left;
+    }
+	else
+	{
+        i = Font.FirstVisibleColumn;
+
+        while (i < Font.ColumnCount)
+		{
+            if ((ScrollX + Font.ColumnDst[i] + Font.Feed) >= 0)
+			{
+                break;
+			}
+
+			++i;
+        }
+    }
+
+    Font.FirstVisibleColumn = i;
+    Font.LastScrollX = ScrollX;
+
+    return i;
 }
 
 void Draw_SineScroller(UBYTE Buffer)
 {
 	const WORD ScrollX = Font.ScrollX;
 	const WORD Feed = Font.Feed;
+	const WORD Step = Feed << 1;
 	const WORD CharHeight = Font.CharHeight;
 	const WORD ScreenLimit = SCREENWIDTH - Feed;
+	const WORD LeftVisibleTextX = -ScrollX;
+	const WORD RightVisibleTextX = ScreenLimit - ScrollX;
 	const UBYTE *SinTab = ScrollSinTab;
+
 	WORD *ColumnDst = Font.ColumnDst;
 	WORD *ColumnSrc = Font.ColumnSrc;
 	WORD *DstEnd = ColumnDst + Font.ColumnCount;
@@ -323,81 +377,88 @@ void Draw_SineScroller(UBYTE Buffer)
 	struct BitMap *SrcBitmap = Font.FontBitmap->Image;
 	struct BitMap *DstBitmap = ScreenBitmap[Buffer];
 
-	if (ColumnDst != DstEnd)
+	if (ColumnDst < DstEnd)
 	{
 		UWORD i = UpdateFirstVisibleColumn(ScrollX);
 		WORD *dstPtr = ColumnDst + i;
 		WORD *srcPtr = ColumnSrc + i;
 
+		while (dstPtr < DstEnd && *dstPtr < LeftVisibleTextX)
+		{
+			++dstPtr;
+			++srcPtr;
+		}
+
 		while (dstPtr < DstEnd)
 		{
-			WORD dstTextX = *dstPtr;
-			WORD dstX = ScrollX + dstTextX;
-			WORD srcX = *srcPtr;
+			const WORD dstTextX = *dstPtr;
 
-			if (dstX >= ScreenLimit)
+			if (dstTextX >= RightVisibleTextX)
 			{
 				break;
 			}
 
-			if (dstX < 0)
-			{
-				++dstPtr;
-				++srcPtr;
-				continue;
-			}
-
-			const WORD y = SinTab[dstX];
+			const WORD srcX = *srcPtr;
+			const WORD dstX = ScrollX + dstTextX;
+			const UBYTE y = SinTab[dstX];
+			const WORD runEndX = SameYRunEnd[dstX];
 			WORD width = Feed;
-			WORD lastDstTextX = dstTextX;
-			WORD lastSrcX = srcX;
-			WORD *nextDstPtr = dstPtr + 1;
-			WORD *nextSrcPtr = srcPtr + 1;
 
-			while (nextDstPtr < DstEnd)
+			WORD expectedDstTextX = dstTextX + Feed;
+			WORD expectedSrcX = srcX + Feed;
+
+			WORD *scanDstPtr = dstPtr;
+			WORD *scanSrcPtr = srcPtr;
+
+			for (;;)
 			{
-				const WORD nextDstTextX = *nextDstPtr;
+				++scanDstPtr;
+				++scanSrcPtr;
+
+				if (scanDstPtr >= DstEnd)
+				{
+					break;
+				}
+
+				const WORD nextDstTextX = *scanDstPtr;
+
+				if (nextDstTextX != expectedDstTextX)
+				{
+					break;
+				}
+
+				if (nextDstTextX >= RightVisibleTextX)
+				{
+					break;
+				}
+
+				const WORD nextSrcX = *scanSrcPtr;
+
+				if (nextSrcX != expectedSrcX)
+				{
+					break;
+				}
+
 				const WORD nextDstX = ScrollX + nextDstTextX;
-				const WORD nextSrcX = *nextSrcPtr;
-				WORD dy;
 
-				if (nextDstX >= ScreenLimit) {
-					break;
-				}
-
-				if (nextDstX < 0) {
-					break;
-				}
-
-				if ((nextDstTextX - lastDstTextX) != Feed) {
-					break;
-				}
-
-				if ((nextSrcX - lastSrcX) != Feed) {
-					break;
-				}
-
-				dy = SinTab[nextDstX] - y;
-
-				if (SinTab[nextDstX] != y)
+				if (nextDstX > runEndX)
 				{
 					break;
 				}
 
 				width += Feed;
-				lastDstTextX = nextDstTextX;
-				lastSrcX = nextSrcX;
-				++nextDstPtr;
-				++nextSrcPtr;
+				expectedDstTextX += Feed;
+				expectedSrcX += Feed;
 			}
 
 			BltBitMap(SrcBitmap, srcX, 0, DstBitmap, dstX, y, width, CharHeight, 0xC0, 0x01, NULL);
-			dstPtr = nextDstPtr;
-			srcPtr = nextSrcPtr;
+
+			dstPtr = scanDstPtr;
+			srcPtr = scanSrcPtr;
 		}
 	}
 
-	Font.ScrollX -= Feed << 1;
+	Font.ScrollX -= Step;
 
 	if (Font.ScrollX < -Font.Length)
 	{
@@ -807,6 +868,14 @@ static const UBYTE CompBase[128] =
 	 8, 7, 6, 5, 5, 4, 3, 3, 2, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 7
 };
 
+#define EMIT_PLASMA_COLOR() \
+	do { \
+		*lcop++ = 0x01800000UL \
+		        | ((ULONG)(*rp++) << 8) \
+		        | ((ULONG)(*gp++) << 4) \
+		        |  (ULONG)(*bp++); \
+	} while (0)
+
 void Update_Plasma(void)
 {
 	static UBYTE PlasmaFrameRed = 0;
@@ -819,66 +888,38 @@ void Update_Plasma(void)
 
 	for (UWORD row = 0; row < PLASMA_LINES; ++row)
 	{
-		UBYTE r_off = PlasmaSin[idx2] & 127;
-		UBYTE g_off = PlasmaSin[idx5] & 127;
-		// generate blue offset as average of red and green for better Color distribution
-		UBYTE b_off = ((UBYTE)(((int)r_off + (int)g_off) >> 1)) & 127;
+		const UBYTE r_off = PlasmaSin[idx2] & 127;
+		const UBYTE g_off = PlasmaSin[idx5] & 127;
+
+		// blue offset as average of red and green for better color distribution
+		const UBYTE b_off = (UBYTE)(((UWORD)r_off + (UWORD)g_off) >> 1);
 
 		const UBYTE *rp = &CompBase[r_off];
 		const UBYTE *gp = &CompBase[g_off];
 		const UBYTE *bp = &CompBase[b_off];
 
-		UWORD firstCol = ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp;
-		lineBase[1] = firstCol;
+		lineBase[1] = (UWORD)(((UWORD)rp[0] << 8) | ((UWORD)gp[0] << 4) | (UWORD)bp[0]);
 
-		ULONG *lcop = (ULONG *)(lineBase + 4);
+		// lineBase + 4 must point to longword-aligned copper MOVE data.
+		// If CopperList is not longword-aligned, switch this back to UWORD writes.
+		ULONG *lcop = (ULONG *)(void *)(lineBase + 4);
 
-		// Loop unrolling: PLASMA_COLS = 40, so 5x8
-		#pragma unroll
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		// first color already written to lineBase[1], so skip entry 0
+		++rp;
+		++gp;
+		++bp;
 
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
-		*lcop++ = 0x01800000UL | ((UWORD)*rp << 8) | ((UWORD)*gp << 4) | *bp; rp++; gp++; bp++;
+		for (UWORD block = 0; block < 5; ++block)
+		{
+			EMIT_PLASMA_COLOR();
+			EMIT_PLASMA_COLOR();
+			EMIT_PLASMA_COLOR();
+			EMIT_PLASMA_COLOR();
+			EMIT_PLASMA_COLOR();
+			EMIT_PLASMA_COLOR();
+			EMIT_PLASMA_COLOR();
+			EMIT_PLASMA_COLOR();
+		}
 
 		idx2 += 2;
 		idx5 += 5;
@@ -888,6 +929,8 @@ void Update_Plasma(void)
 	PlasmaFrameRed += 3;
 	PlasmaFrameGreen += 2;
 }
+
+#undef EMIT_PLASMA_COLOR
 
 // =====================================================================
 // Cleanup & Main
