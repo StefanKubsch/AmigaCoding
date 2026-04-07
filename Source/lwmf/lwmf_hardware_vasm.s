@@ -1,10 +1,10 @@
 ; Various assembler functions for lwmf
 ; Code is compatible with Motorola syntax as provided by vbcc
-; Optimized for 68020+ (Amiga 1200 and up)
+; OCS/68000 compatible (68010 directive required for movec.l vbr,d0 in lwmf_GetVBR)
 ;
 ; Coded in 2020-2026 by Stefan Kubsch / Deep4
 
-	machine	68020
+	machine	68010
 
 ; ***************************************************************************************************
 ; * Global                                                                                          *
@@ -42,8 +42,6 @@ BLTAFWM             equ     $00DFF044		; Blitter first word mask for source A
 BLTALWM             equ     $00DFF046		; Blitter last word mask for source A
 BLTAPTH             equ     $00DFF050		; Blitter pointer to destination A (high 5 bits)
 BLTSIZE 	        equ     $00DFF058		; Blitter start and size (win/width, height)
-BLTSIZH				equ		$00DFF05E		; Blitter H size and start (for 11 bit H size)
-BLTSIZV				equ		$00DFF05C		; Blitter vertical size (15 bit height)
 BLTAMOD             equ     $00DFF064		; Blitter modulo for A
 BLTDMOD 	        equ     $00DFF066		; Blitter modulo for D
 BLTDPTH		        equ     $00DFF054		; Blitter pointer to destination D (high 5 bits)
@@ -365,7 +363,8 @@ _lwmf_ClearMemCPU::
 	move.l  d7,d6
 	lsr.l   #7,d6                   ; get number of blocks of 128 long words
 	beq.s   .clear                  ; branch if we have no complete block
-	; 68020: init zero regs via register-to-register moves (no zeros data table reads)
+	subq.l  #1,d6                   ; adjust count for dbra
+	; init zero registers via register-to-register moves
 	move.l  d0,d1
 	move.l  d0,d2
 	move.l  d0,d3
@@ -389,8 +388,7 @@ _lwmf_ClearMemCPU::
 	movem.l d0-d5/a2-a6,-(a1)
 	movem.l d0-d5/a2-a6,-(a1)
 	movem.l d0-d5/a2,-(a1)          ; 7 registers
-	subq.l  #1,d6                   ; 68020+: subq.l/bne replaces dbra (faster, 32-bit counter)
-	bne.s   .clearblock
+	dbra    d6,.clearblock
 .clear
 	and.l   #$7F,d7                 ; remainder after 128-longword blocks (7 bits)
 	beq.s   .done
@@ -426,7 +424,8 @@ _lwmf_ClearScreen::
 	move.l  d7,d6
 	lsr.l   #7,d6                   						; get number of blocks of 128 long words
 	beq.s   .clear                  						; branch if we have no complete block
-	; 68020: init zero regs via register-to-register moves (no zeros data table reads)
+	subq.l  #1,d6                   						; adjust count for dbra
+	; init zero registers via register-to-register moves
 	move.l  d0,d1
 	move.l  d0,d2
 	move.l  d0,d3
@@ -450,8 +449,7 @@ _lwmf_ClearScreen::
 	movem.l d0-d5/a2-a6,-(a0)
 	movem.l d0-d5/a2-a6,-(a0)
 	movem.l d0-d5/a2,-(a0)          						; 7 registers
-	subq.l  #1,d6                   						; 68020+: subq.l/bne replaces dbra (faster, 32-bit counter)
-	bne.s   .clearblock
+	dbra    d6,.clearblock
 .clear
 	and.l   #$7F,d7                 						; remainder after 128-longword blocks (7 bits)
 	beq.s   .done
@@ -671,14 +669,14 @@ _lwmf_BlitTile::
     move.w  d6,d2
     move.l  d2,(BLTAMOD-CUSTOMREGS,a2)
 
-    ; BLTSIZV + BLTSIZH
+    ; BLTSIZE (OCS): bits 15-6 = rows, bits 5-0 = width in words
     ; total rows = Height * NUMBEROFBITPLANES = Height * 3
     move.w  d5,d0
     add.w   d5,d5
-    add.w   d0,d5
-    swap    d5
-    move.w  d7,d5
-    move.l  d5,(BLTSIZV-CUSTOMREGS,a2)
+    add.w   d0,d5                             ; d5 = Height * 3
+    lsl.w   #6,d5                             ; d5 = rows << 6
+    or.w    d7,d5                             ; d5 = (rows << 6) | blitWidthWords
+    move.w  d5,(BLTSIZE-CUSTOMREGS,a2)
 
     movem.l (sp)+,d2-d7/a2
     rts

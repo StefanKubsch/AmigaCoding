@@ -27,8 +27,6 @@
 #define BLTDPTH	0xdff054
 #define BLTDMOD	0xdff066
 #define BLTAMOD	0xdff064
-#define BLTSIZV	0xdff05c
-#define BLTSIZH	0xdff05e
 #define BLTSIZE	0xdff058
 #define BLTAPTH	0xdff050
 #define BLTALWM	0xdff046

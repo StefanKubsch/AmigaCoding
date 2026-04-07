@@ -17,38 +17,41 @@
 #define DEBUG 				0
 
 // =====================================================================
-// Screen settings
-// =====================================================================
-
-// Layout: 84 + 1 + 85 + 1 + 85 = 256
-#define LOGO_LINES          84
-#define WHITE_LINE_1        84
-#define PLASMA_START_LINE   85
-#define PLASMA_LINES        85
-#define WHITE_LINE_2        170
-#define SCROLLER_START_LINE 171
-#define SCROLLER_LINES      85
-
-// =====================================================================
 // Double buffering
 // =====================================================================
 
-struct BitMap* ScreenBitmap[2] = { NULL, NULL };
+static struct BitMap* ScreenBitmap[2] = { NULL, NULL };
 
 // =====================================================================
 // MODPlayer (ptplayer)
 // =====================================================================
 
-struct MODFile MOD_Demosong;
+static struct MODFile MOD_Demosong;
+
+// =====================================================================
+// Sine table, used by both the sine scroller and the plasma
+// =====================================================================
+
+// Shared sine table (256 entries, values 0..63, one full period)
+static const UBYTE SinTab256[256] =
+{
+	32,32,33,34,35,35,36,37,38,38,39,40,41,41,42,43,44,44,45,46,46,47,48,48,49,50,50,51,51,52,53,53,
+	54,54,55,55,56,56,57,57,58,58,59,59,59,60,60,60,61,61,61,61,62,62,62,62,62,63,63,63,63,63,63,63,
+	63,63,63,63,63,63,63,63,62,62,62,62,62,61,61,61,61,60,60,60,59,59,59,58,58,57,57,56,56,55,55,54,
+	54,53,53,52,51,51,50,50,49,48,48,47,46,46,45,44,44,43,42,41,41,40,39,38,38,37,36,35,35,34,33,32,
+	32,31,30,29,28,28,27,26,25,25,24,23,22,22,21,20,19,19,18,17,17,16,15,15,14,13,13,12,12,11,10,10,
+	 9, 9, 8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 4, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0,
+	 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9,
+	 9,10,10,11,12,12,13,13,14,15,15,16,17,17,18,19,19,20,21,22,22,23,24,25,25,26,27,28,28,29,30,31
+};
 
 // =====================================================================
 // Bouncing Text Logo
 // =====================================================================
 
-struct lwmf_Image* LogoBitmap = NULL;
+static struct lwmf_Image* LogoBitmap = NULL;
 
-// Saved Color palette
-UWORD LogoPalette[8] = {0x003, 0x368, 0x134, 0x012, 0x246,	0x146, 0x123, 0x001};
+static const UWORD LogoPalette[8] = {0x003, 0x368, 0x134, 0x012, 0x246,	0x146, 0x123, 0x001};
 
 #define LOGO_WIDTH  192
 #define LOGO_HEIGHT 46
@@ -102,377 +105,216 @@ void Cleanup_TextLogo(void)
 // Sine Scroller
 // =====================================================================
 
+#define SCROLLER_FEED        2
+#define SCROLLER_CHAR_HEIGHT 20
+// Stride between rows in an interleaved bitmap: all 3 planes are laid out consecutively per row.
+// This is independent of how many planes the Copper displays in a given screen region.
+#define INTERLEAVED_STRIDE   (BYTESPERROW * NUMBEROFBITPLANES)
+
 struct Scrollfont
 {
-	struct lwmf_Image* FontBitmap;
-	char* Text;
-	char* CharMap;
-	UWORD TextLength;
-	UWORD CharMapLength;
 	UWORD Length;
-	WORD ScrollX;
-	WORD Feed;
-	UBYTE CharWidth;
-	UBYTE CharHeight;
-	UBYTE CharSpacing;
-	UBYTE CharOverallWidth;
-	WORD *ColumnSrc;
-	WORD *ColumnDst;
-	UWORD ColumnCount;
-	UWORD FirstVisibleColumn;
-	WORD LastScrollX;
+	WORD  ScrollX;
+	UBYTE *ColumnBits;
+	WORD  *ColumnDst;
+	UWORD  ColumnCount;
+	UWORD  FirstVisibleColumn;
 } Font;
 
-// Sine table for scroller Y positions (center=203, amplitude=30)
-// Scroller region = lines 171-255, char height 20 → Y range 171-235
-static const UBYTE ScrollSinTab[SCREENWIDTH] =
-{
-	203,204,205,206,207,207,208,209,210,211,212,213,214,214,215,216,217,218,218,219,220,221,221,222,223,223,224,225,225,226,226,227,228,228,229,229,229,230,230,231,
-	231,231,232,232,232,232,232,233,233,233,233,233,233,233,233,233,233,233,233,232,232,232,232,231,231,231,231,230,230,229,229,228,228,227,227,226,226,225,225,224,
-	223,223,222,221,220,220,219,218,217,217,216,215,214,213,212,212,211,210,209,208,207,206,205,205,204,203,202,201,200,199,198,197,196,196,195,194,193,192,191,191,
-	190,189,188,187,187,186,185,184,184,183,182,182,181,180,180,179,179,178,178,177,177,176,176,176,175,175,175,174,174,174,174,173,173,173,173,173,173,173,173,173,
-	173,173,173,173,174,174,174,174,175,175,175,176,176,176,177,177,178,178,179,179,180,180,181,182,182,183,184,184,185,186,186,187,188,189,190,190,191,192,193,194,
-	195,195,196,197,198,199,200,201,202,203,204,204,205,206,207,208,209,210,211,211,212,213,214,215,216,217,217,218,219,220,220,221,222,222,223,224,224,225,226,226,
-	227,227,228,228,229,229,230,230,230,231,231,231,232,232,232,232,233,233,233,233,233,233,233,233,233,233,233,233,232,232,232,232,232,231,231,231,230,230,230,229,
-	229,228,228,227,227,226,225,225,224,224,223,222,222,221,220,219,219,218,217,216,215,215,214,213,212,211,210,209,209,208,207,206,205,204,203,202,201,200,200,199
-};
-
-UWORD ScrollerPalette[8] = {0x003, 0xC0D, 0x333, 0x888, 0xFFF, 0x000, 0x000, 0x000};
-static WORD SameYRunEnd[SCREENWIDTH];
-
-static void BuildExactSineRunEnds(const UBYTE *SinTab, WORD ScreenLimit, WORD Feed)
-{
-	if (Feed <= 0 || ScreenLimit <= 0)
-	{
-		return;
-	}
-
-	WORD phaseCount = Feed;
-
-	if (phaseCount > ScreenLimit)
-	{
-		phaseCount = ScreenLimit;
-	}
-
-	for (WORD phase = 0; phase < phaseCount; ++phase)
-	{
-		WORD x = phase;
-
-		while ((x + Feed) < ScreenLimit)
-		{
-			x += Feed;
-		}
-
-		WORD runEnd = x;
-		UBYTE y = SinTab[x];
-		SameYRunEnd[x] = x;
-
-		x -= Feed;
-
-		while (x >= 0)
-		{
-			if (SinTab[x] == y)
-			{
-				SameYRunEnd[x] = runEnd;
-			}
-			else
-			{
-				runEnd = x;
-				y = SinTab[x];
-				SameYRunEnd[x] = x;
-			}
-
-			x -= Feed;
-		}
-	}
-}
+// Computed at runtime by Init_SineScroller: ScrollSinRow[x] * INTERLEAVED_STRIDE
+static UWORD *ScrollRowOffset = NULL;
 
 BOOL Init_SineScroller(void)
 {
-	if (!(Font.FontBitmap = lwmf_LoadImage("gfx/ScrollFont1.iff")))
+	struct lwmf_Image* FontBitmap;
+
+	if (!(ScrollRowOffset = (UWORD*)AllocVec(sizeof(UWORD) * SCREENWIDTH, MEMF_ANY)))
 	{
 		return FALSE;
 	}
 
-	Font.Text = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!! HAVE FUN WATCHING THE DEMO AND ENJOY YOUR AMIGA !!! MUSIC - BEAMS OF LIGHT BY WALKMAN 1989...CODE AND GFX - DEEP4 2026...";
-	Font.CharMap = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!-,+?*()";
-	Font.CharWidth = 15;
-	Font.CharHeight = 20;
-	Font.CharSpacing = 1;
-	Font.Feed = 2;
-	Font.CharOverallWidth = Font.CharWidth + Font.CharSpacing;
-	Font.ScrollX = SCREENWIDTH;
-	Font.TextLength = 0;
-	Font.CharMapLength = 0;
-	Font.Length = 0;
-	Font.ColumnSrc = NULL;
-	Font.ColumnDst = NULL;
-	Font.ColumnCount = 0;
-	Font.FirstVisibleColumn = 0;
-	Font.LastScrollX = Font.ScrollX;
-
-	while (Font.Text[Font.TextLength] != 0x00)
+	// SinTab256: one full period over 256 entries mapped to 320 pixels
+	// centre=192, amplitude=14 (rows 178..206), stride=120
+	for (UWORD x = 0; x < SCREENWIDTH; ++x)
 	{
-		++Font.TextLength;
+		const WORD s = (WORD)SinTab256[(UWORD)x * 256 / SCREENWIDTH] - 32;
+		ScrollRowOffset[x] = (UWORD)((192 + ((s * 14 + 16) >> 5)) * INTERLEAVED_STRIDE);
 	}
 
+	if (!(FontBitmap = lwmf_LoadImage("gfx/ScrollFont.bsh")))
+	{
+		FreeVec(ScrollRowOffset);
+		ScrollRowOffset = NULL;
+		return FALSE;
+	}
+
+	const char *Text           = "...WELL, WELL...NOT PERFECT, BUT STILL WORKING ON IT !!! HAVE FUN WATCHING THE DEMO AND ENJOY YOUR AMIGA !!! MUSIC - BEAMS OF LIGHT BY WALKMAN 1989...CODE AND GFX - DEEP4 2026...";
+	const char *CharMap        = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!-,+?*()";
+	const WORD  Feed           = SCROLLER_FEED;
+	const WORD  CharWidth      = 15;
+	const UBYTE CharHeight     = SCROLLER_CHAR_HEIGHT;
+	const WORD  CharOverallWidth = CharWidth + 1;
+
+	Font.ScrollX         = SCREENWIDTH;
+	Font.Length          = 0;
+	Font.ColumnBits      = NULL;
+	Font.ColumnDst       = NULL;
+	Font.ColumnCount     = 0;
+	Font.FirstVisibleColumn = 0;
+
+	UWORD TextLength = 0;
+
+	while (Text[TextLength] != 0x00)
+	{
+		++TextLength;
+	}
+
+	// Build char lookup: char -> font X offset (-1 = not mapped)
 	WORD CharLookup[128];
-	UWORD MapPos = 0;
-	const WORD Feed = Font.Feed;
-	const WORD CharWidth = Font.CharWidth;
-	const WORD CharOverallWidth = Font.CharOverallWidth;
 
 	for (UWORD k = 0; k < 128; ++k)
 	{
 		CharLookup[k] = -1;
 	}
 
-	while (Font.CharMap[Font.CharMapLength] != 0x00)
+	UWORD MapPos = 0;
+
+	for (const char *p = CharMap; *p != 0x00; ++p)
 	{
-		CharLookup[(UBYTE)Font.CharMap[Font.CharMapLength]] = MapPos;
+		CharLookup[(UBYTE)*p] = MapPos;
 		MapPos += CharOverallWidth;
-		++Font.CharMapLength;
 	}
 
-	Font.Length = Font.TextLength * CharOverallWidth;
+	Font.Length = TextLength * CharOverallWidth;
 
-	// Count
-	for (UWORD i = 0; i < Font.TextLength; ++i)
-	{
-		const UBYTE c = (UBYTE)Font.Text[i];
-		const WORD MapVal = (c < 128) ? CharLookup[c] : -1;
+	const UWORD ColsPerChar = (UWORD)((CharWidth + Feed - 1) / Feed);
+	const UWORD MaxColumns  = TextLength * ColsPerChar;
 
-		if (MapVal >= 0)
-		{
-			WORD x1 = 0;
-
-			while (x1 < CharWidth)
-			{
-				++Font.ColumnCount;
-				x1 += Feed;
-			}
-		}
-	}
-
-	if (Font.ColumnCount == 0)
+	if (MaxColumns == 0)
 	{
 		return TRUE;
 	}
 
-	if (!(Font.ColumnSrc = AllocVec(sizeof(WORD) * Font.ColumnCount, NULL)))
+	if (!(Font.ColumnDst = (WORD*)AllocVec(sizeof(WORD) * MaxColumns, MEMF_ANY)))
 	{
 		return FALSE;
 	}
 
-	if (!(Font.ColumnDst = AllocVec(sizeof(WORD) * Font.ColumnCount, NULL)))
+	if (!(Font.ColumnBits = (UBYTE*)AllocVec((ULONG)MaxColumns * (ULONG)CharHeight, MEMF_ANY)))
 	{
-		FreeVec(Font.ColumnSrc);
-		Font.ColumnSrc = NULL;
+		FreeVec(Font.ColumnDst);
+		Font.ColumnDst = NULL;
 		return FALSE;
 	}
 
-	// Fill
-	UWORD ColumnIndex = 0;
+	const UBYTE *srcPlane0    = (const UBYTE *)FontBitmap->Image->Planes[0];
+	const UWORD  srcBPR       = FontBitmap->Image->BytesPerRow;
+	const UBYTE  feedMask     = (UBYTE)((1u << (UBYTE)Feed) - 1u);
+	const UBYTE  srcShiftBase = (UBYTE)(8u - (UBYTE)Feed);
+	UBYTE       *bitsOut      = Font.ColumnBits;
 
-	for (UWORD i = 0; i < Font.TextLength; ++i)
+	for (UWORD i = 0; i < TextLength; ++i)
 	{
-		const UBYTE c = (UBYTE)Font.Text[i];
-		const WORD MapVal = (c < 128) ? CharLookup[c] : -1;
+		const UBYTE c      = (UBYTE)Text[i];
+		const WORD  MapVal = (c < 128) ? CharLookup[c] : -1;
 
 		if (MapVal >= 0)
 		{
 			const WORD CharBaseX = i * CharOverallWidth;
-			WORD x1 = 0;
+			WORD x1   = 0;
 			WORD srcx = MapVal;
 
 			while (x1 < CharWidth)
 			{
-				Font.ColumnDst[ColumnIndex] = CharBaseX + x1;
-				Font.ColumnSrc[ColumnIndex] = srcx;
-				++ColumnIndex;
+				Font.ColumnDst[Font.ColumnCount] = CharBaseX + x1;
 
-				x1 += Feed;
+				const UBYTE srcShift = (UBYTE)(srcShiftBase - ((UBYTE)srcx & srcShiftBase));
+				const UBYTE *srcRow  = srcPlane0 + ((UWORD)srcx >> 3);
+
+				for (UBYTE r = 0; r < CharHeight; ++r)
+				{
+					*bitsOut++ = (*srcRow >> srcShift) & feedMask;
+					srcRow += srcBPR;
+				}
+
+				++Font.ColumnCount;
+				x1   += Feed;
 				srcx += Feed;
 			}
 		}
 	}
 
-	BuildExactSineRunEnds(ScrollSinTab, SCREENWIDTH - Font.Feed, Font.Feed);
+	lwmf_DeleteImage(FontBitmap);
 
 	return TRUE;
 }
 
-static UWORD UpdateFirstVisibleColumn(WORD ScrollX)
-{
-    if (Font.ColumnCount == 0)
-	{
-        return 0;
-	}
-
-    UWORD i;
-
-    if (ScrollX > Font.LastScrollX || (Font.LastScrollX - ScrollX) > (Font.Feed << 2))
-	{
-        const WORD Target = -ScrollX;
-        UWORD Left = 0;
-		UWORD Right = Font.ColumnCount;
-
-        while (Left < Right)
-		{
-            const UWORD Mid = (Left + Right) >> 1;
-
-            if (Font.ColumnDst[Mid] < Target)
-			{
-                Left = Mid + 1;
-			}
-			else
-            {
-				Right = Mid;
-			}
-        }
-
-        if (Left > 0)
-		{
-			--Left;
-		}
-
-        i = Left;
-    }
-	else
-	{
-        i = Font.FirstVisibleColumn;
-
-        while (i < Font.ColumnCount)
-		{
-            if ((ScrollX + Font.ColumnDst[i] + Font.Feed) >= 0)
-			{
-                break;
-			}
-
-			++i;
-        }
-    }
-
-    Font.FirstVisibleColumn = i;
-    Font.LastScrollX = ScrollX;
-
-    return i;
-}
-
 void Draw_SineScroller(UBYTE Buffer)
 {
-	const WORD ScrollX = Font.ScrollX;
-	const WORD Feed = Font.Feed;
-	const WORD Step = Feed << 1;
-	const WORD CharHeight = Font.CharHeight;
-	const WORD ScreenLimit = SCREENWIDTH - Feed;
-	const WORD LeftVisibleTextX = -ScrollX;
-	const WORD RightVisibleTextX = ScreenLimit - ScrollX;
-	const UBYTE *SinTab = ScrollSinTab;
+	const WORD  ScrollX           = Font.ScrollX;
+	const WORD  LeftVisibleTextX  = -ScrollX;
+	const WORD  RightVisibleTextX = (SCREENWIDTH - SCROLLER_FEED) - ScrollX;
+	const UBYTE shiftBase         = (UBYTE)(8u - SCROLLER_FEED);
 
-	WORD *ColumnDst = Font.ColumnDst;
-	WORD *ColumnSrc = Font.ColumnSrc;
-	WORD *DstEnd = ColumnDst + Font.ColumnCount;
+	UBYTE *DstPlane = (UBYTE *)ScreenBitmap[Buffer]->Planes[0];
 
-	struct BitMap *SrcBitmap = Font.FontBitmap->Image;
-	struct BitMap *DstBitmap = ScreenBitmap[Buffer];
-
-	if (ColumnDst < DstEnd)
+	if (Font.ColumnCount == 0)
 	{
-		UWORD i = UpdateFirstVisibleColumn(ScrollX);
-		WORD *dstPtr = ColumnDst + i;
-		WORD *srcPtr = ColumnSrc + i;
-
-		while (dstPtr < DstEnd && *dstPtr < LeftVisibleTextX)
-		{
-			++dstPtr;
-			++srcPtr;
-		}
-
-		while (dstPtr < DstEnd)
-		{
-			const WORD dstTextX = *dstPtr;
-
-			if (dstTextX >= RightVisibleTextX)
-			{
-				break;
-			}
-
-			const WORD srcX = *srcPtr;
-			const WORD dstX = ScrollX + dstTextX;
-			const UBYTE y = SinTab[dstX];
-			const WORD runEndX = SameYRunEnd[dstX];
-			WORD width = Feed;
-
-			WORD expectedDstTextX = dstTextX + Feed;
-			WORD expectedSrcX = srcX + Feed;
-
-			WORD *scanDstPtr = dstPtr;
-			WORD *scanSrcPtr = srcPtr;
-
-			for (;;)
-			{
-				++scanDstPtr;
-				++scanSrcPtr;
-
-				if (scanDstPtr >= DstEnd)
-				{
-					break;
-				}
-
-				const WORD nextDstTextX = *scanDstPtr;
-
-				if (nextDstTextX != expectedDstTextX)
-				{
-					break;
-				}
-
-				if (nextDstTextX >= RightVisibleTextX)
-				{
-					break;
-				}
-
-				const WORD nextSrcX = *scanSrcPtr;
-
-				if (nextSrcX != expectedSrcX)
-				{
-					break;
-				}
-
-				const WORD nextDstX = ScrollX + nextDstTextX;
-
-				if (nextDstX > runEndX)
-				{
-					break;
-				}
-
-				width += Feed;
-				expectedDstTextX += Feed;
-				expectedSrcX += Feed;
-			}
-
-			BltBitMap(SrcBitmap, srcX, 0, DstBitmap, dstX, y, width, CharHeight, 0xC0, 0x01, NULL);
-
-			dstPtr = scanDstPtr;
-			srcPtr = scanSrcPtr;
-		}
+		return;
 	}
 
-	Font.ScrollX -= Step;
+	const WORD *ColumnDst = Font.ColumnDst;
+	const WORD *DstEnd    = ColumnDst + Font.ColumnCount;
+
+	const WORD *dstPtr  = ColumnDst + Font.FirstVisibleColumn;
+	UBYTE      *bitsPtr = Font.ColumnBits + (UWORD)Font.FirstVisibleColumn * SCROLLER_CHAR_HEIGHT;
+
+	while (dstPtr < DstEnd && *dstPtr < LeftVisibleTextX)
+	{
+		++dstPtr;
+		bitsPtr += SCROLLER_CHAR_HEIGHT;
+	}
+
+	Font.FirstVisibleColumn = (UWORD)(dstPtr - ColumnDst);
+
+	while (dstPtr < DstEnd)
+	{
+		const WORD dstTextX = *dstPtr;
+
+		if (dstTextX >= RightVisibleTextX)
+		{
+			break;
+		}
+
+		const WORD  dstX     = ScrollX + dstTextX;
+		const UBYTE dstShift = (UBYTE)(shiftBase - ((UBYTE)dstX & shiftBase));
+
+		UBYTE *dst = DstPlane + ScrollRowOffset[(UWORD)dstX] + ((UWORD)dstX >> 3);
+
+		for (WORD r = 0; r < SCROLLER_CHAR_HEIGHT; ++r)
+		{
+			*dst |= (UBYTE)(*bitsPtr++ << dstShift);
+			dst += INTERLEAVED_STRIDE;
+		}
+
+		++dstPtr;
+	}
+
+	Font.ScrollX -= (SCROLLER_FEED << 1);
 
 	if (Font.ScrollX < -Font.Length)
 	{
 		Font.ScrollX = SCREENWIDTH;
 		Font.FirstVisibleColumn = 0;
-		Font.LastScrollX = Font.ScrollX;
 	}
 }
 
 void Cleanup_SineScroller(void)
 {
-	if (Font.FontBitmap)
+	if (ScrollRowOffset)
 	{
-		lwmf_DeleteImage(Font.FontBitmap);
+		FreeVec(ScrollRowOffset);
+		ScrollRowOffset = NULL;
 	}
 
 	if (Font.ColumnDst)
@@ -481,10 +323,10 @@ void Cleanup_SineScroller(void)
 		Font.ColumnDst = NULL;
 	}
 
-	if (Font.ColumnSrc)
+	if (Font.ColumnBits)
 	{
-		FreeVec(Font.ColumnSrc);
-		Font.ColumnSrc = NULL;
+		FreeVec(Font.ColumnBits);
+		Font.ColumnBits = NULL;
 	}
 }
 
@@ -492,40 +334,62 @@ void Cleanup_SineScroller(void)
 // Copper
 // =====================================================================
 
-UWORD* CopperList = NULL;
-UWORD PlasmaStart = 0;
+static UWORD* CopperList = NULL;
+static UWORD PlasmaStart = 0;
+static ULONG PlasmaColorLUT[256];
 
-UWORD BPL1PTH_Idx = 0;
-UWORD BPL1PTL_Idx = 0;
-UWORD BPL2PTH_Idx = 0;
-UWORD BPL2PTL_Idx = 0;
-UWORD BPL3PTH_Idx = 0;
-UWORD BPL3PTL_Idx = 0;
+static UWORD BPL1PTH_Idx = 0;
+static UWORD BPL1PTL_Idx = 0;
+static UWORD BPL2PTH_Idx = 0;
+static UWORD BPL2PTL_Idx = 0;
+static UWORD BPL3PTH_Idx = 0;
+static UWORD BPL3PTL_Idx = 0;
 
-UWORD ScrollBPL1PTH_Idx = 0;
-UWORD ScrollBPL1PTL_Idx = 0;
-UWORD ScrollBPL2PTH_Idx = 0;
-UWORD ScrollBPL2PTL_Idx = 0;
-UWORD ScrollBPL3PTH_Idx = 0;
-UWORD ScrollBPL3PTL_Idx = 0;
+static UWORD ScrollBPL1PTH_Idx = 0;
+static UWORD ScrollBPL1PTL_Idx = 0;
+static UWORD ScrollBPL2PTH_Idx = 0;
+static UWORD ScrollBPL2PTL_Idx = 0;
 
-#define PLASMA_COLS 40
-#define LINE_WORDS (2 + 2 + 2 * PLASMA_COLS + 2)
+// Layout: 84 + 1 + 85 + 1 + 85 = 256
+#define WHITE_LINE_1        84
+#define PLASMA_START_LINE   85
+#define PLASMA_LINES        85
+#define WHITE_LINE_2        170
+#define SCROLLER_START_LINE 171
+
+#define PLASMA_COLS             40
+#define PLASMA_COLS_PER_BLOCK   8
+#define PLASMA_BLOCKS           (PLASMA_COLS / PLASMA_COLS_PER_BLOCK)
+#if (PLASMA_BLOCKS * PLASMA_COLS_PER_BLOCK) != PLASMA_COLS
+#error "PLASMA_COLS must be a multiple of PLASMA_COLS_PER_BLOCK"
+#endif
+#define LINE_WORDS              (2 + 2 + 2 * PLASMA_COLS + 2)
+
+// Modulo to add to BPLxPT after each row in an interleaved bitmap (skips the other planes)
+#define INTERLEAVEDMOD       (BYTESPERROW * (NUMBEROFBITPLANES - 1))
 
 // VPOS offset for PAL display (first visible Line = $2C = 44)
 #define VPOS_OFFSET     		0x2C
 
 // VPOS helpers
-#define LOGO_VPOS_START     	VPOS_OFFSET
 #define WHITE1_VPOS         	VPOS_OFFSET + WHITE_LINE_1
 #define PLASMA_VPOS_START   	VPOS_OFFSET + PLASMA_START_LINE
 #define WHITE2_VPOS         	VPOS_OFFSET + WHITE_LINE_2
 #define SCROLLER_VPOS_START 	VPOS_OFFSET + SCROLLER_START_LINE
 #define SCROLLER_BPLPOINTER		SCROLLER_START_LINE * BYTESPERROW * NUMBEROFBITPLANES
 
-// =====================================================================
-// Morning sky copper background
-// =====================================================================
+// Shadow effect parameters for the sine scroller
+// BPL2 = same data as BPL1, shifted SHADOW_DX pixels right and SHADOW_DY lines down via Copper
+#define SHADOW_DX              3
+#define SHADOW_DY              3
+#define SHADOW_COLOR           0x246
+#define SCROLLER_TEXT_COLOR    0xC0D
+
+// Mirror effect: reflects the scroller region starting at SCROLLER_MIRROR_LINE
+// BPLxMOD is set negative so the hardware reads bitplane rows in reverse order
+#define SCROLLER_MIRROR_LINE   228
+#define MIRROR_TEXT_COLOR      0x508    // dimmer magenta (reflected text)
+#define MIRROR_SHADOW_COLOR    0x125    // dark blue-purple (reflected shadow)
 
 typedef struct
 {
@@ -548,69 +412,62 @@ static const SKYKEY SkyKeys[] =
 	{ 255, 0xBDF }  // pale morning blue
 };
 
-static UWORD SkyColorForLine(UWORD y, UWORD totalLines)
+static UWORD SkyColorForLine(UWORD y)
 {
-	if (y == 0)
-	{
-		return SkyKeys[0].Color;
-	}
-
-	UWORD p = (UWORD)(((ULONG)y * SCREENHEIGHT) / (ULONG)(totalLines - 1));
-
+	// SkyKeys span [0..255] exactly — y always matches a segment
 	for (UWORD i = 0; i < (sizeof(SkyKeys) / sizeof(SkyKeys[0])) - 1; ++i)
 	{
-		UWORD p0 = SkyKeys[i].Line;
-		UWORD p1 = SkyKeys[i + 1].Line;
+		const UWORD p0 = SkyKeys[i].Line;
+		const UWORD p1 = SkyKeys[i + 1].Line;
 
-		if (p >= p0 && p <= p1)
+		if (y >= p0 && y <= p1)
 		{
-			const UWORD Span = p1 - p0;
-			const UWORD t = p - p0;
-
-			if (!Span)
-			{
-				return SkyKeys[i].Color;
-			}
-
-			return RGB4_Lerp(SkyKeys[i].Color, SkyKeys[i + 1].Color, t, Span);
+			return lwmf_RGBLerp(SkyKeys[i].Color, SkyKeys[i + 1].Color, y - p0, p1 - p0);
 		}
 	}
 
 	return SkyKeys[(sizeof(SkyKeys) / sizeof(SkyKeys[0])) - 1].Color;
 }
 
-static void AddSkyLine(UWORD **cl, UWORD y)
+static void AddSkyLine(UWORD **Copperlist, UWORD y)
 {
 	const UWORD VPOS = VPOS_OFFSET + y;
 
 	// VPOS wrap at 256
 	if (VPOS == 256)
 	{
-		*(*cl)++ = 0xFFDF;
-		*(*cl)++ = 0xFFFE;
+		*(*Copperlist)++ = 0xFFDF;
+		*(*Copperlist)++ = 0xFFFE;
 	}
 
-	*(*cl)++ = ((VPOS & 0xFF) << 8) | 0x07;
-	*(*cl)++ = 0xFFFE;
-	*(*cl)++ = 0x180;
-	*(*cl)++ = SkyColorForLine(y, SCREENHEIGHT);
+	*(*Copperlist)++ = ((VPOS & 0xFF) << 8) | 0x07;
+	*(*Copperlist)++ = 0xFFFE;
+	*(*Copperlist)++ = 0x180;
+	*(*Copperlist)++ = SkyColorForLine(y);
 }
+
+// Copper list size:
+// Header: 94 words (registers, BPL pointers x5, palette x8, section WAITs/MOVEs)
+// Footer: 4 words (VPOS wrap + END)
+#define COPPERWORDS            90
+// Sky: 169 lines * 4 + 2 wrap entry
+#define SKY_LINES              (WHITE_LINE_1 + (SCREENHEIGHT - WHITE_LINE_2 - 1))
+// Extra Copper words for shadow MOD/BPLCON1 adjustments within the scroller sky loop
+#define SHADOW_COPPER_WORDS    6
+// Extra Copper words for mirror MOD/color adjustments within the scroller sky loop
+// MIRROR_LINE-1: BPL1MOD + BPL2MOD = 4; MIRROR_LINE: BPLCON1 + BPL1MOD + BPL2MOD + COLOR01..03 = 12
+#define MIRROR_COPPER_WORDS    16
 
 BOOL Init_CopperList(void)
 {
-	const ULONG CopperListLength = 80 + (PLASMA_LINES * LINE_WORDS) + (SCREENHEIGHT * 4) + 64;
+	const ULONG CopperListLength = COPPERWORDS + (PLASMA_LINES * LINE_WORDS) + (SKY_LINES * 4 + 2) + SHADOW_COPPER_WORDS + MIRROR_COPPER_WORDS;
 
 	if (!(CopperList = (UWORD*)AllocVec(CopperListLength * sizeof(UWORD), MEMF_CHIP | MEMF_CLEAR)))
 	{
 		return FALSE;
 	}
 
-	const UWORD INTERLEAVEDMOD = (BYTESPERROW * (NUMBEROFBITPLANES - 1));
 	UWORD Index = 0;
-
-	// Slow fetch mode (AGA compatibility)
-	CopperList[Index++] = 0x1FC;
-	CopperList[Index++] = 0x0000;
 
 	// Display window top/left (PAL DIWSTRT)
 	CopperList[Index++] = 0x8E;
@@ -639,10 +496,6 @@ BOOL Init_CopperList(void)
 	// BPLCON2
 	CopperList[Index++] = 0x104;
 	CopperList[Index++] = 0x0000;
-
-	// BPLCON3
-	CopperList[Index++] = 0x106;
-	CopperList[Index++] = 0x0C00;
 
 	// BPL1MOD (interleaved: skip over other planes' rows)
 	CopperList[Index++] = 0x108;
@@ -687,14 +540,14 @@ BOOL Init_CopperList(void)
 	}
 
 	// Copper sky in logo region
-	UWORD *cl = &CopperList[Index];
+	UWORD *Copperlist = &CopperList[Index];
 
 	for (UWORD y = 0; y < WHITE_LINE_1; ++y)
 	{
-		AddSkyLine(&cl, y);
+		AddSkyLine(&Copperlist, y);
 	}
 
-	Index = (UWORD)(cl - CopperList);
+	Index = (UWORD)(Copperlist - CopperList);
 
 	// --- White Line 1 (between logo and plasma) ---
 	CopperList[Index++] = (WHITE1_VPOS << 8) | 0x07;
@@ -745,15 +598,15 @@ BOOL Init_CopperList(void)
 	CopperList[Index++] = (WHITE2_VPOS << 8) | 0xE3;
 	CopperList[Index++] = 0xFFFE;
 	CopperList[Index++] = 0x180;
-	CopperList[Index++] = SkyColorForLine(WHITE_LINE_2 + 1, SCREENHEIGHT);
+	CopperList[Index++] = SkyColorForLine(WHITE_LINE_2 + 1);
 
-	// BPLCON0 Switch to 3 bitplanes for scroller
+	// BPLCON0 Switch to 2 bitplanes for scroller (BPL1=text, BPL2=shadow)
 	CopperList[Index++] = (SCROLLER_VPOS_START << 8) | 0x07;
 	CopperList[Index++] = 0xFFFE;
 	CopperList[Index++] = 0x100;
-	CopperList[Index++] = 0x3200;
+	CopperList[Index++] = 0x2200;
 
-	// BPL1PTH/PTL
+	// BPL1PTH/PTL (text plane)
 	CopperList[Index++] = 0x0E0;
 	ScrollBPL1PTH_Idx = Index;
 	CopperList[Index++] = 0x0000;
@@ -762,7 +615,7 @@ BOOL Init_CopperList(void)
 	ScrollBPL1PTL_Idx = Index;
 	CopperList[Index++] = 0x0000;
 
-	// BPL2PTH/PTL
+	// BPL2PTH/PTL (shadow plane — same data as BPL1, offset via Copper)
 	CopperList[Index++] = 0x0E4;
 	ScrollBPL2PTH_Idx = Index;
 	CopperList[Index++] = 0x0000;
@@ -771,32 +624,70 @@ BOOL Init_CopperList(void)
 	ScrollBPL2PTL_Idx = Index;
 	CopperList[Index++] = 0x0000;
 
-	// BPL3PTH/PTL
-	CopperList[Index++] = 0x0E8;
-	ScrollBPL3PTH_Idx = Index;
-	CopperList[Index++] = 0x0000;
+	// COLOR00 = sky (set per-line by AddSkyLine)
+	// COLOR01 = text only (BPL1=1, BPL2=0)
+	// COLOR02 = shadow only (BPL1=0, BPL2=1)
+	// COLOR03 = text+shadow overlap (BPL1=1, BPL2=1) — same as text color
+	CopperList[Index++] = 0x182;
+	CopperList[Index++] = SCROLLER_TEXT_COLOR;
+	CopperList[Index++] = 0x184;
+	CopperList[Index++] = SHADOW_COLOR;
+	CopperList[Index++] = 0x186;
+	CopperList[Index++] = SCROLLER_TEXT_COLOR;
 
-	CopperList[Index++] = 0x0EA;
-	ScrollBPL3PTL_Idx = Index;
-	CopperList[Index++] = 0x0000;
-
-	// COLOR01-COLOR07 only
-	// COLOR00 stays reserved for the copper sky behind the scroller
-	for (UBYTE c = 1; c < 8; ++c)
-	{
-		CopperList[Index++] = 0x180 + c * 2;
-		CopperList[Index++] = ScrollerPalette[c];
-	}
-
-	// Copper sky behind scroller and below it
-	cl = &CopperList[Index];
+	// Copper sky behind scroller
+	// Shadow Copper control lines (relative to SCROLLER_START_LINE):
+	//   y = SCROLLER_START_LINE + SHADOW_DY - 1: set BPL2MOD to go back SHADOW_DY rows
+	//   y = SCROLLER_START_LINE + SHADOW_DY    : restore BPL2MOD, apply BPLCON1 horizontal shift
+	Copperlist = &CopperList[Index];
 
 	for (UWORD y = WHITE_LINE_2 + 1; y < SCREENHEIGHT; ++y)
 	{
-		AddSkyLine(&cl, y);
+		AddSkyLine(&Copperlist, y);
+
+		if (y == SCROLLER_START_LINE + SHADOW_DY - 1)
+		{
+			// Pull BPL2 back SHADOW_DY interleaved rows so it starts replaying from row 0
+			*Copperlist++ = 0x10A;
+			*Copperlist++ = (UWORD)(0u - (BYTESPERROW + (SHADOW_DY - 1u) * INTERLEAVED_STRIDE));
+		}
+		else if (y == SCROLLER_START_LINE + SHADOW_DY)
+		{
+			// Restore normal BPL2MOD and activate horizontal pixel shift for even plane
+			*Copperlist++ = 0x10A;
+			*Copperlist++ = INTERLEAVEDMOD;
+			*Copperlist++ = 0x102;
+			*Copperlist++ = (UWORD)(SHADOW_DX << 4);
+		}
+		else if (y == SCROLLER_MIRROR_LINE - 1)
+		{
+			// Repeat this line at MIRROR_LINE so the reflection starts from the same row
+			*Copperlist++ = 0x108;
+			*Copperlist++ = (UWORD)(-(BYTESPERROW));
+			*Copperlist++ = 0x10A;
+			*Copperlist++ = (UWORD)(-(BYTESPERROW));
+		}
+		else if (y == SCROLLER_MIRROR_LINE)
+		{
+			// Scan backwards: after each row (40 bytes read), step back one full interleaved row
+			// MOD = -(BYTESPERROW + INTERLEAVED_STRIDE) = -(40+120) = -160
+			*Copperlist++ = 0x102;
+			*Copperlist++ = 0x0000;            // reset BPLCON1 (remove horizontal shadow shift)
+			*Copperlist++ = 0x108;
+			*Copperlist++ = (UWORD)(-(BYTESPERROW + INTERLEAVED_STRIDE));
+			*Copperlist++ = 0x10A;
+			*Copperlist++ = (UWORD)(-(BYTESPERROW + INTERLEAVED_STRIDE));
+			// Mirror palette: dimmer colors to simulate water reflection
+			*Copperlist++ = 0x182;
+			*Copperlist++ = MIRROR_TEXT_COLOR;
+			*Copperlist++ = 0x184;
+			*Copperlist++ = MIRROR_SHADOW_COLOR;
+			*Copperlist++ = 0x186;
+			*Copperlist++ = MIRROR_TEXT_COLOR;
+		}
 	}
 
-	Index = (UWORD)(cl - CopperList);
+	Index = (UWORD)(Copperlist - CopperList);
 
 	// VPOS wrap for lines > 255
 	CopperList[Index++] = 0xFFDF;
@@ -813,124 +704,85 @@ BOOL Init_CopperList(void)
 
 void Update_BitplanePointers(UBYTE Buffer)
 {
-	ULONG addr;
+	// BMF_INTERLEAVED: Planes[n] = Planes[0] + n * BYTESPERROW
+	// Total bitmap size (30720 bytes) < 64K, so all planes share the same high word.
+	const ULONG Base  = (ULONG)ScreenBitmap[Buffer]->Planes[0];
+	const UWORD BaseH = (UWORD)(Base >> 16);
 
 	// Logo region: 3 bitplane pointers
-	addr = (ULONG)ScreenBitmap[Buffer]->Planes[0];
-	CopperList[BPL1PTH_Idx] = (UWORD)(addr >> 16);
-	CopperList[BPL1PTL_Idx] = (UWORD)(addr & 0xFFFF);
+	CopperList[BPL1PTH_Idx] = BaseH;
+	CopperList[BPL1PTL_Idx] = (UWORD)Base;
 
-	addr = (ULONG)ScreenBitmap[Buffer]->Planes[1];
-	CopperList[BPL2PTH_Idx] = (UWORD)(addr >> 16);
-	CopperList[BPL2PTL_Idx] = (UWORD)(addr & 0xFFFF);
+	CopperList[BPL2PTH_Idx] = BaseH;
+	CopperList[BPL2PTL_Idx] = (UWORD)(Base + BYTESPERROW);
 
-	addr = (ULONG)ScreenBitmap[Buffer]->Planes[2];
-	CopperList[BPL3PTH_Idx] = (UWORD)(addr >> 16);
-	CopperList[BPL3PTL_Idx] = (UWORD)(addr & 0xFFFF);
+	CopperList[BPL3PTH_Idx] = BaseH;
+	CopperList[BPL3PTL_Idx] = (UWORD)(Base + 2 * BYTESPERROW);
 
-	// Scroller region: 3 bitplane pointers
-	addr = (ULONG)ScreenBitmap[Buffer]->Planes[0] + SCROLLER_BPLPOINTER;
-	CopperList[ScrollBPL1PTH_Idx] = (UWORD)(addr >> 16);
-	CopperList[ScrollBPL1PTL_Idx] = (UWORD)(addr & 0xFFFF);
-
-	addr = (ULONG)ScreenBitmap[Buffer]->Planes[1] + SCROLLER_BPLPOINTER;
-	CopperList[ScrollBPL2PTH_Idx] = (UWORD)(addr >> 16);
-	CopperList[ScrollBPL2PTL_Idx] = (UWORD)(addr & 0xFFFF);
-
-	addr = (ULONG)ScreenBitmap[Buffer]->Planes[2] + SCROLLER_BPLPOINTER;
-	CopperList[ScrollBPL3PTH_Idx] = (UWORD)(addr >> 16);
-	CopperList[ScrollBPL3PTL_Idx] = (UWORD)(addr & 0xFFFF);
+	// Scroller region: BPL1 and BPL2 both point to same data (shadow via Copper offset)
+	CopperList[ScrollBPL1PTH_Idx] = BaseH;
+	CopperList[ScrollBPL1PTL_Idx] = (UWORD)(Base + SCROLLER_BPLPOINTER);
+	CopperList[ScrollBPL2PTH_Idx] = BaseH;
+	CopperList[ScrollBPL2PTL_Idx] = (UWORD)(Base + SCROLLER_BPLPOINTER);
 }
 
 // =====================================================================
-// Copper & Plasma
+// Plasma
 // =====================================================================
 
-// Wave sine table (256 entries, values 0..63)
-static const UBYTE PlasmaSin[256] =
+static void Init_Plasma(void)
 {
-	32,32,33,34,35,35,36,37,38,38,39,40,41,41,42,43,44,44,45,46,46,47,48,48,49,50,50,51,51,52,53,53,
-	54,54,55,55,56,56,57,57,58,58,59,59,59,60,60,60,61,61,61,61,62,62,62,62,62,63,63,63,63,63,63,63,
-	63,63,63,63,63,63,63,63,62,62,62,62,62,61,61,61,61,60,60,60,59,59,59,58,58,57,57,56,56,55,55,54,
-	54,53,53,52,51,51,50,50,49,48,48,47,46,46,45,44,44,43,42,41,41,40,39,38,38,37,36,35,35,34,33,32,
-	32,31,30,29,28,28,27,26,25,25,24,23,22,22,21,20,19,19,18,17,17,16,15,15,14,13,13,12,12,11,10,10,
-	 9, 9, 8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 4, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0,
-	 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9,
-	 9,10,10,11,12,12,13,13,14,15,15,16,17,17,18,19,19,20,21,22,22,23,24,25,25,26,27,28,28,29,30,31
-};
+	// 2D RGB plasma: base table (64-entry period, doubled to 128)
+	const UBYTE CompBase[128] =
+	{
+		8, 8, 9,10,10,11,12,12,13,13,14,14,14,15,15,15,15,15,15,15,14,14,14,13,13,12,12,11,10,10, 9, 8,
+		8, 7, 6, 5, 5, 4, 3, 3, 2, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 7,
+		8, 8, 9,10,10,11,12,12,13,13,14,14,14,15,15,15,15,15,15,15,14,14,14,13,13,12,12,11,10,10, 9, 8,
+		8, 7, 6, 5, 5, 4, 3, 3, 2, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 7
+	};
 
-// 2D RGB plasma: base table (64-entry period, doubled to 128)
-static const UBYTE CompBase[128] =
-{
-	8, 8, 9,10,10,11,12,12,13,13,14,14,14,15,15,15,15,15,15,15,14,14,14,13,13,12,12,11,10,10, 9, 8,
-	 8, 7, 6, 5, 5, 4, 3, 3, 2, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 7,
-	 8, 8, 9,10,10,11,12,12,13,13,14,14,14,15,15,15,15,15,15,15,14,14,14,13,13,12,12,11,10,10, 9, 8,
-	 8, 7, 6, 5, 5, 4, 3, 3, 2, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 7
-};
-
-#define EMIT_PLASMA_COLOR() \
-	do { \
-		*lcop++ = 0x01800000UL \
-		        | ((ULONG)(*rp++) << 8) \
-		        | ((ULONG)(*gp++) << 4) \
-		        |  (ULONG)(*bp++); \
-	} while (0)
+	for (UWORD i = 0; i < 256; ++i)
+	{
+		const UBYTE r = CompBase[i & 127];
+		const UBYTE g = CompBase[(i + 43) & 127];
+		const UBYTE b = CompBase[(i + 85) & 127];
+		PlasmaColorLUT[i] = 0x01800000UL | ((ULONG)r << 8) | ((ULONG)g << 4) | b;
+	}
+}
 
 void Update_Plasma(void)
 {
-	static UBYTE PlasmaFrameRed = 0;
-	static UBYTE PlasmaFrameGreen = 90;
+	static UBYTE Phase1 = 0;
 
-	UBYTE idx2 = PlasmaFrameRed;
-	UBYTE idx5 = PlasmaFrameGreen;
-
+	UBYTE p = Phase1;
 	UWORD *lineBase = &CopperList[PlasmaStart];
 
 	for (UWORD row = 0; row < PLASMA_LINES; ++row)
 	{
-		const UBYTE r_off = PlasmaSin[idx2] & 127;
-		const UBYTE g_off = PlasmaSin[idx5] & 127;
+		UBYTE Phase2 = (UBYTE)(SinTab256[p] + SinTab256[(UBYTE)(p + 90)] + Phase1);
 
-		// blue offset as average of red and green for better color distribution
-		const UBYTE b_off = (UBYTE)(((UWORD)r_off + (UWORD)g_off) >> 1);
-
-		const UBYTE *rp = &CompBase[r_off];
-		const UBYTE *gp = &CompBase[g_off];
-		const UBYTE *bp = &CompBase[b_off];
-
-		lineBase[1] = (UWORD)(((UWORD)rp[0] << 8) | ((UWORD)gp[0] << 4) | (UWORD)bp[0]);
-
-		// lineBase + 4 must point to longword-aligned copper MOVE data.
-		// If CopperList is not longword-aligned, switch this back to UWORD writes.
+		// Write pre-WAIT color in-place, then point lcop past pre-WAIT + WAIT (4 UWORDs = 8 bytes)
+		*(ULONG *)(void *)lineBase = PlasmaColorLUT[Phase2++];
 		ULONG *lcop = (ULONG *)(void *)(lineBase + 4);
 
-		// first color already written to lineBase[1], so skip entry 0
-		++rp;
-		++gp;
-		++bp;
-
-		for (UWORD block = 0; block < 5; ++block)
+		for (UWORD j = 0; j < PLASMA_BLOCKS; ++j)
 		{
-			EMIT_PLASMA_COLOR();
-			EMIT_PLASMA_COLOR();
-			EMIT_PLASMA_COLOR();
-			EMIT_PLASMA_COLOR();
-			EMIT_PLASMA_COLOR();
-			EMIT_PLASMA_COLOR();
-			EMIT_PLASMA_COLOR();
-			EMIT_PLASMA_COLOR();
+			*lcop++ = PlasmaColorLUT[Phase2++];
+			*lcop++ = PlasmaColorLUT[Phase2++];
+			*lcop++ = PlasmaColorLUT[Phase2++];
+			*lcop++ = PlasmaColorLUT[Phase2++];
+			*lcop++ = PlasmaColorLUT[Phase2++];
+			*lcop++ = PlasmaColorLUT[Phase2++];
+			*lcop++ = PlasmaColorLUT[Phase2++];
+			*lcop++ = PlasmaColorLUT[Phase2++];
 		}
 
-		idx2 += 2;
-		idx5 += 5;
+		++p;
 		lineBase += LINE_WORDS;
 	}
 
-	PlasmaFrameRed += 3;
-	PlasmaFrameGreen += 2;
+	++Phase1;
 }
-
-#undef EMIT_PLASMA_COLOR
 
 // =====================================================================
 // Cleanup & Main
@@ -1005,6 +857,8 @@ int main()
 		return 20;
 	}
 
+	Init_Plasma();
+
 	lwmf_TakeOverOS();
 
 	lwmf_StartMODPlayer(&MOD_Demosong);
@@ -1014,26 +868,27 @@ int main()
 
 	while (*CIAA_PRA & 0x40)
 	{
+		// Clear backbuffer with blitter
 		lwmf_OwnBlitter();
-		// CLear screen with blitter while CPU updates plasma colors in copper list
 		lwmf_ClearScreen((long*)ScreenBitmap[CurrentBuffer]->Planes[0]);
-		// CPU updates plasma while blitter clears
-		Update_Plasma();
 		lwmf_DisownBlitter();
 
 		// Draw effects into backbuffer
-		Draw_TextLogo(CurrentBuffer);
 		Draw_SineScroller(CurrentBuffer);
+		Draw_TextLogo(CurrentBuffer);
 
 		if (DEBUG == 1)
 		{
 			*COLOR00 = 0xF00;
 		}
 
-		// Flip
+		// Set bitplane pointers before VBlank so Copper picks them up at frame start
 		Update_BitplanePointers(CurrentBuffer);
 		lwmf_WaitVertBlank();
 		CurrentBuffer ^= 1;
+
+		// VBlank: no bitplane DMA active - full Chip RAM bandwidth for plasma writes
+		Update_Plasma();
 	}
 
 	lwmf_StopMODPlayer(&MOD_Demosong);
