@@ -1,5 +1,5 @@
 //**********************************************************************
-//* Three-Part Demo for Amiga with at least OS 3.0                     *
+//* Three-Part Demo for Amiga with at least Kickstart 1.3 (OS 1.3)     *
 //*                                                                    *
 //* (C) 2020-2026 by Stefan Kubsch                                     *
 //* Project for vbcc                                                   *
@@ -20,7 +20,9 @@
 // Double buffering
 // =====================================================================
 
-static struct BitMap* ScreenBitmap[2] = { NULL, NULL };
+static struct BitMap  ScreenBitmapStruct[2];
+static UBYTE*         ScreenBitmapMem[2]    = { NULL, NULL };
+static struct BitMap* ScreenBitmap[2]       = { NULL, NULL };
 
 // =====================================================================
 // MODPlayer (ptplayer)
@@ -85,7 +87,7 @@ void Draw_TextLogo(UBYTE Buffer)
 {
 	static UBYTE SinTabCount = 0;
 
-	lwmf_BlitTile((long*)LogoBitmap->Image->Planes[0], 0, 0, (long*)ScreenBitmap[Buffer]->Planes[0], LogoSinTabX[SinTabCount], LogoSinTabY[SinTabCount], LOGO_WIDTH, LOGO_HEIGHT, 320);
+	lwmf_BlitTile((long*)LogoBitmap->Image.Planes[0], 0, 0, (long*)ScreenBitmap[Buffer]->Planes[0], LogoSinTabX[SinTabCount], LogoSinTabY[SinTabCount], LOGO_WIDTH, LOGO_HEIGHT, 320);
 
 	if (++SinTabCount >= 63)
 	{
@@ -122,13 +124,17 @@ struct Scrollfont
 } Font;
 
 // Computed at runtime by Init_SineScroller: ScrollSinRow[x] * INTERLEAVED_STRIDE
-static UWORD *ScrollRowOffset = NULL;
+static UWORD *ScrollRowOffset        = NULL;
+static ULONG  ScrollRowOffsetSize    = 0;
+static ULONG  FontColumnDstSize      = 0;
+static ULONG  FontColumnBitsSize     = 0;
 
 BOOL Init_SineScroller(void)
 {
 	struct lwmf_Image* FontBitmap;
 
-	if (!(ScrollRowOffset = (UWORD*)AllocVec(sizeof(UWORD) * SCREENWIDTH, MEMF_ANY)))
+	ScrollRowOffsetSize = sizeof(UWORD) * SCREENWIDTH;
+	if (!(ScrollRowOffset = (UWORD*)AllocMem(ScrollRowOffsetSize, MEMF_ANY)))
 	{
 		return FALSE;
 	}
@@ -143,7 +149,7 @@ BOOL Init_SineScroller(void)
 
 	if (!(FontBitmap = lwmf_LoadImage("gfx/ScrollFont.bsh")))
 	{
-		FreeVec(ScrollRowOffset);
+		FreeMem(ScrollRowOffset, ScrollRowOffsetSize);
 		ScrollRowOffset = NULL;
 		return FALSE;
 	}
@@ -195,20 +201,22 @@ BOOL Init_SineScroller(void)
 		return TRUE;
 	}
 
-	if (!(Font.ColumnDst = (WORD*)AllocVec(sizeof(WORD) * MaxColumns, MEMF_ANY)))
+	FontColumnDstSize = sizeof(WORD) * MaxColumns;
+	if (!(Font.ColumnDst = (WORD*)AllocMem(FontColumnDstSize, MEMF_ANY)))
 	{
 		return FALSE;
 	}
 
-	if (!(Font.ColumnBits = (UBYTE*)AllocVec((ULONG)MaxColumns * (ULONG)CharHeight, MEMF_ANY)))
+	FontColumnBitsSize = (ULONG)MaxColumns * (ULONG)CharHeight;
+	if (!(Font.ColumnBits = (UBYTE*)AllocMem(FontColumnBitsSize, MEMF_ANY)))
 	{
-		FreeVec(Font.ColumnDst);
+		FreeMem(Font.ColumnDst, FontColumnDstSize);
 		Font.ColumnDst = NULL;
 		return FALSE;
 	}
 
-	const UBYTE *srcPlane0    = (const UBYTE *)FontBitmap->Image->Planes[0];
-	const UWORD  srcBPR       = FontBitmap->Image->BytesPerRow;
+	const UBYTE *srcPlane0    = (const UBYTE *)FontBitmap->Image.Planes[0];
+	const UWORD  srcBPR       = FontBitmap->Image.BytesPerRow;
 	const UBYTE  feedMask     = (UBYTE)((1u << (UBYTE)Feed) - 1u);
 	const UBYTE  srcShiftBase = (UBYTE)(8u - (UBYTE)Feed);
 	UBYTE       *bitsOut      = Font.ColumnBits;
@@ -313,19 +321,19 @@ void Cleanup_SineScroller(void)
 {
 	if (ScrollRowOffset)
 	{
-		FreeVec(ScrollRowOffset);
+		FreeMem(ScrollRowOffset, ScrollRowOffsetSize);
 		ScrollRowOffset = NULL;
 	}
 
 	if (Font.ColumnDst)
 	{
-		FreeVec(Font.ColumnDst);
+		FreeMem(Font.ColumnDst, FontColumnDstSize);
 		Font.ColumnDst = NULL;
 	}
 
 	if (Font.ColumnBits)
 	{
-		FreeVec(Font.ColumnBits);
+		FreeMem(Font.ColumnBits, FontColumnBitsSize);
 		Font.ColumnBits = NULL;
 	}
 }
@@ -334,7 +342,8 @@ void Cleanup_SineScroller(void)
 // Copper
 // =====================================================================
 
-static UWORD* CopperList = NULL;
+static UWORD* CopperList     = NULL;
+static ULONG  CopperListSize = 0;
 static UWORD PlasmaStart = 0;
 static ULONG PlasmaColorLUT[256];
 
@@ -449,7 +458,7 @@ static void AddSkyLine(UWORD **Copperlist, UWORD y)
 // Copper list size:
 // Header: 94 words (registers, BPL pointers x5, palette x8, section WAITs/MOVEs)
 // Footer: 4 words (VPOS wrap + END)
-#define COPPERWORDS            90
+#define COPPERWORDS            98
 // Sky: 169 lines * 4 + 2 wrap entry
 #define SKY_LINES              (WHITE_LINE_1 + (SCREENHEIGHT - WHITE_LINE_2 - 1))
 // Extra Copper words for shadow MOD/BPLCON1 adjustments within the scroller sky loop
@@ -462,7 +471,9 @@ BOOL Init_CopperList(void)
 {
 	const ULONG CopperListLength = COPPERWORDS + (PLASMA_LINES * LINE_WORDS) + (SKY_LINES * 4 + 2) + SHADOW_COPPER_WORDS + MIRROR_COPPER_WORDS;
 
-	if (!(CopperList = (UWORD*)AllocVec(CopperListLength * sizeof(UWORD), MEMF_CHIP | MEMF_CLEAR)))
+	CopperListSize = CopperListLength * sizeof(UWORD);
+
+	if (!(CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR)))
 	{
 		return FALSE;
 	}
@@ -704,26 +715,28 @@ BOOL Init_CopperList(void)
 
 void Update_BitplanePointers(UBYTE Buffer)
 {
-	// BMF_INTERLEAVED: Planes[n] = Planes[0] + n * BYTESPERROW
-	// Total bitmap size (30720 bytes) < 64K, so all planes share the same high word.
-	const ULONG Base  = (ULONG)ScreenBitmap[Buffer]->Planes[0];
-	const UWORD BaseH = (UWORD)(Base >> 16);
+	// Each pointer gets its own high word calculated independently.
+	// The buffer may straddle a 64K boundary (AllocMem gives no alignment guarantee),
+	const ULONG Base = (ULONG)ScreenBitmap[Buffer]->Planes[0];
 
 	// Logo region: 3 bitplane pointers
-	CopperList[BPL1PTH_Idx] = BaseH;
+	CopperList[BPL1PTH_Idx] = (UWORD)(Base >> 16);
 	CopperList[BPL1PTL_Idx] = (UWORD)Base;
 
-	CopperList[BPL2PTH_Idx] = BaseH;
-	CopperList[BPL2PTL_Idx] = (UWORD)(Base + BYTESPERROW);
+	const ULONG Bpl2Addr = Base + BYTESPERROW;
+	CopperList[BPL2PTH_Idx] = (UWORD)(Bpl2Addr >> 16);
+	CopperList[BPL2PTL_Idx] = (UWORD)Bpl2Addr;
 
-	CopperList[BPL3PTH_Idx] = BaseH;
-	CopperList[BPL3PTL_Idx] = (UWORD)(Base + 2 * BYTESPERROW);
+	const ULONG Bpl3Addr = Base + 2 * BYTESPERROW;
+	CopperList[BPL3PTH_Idx] = (UWORD)(Bpl3Addr >> 16);
+	CopperList[BPL3PTL_Idx] = (UWORD)Bpl3Addr;
 
 	// Scroller region: BPL1 and BPL2 both point to same data (shadow via Copper offset)
-	CopperList[ScrollBPL1PTH_Idx] = BaseH;
-	CopperList[ScrollBPL1PTL_Idx] = (UWORD)(Base + SCROLLER_BPLPOINTER);
-	CopperList[ScrollBPL2PTH_Idx] = BaseH;
-	CopperList[ScrollBPL2PTL_Idx] = (UWORD)(Base + SCROLLER_BPLPOINTER);
+	const ULONG ScrollAddr = Base + SCROLLER_BPLPOINTER;
+	CopperList[ScrollBPL1PTH_Idx] = (UWORD)(ScrollAddr >> 16);
+	CopperList[ScrollBPL1PTL_Idx] = (UWORD)ScrollAddr;
+	CopperList[ScrollBPL2PTH_Idx] = (UWORD)(ScrollAddr >> 16);
+	CopperList[ScrollBPL2PTL_Idx] = (UWORD)ScrollAddr;
 }
 
 // =====================================================================
@@ -788,6 +801,45 @@ void Update_Plasma(void)
 // Cleanup & Main
 // =====================================================================
 
+static BOOL Init_ScreenBitmaps(void)
+{
+	const ULONG screenBytes = (ULONG)BYTESPERROW * NUMBEROFBITPLANES * SCREENHEIGHT;
+
+	for (UBYTE i = 0; i < 2; ++i)
+	{
+		if (!(ScreenBitmapMem[i] = (UBYTE*)AllocMem(screenBytes, MEMF_CHIP | MEMF_CLEAR)))
+		{
+			return FALSE;
+		}
+
+		InitBitMap(&ScreenBitmapStruct[i], NUMBEROFBITPLANES, SCREENWIDTH, SCREENHEIGHT);
+		ScreenBitmapStruct[i].BytesPerRow = BYTESPERROW * NUMBEROFBITPLANES;
+
+		for (UBYTE p = 0; p < NUMBEROFBITPLANES; ++p)
+		{
+			ScreenBitmapStruct[i].Planes[p] = (PLANEPTR)(ScreenBitmapMem[i] + (ULONG)p * BYTESPERROW);
+		}
+
+		ScreenBitmap[i] = &ScreenBitmapStruct[i];
+	}
+
+	return TRUE;
+}
+
+static void Cleanup_ScreenBitmaps(void)
+{
+	const ULONG screenBytes = (ULONG)BYTESPERROW * NUMBEROFBITPLANES * SCREENHEIGHT;
+
+	for (UBYTE i = 0; i < 2; ++i)
+	{
+		if (ScreenBitmapMem[i])
+		{
+			FreeMem(ScreenBitmapMem[i], screenBytes);
+			ScreenBitmapMem[i] = NULL;
+		}
+	}
+}
+
 void Cleanup_All(void)
 {
 	Cleanup_SineScroller();
@@ -797,16 +849,10 @@ void Cleanup_All(void)
 
 	if (CopperList)
 	{
-		FreeVec(CopperList);
+		FreeMem(CopperList, CopperListSize);
 	}
 
-	for (UBYTE i = 0; i < 2; ++i)
-	{
-		if (ScreenBitmap[i])
-		{
-			FreeBitMap(ScreenBitmap[i]);
-		}
-	}
+	Cleanup_ScreenBitmaps();
 
 	lwmf_CleanupAll();
 }
@@ -818,25 +864,16 @@ int main()
 		return 20;
 	}
 
-	if (lwmf_LoadDatatypesLib() != 0)
-	{
-		Cleanup_All();
-		return 20;
-	}
-
 	if (!lwmf_InitModPlayer(&MOD_Demosong, "sfx/beamsoflight.mod"))
 	{
 		Cleanup_All();
 		return 20;
 	}
 
-	for (UBYTE i = 0; i < 2; ++i)
+	if (!Init_ScreenBitmaps())
 	{
-		if (!(ScreenBitmap[i] = AllocBitMap(SCREENWIDTH, SCREENHEIGHT, NUMBEROFBITPLANES, BMF_INTERLEAVED | BMF_CLEAR, NULL)))
-		{
-			Cleanup_All();
-			return 20;
-		}
+		Cleanup_All();
+		return 20;
 	}
 
 	if (!Init_TextLogo())

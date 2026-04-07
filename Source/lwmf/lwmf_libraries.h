@@ -2,12 +2,8 @@
 #define LWMF_LIBRARIES_H
 
 #include <exec/exec.h>
-#include <exec/types.h>
-#include <graphics/rastport.h>
-#include <datatypes/pictureclass.h>
 #include <clib/exec_protos.h>
 #include <clib/graphics_protos.h>
-#include <clib/datatypes_protos.h>
 #include <proto/dos.h>
 
 //
@@ -18,7 +14,6 @@
 
 long lwmf_GetVBR(void);
 UWORD lwmf_LoadGraphicsLib(void);
-UWORD lwmf_LoadDatatypesLib(void);
 void lwmf_CloseLibraries();
 void lwmf_TakeOverOS(void);
 void lwmf_ReleaseOS(void);
@@ -37,6 +32,5 @@ void lwmf_BlitTile(__reg("a0") long* SrcAddr, __reg("d0") WORD SrcX, __reg("d1")
 //
 
 extern long GfxBase;
-extern long DataTypesBase;
 
 #endif /* LWMF_LIBRARIES_H */

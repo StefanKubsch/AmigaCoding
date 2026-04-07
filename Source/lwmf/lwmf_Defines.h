@@ -3,7 +3,7 @@
 #define DMASET_DEMO	0x83c0
 #define GFX_COPINIT	0x26
 #define GFX_ACTIVIEW	0x22
-#define MINVERSION	0x27
+#define MINVERSION	0x22
 #define LVOSupervisor	0xffffffffffffffe2
 #define LVOCloseLibrary	0xfffffffffffffe62
 #define LVOOpenLibrary	0xfffffffffffffdd8

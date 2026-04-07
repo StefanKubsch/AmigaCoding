@@ -75,7 +75,7 @@ LVOSupervisor       equ     -30
 
 ; Constants
 
-MINVERSION          equ     39        ; set required version (39 -> Amiga OS 3.0 and higher)
+MINVERSION          equ     34        ; set required version (34 -> Kickstart 1.3 and higher)
 GFX_ACTIVIEW        equ     34        ; GfxBase offset: pointer to active View
 GFX_COPINIT         equ     38        ; GfxBase offset: system copper list pointer
 DMASET_DEMO         equ     $83C0     ; SET | DMAEN | BPLEN | COPEN | BLTEN (no sprites)
@@ -164,31 +164,6 @@ _lwmf_LoadGraphicsLib::
 	rts
 
 ;
-; UWORD lwmf_LoadDatatypesLib(void);
-;
-
-_lwmf_LoadDatatypesLib::
-	move.l	a6,-(sp)                ; save register on stack
-	move.l	EXECBASE.w,a6           ; use exec base address
-
-	lea     datatypeslib(pc),a1		; load datatypes library name
-	moveq   #MINVERSION,d0			; set minimum library version
-	jsr     LVOOpenLibrary(a6)		; open datatypes library
-	move.l  d0,_DataTypesBase		; store address of DataTypesBase in variable
-	beq.s   .error					; jump if library open failed
-
-	moveq   #0,d0					; return with success
-	bra.s   .exit
-
-.error
-	clr.l   _DataTypesBase			; clear DataTypesBase variable
-	moveq   #20,d0					; return with error
-
-.exit
-	move.l	(sp)+,a6                ; restore register
-	rts
-
-;
 ; void lwmf_CloseLibraries(void);
 ;
 
@@ -196,12 +171,6 @@ _lwmf_CloseLibraries::
 	move.l  a6,-(sp)                ; save register on stack
 	move.l  EXECBASE.w,a6           ; use exec base address
 
-	move.l  _DataTypesBase(pc),a1   ; load DataTypesBase
-	beq.s   .checkgfx               ; skip if not open
-	jsr     LVOCloseLibrary(a6)     ; close datatypes library
-	clr.l   _DataTypesBase          ; clear DataTypesBase variable
-
-.checkgfx
 	move.l  _GfxBase(pc),a1         ; load GfxBase
 	beq.s   .done                   ; skip if not open
 	jsr     LVOCloseLibrary(a6)     ; close graphics library
@@ -718,9 +687,4 @@ gfxlib:
 _GfxBase::
 	dc.l    0
 
-datatypeslib:
-	dc.b    "datatypes.library",0
 
-	even
-_DataTypesBase::
-	dc.l    0

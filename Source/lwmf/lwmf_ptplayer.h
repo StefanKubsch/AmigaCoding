@@ -35,25 +35,14 @@ static APTR lwmf_LoadMODFile(const STRPTR Filename, LONG *Size_Out)
         return NULL;
     }
 
-    struct FileInfoBlock *FIB = AllocDosObject(DOS_FIB, NULL);
-
-    if (!FIB)
+    // KS 1.3-kompatible Dateigroesse: ans Ende seekern, Position auslesen
+    if (Seek(FileHandle, 0, OFFSET_END) < 0)
     {
         Close(FileHandle);
         return NULL;
     }
 
-    if (!ExamineFH(FileHandle, FIB))
-    {
-        FreeDosObject(DOS_FIB, FIB);
-        Close(FileHandle);
-        return NULL;
-    }
-
-    const LONG Size = FIB->fib_Size;
-
-    FreeDosObject(DOS_FIB, FIB);
-    FIB = NULL;
+    const LONG Size = Seek(FileHandle, 0, OFFSET_BEGINNING);
 
     if (Size <= 0)
     {
