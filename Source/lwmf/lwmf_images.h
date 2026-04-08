@@ -192,7 +192,7 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 			}
 
 			// Build interleaved bitmap (all planes consecutive per row)
-			InitBitMap(&img->Image, bmhd_nPlanes, bmhd_w, bmhd_h);
+			lwmf_InitBitMap(&img->Image, bmhd_nPlanes, bmhd_w, bmhd_h);
 			img->Image.BytesPerRow = (UWORD)rowStride;
 
 			for (UBYTE p = 0; p < bmhd_nPlanes; ++p)

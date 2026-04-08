@@ -17,21 +17,13 @@
 #define DEBUG 				0
 
 // =====================================================================
-// Double buffering
-// =====================================================================
-
-static struct BitMap  ScreenBitmapStruct[2];
-static UBYTE*         ScreenBitmapMem[2]    = { NULL, NULL };
-static struct BitMap* ScreenBitmap[2]       = { NULL, NULL };
-
-// =====================================================================
 // MODPlayer (ptplayer)
 // =====================================================================
 
 static struct MODFile MOD_Demosong;
 
 // =====================================================================
-// Sine table, used by both the sine scroller and the plasma
+// Sine table, used by both the sine scroller effects  and the plasma
 // =====================================================================
 
 // Shared sine table (256 entries, values 0..63, one full period)
@@ -89,7 +81,7 @@ void Draw_TextLogo(UBYTE Buffer)
 
 	lwmf_BlitTile((long*)LogoBitmap->Image.Planes[0], 0, 0, (long*)ScreenBitmap[Buffer]->Planes[0], LogoSinTabX[SinTabCount], LogoSinTabY[SinTabCount], LOGO_WIDTH, LOGO_HEIGHT, 320);
 
-	if (++SinTabCount >= 63)
+	if (++SinTabCount >= 64)
 	{
 		SinTabCount = 0;
 	}
@@ -113,7 +105,7 @@ void Cleanup_TextLogo(void)
 // This is independent of how many planes the Copper displays in a given screen region.
 #define INTERLEAVED_STRIDE   (BYTESPERROW * NUMBEROFBITPLANES)
 
-struct Scrollfont
+static struct Scrollfont
 {
 	UWORD Length;
 	WORD  ScrollX;
@@ -359,6 +351,10 @@ static UWORD ScrollBPL1PTL_Idx = 0;
 static UWORD ScrollBPL2PTH_Idx = 0;
 static UWORD ScrollBPL2PTL_Idx = 0;
 
+// Per-line rainbow: CopperList index of each line's COLOR01 value slot
+static UWORD ScrollRainbowIdx[85]; // 85 = SCREENHEIGHT - WHITE_LINE_2 - 1
+static UBYTE RainbowPhase      = 0;
+
 // Layout: 84 + 1 + 85 + 1 + 85 = 256
 #define WHITE_LINE_1        84
 #define PLASMA_START_LINE   85
@@ -381,10 +377,10 @@ static UWORD ScrollBPL2PTL_Idx = 0;
 #define VPOS_OFFSET     		0x2C
 
 // VPOS helpers
-#define WHITE1_VPOS         	VPOS_OFFSET + WHITE_LINE_1
-#define PLASMA_VPOS_START   	VPOS_OFFSET + PLASMA_START_LINE
-#define WHITE2_VPOS         	VPOS_OFFSET + WHITE_LINE_2
-#define SCROLLER_VPOS_START 	VPOS_OFFSET + SCROLLER_START_LINE
+#define WHITE1_VPOS         	(VPOS_OFFSET + WHITE_LINE_1)
+#define PLASMA_VPOS_START   	(VPOS_OFFSET + PLASMA_START_LINE)
+#define WHITE2_VPOS         	(VPOS_OFFSET + WHITE_LINE_2)
+#define SCROLLER_VPOS_START 	(VPOS_OFFSET + SCROLLER_START_LINE)
 #define SCROLLER_BPLPOINTER		SCROLLER_START_LINE * BYTESPERROW * NUMBEROFBITPLANES
 
 // Shadow effect parameters for the sine scroller
@@ -456,8 +452,8 @@ static void AddSkyLine(UWORD **Copperlist, UWORD y)
 }
 
 // Copper list size:
-// Header: 94 words (registers, BPL pointers x5, palette x8, section WAITs/MOVEs)
-// Footer: 4 words (VPOS wrap + END)
+// Header: 98 words (DIWSTRT+DIWSTOP+DDFSTRT+DDFSTOP=8, BPLCON0..2+MODs=10, BPL1..3 PTH/PTL=12,
+//                  COLOR00..07=16, section WAITs/MOVEs=36, footer VPOS-wrap+END=4, scroller colors=6, BPL pointers=6)
 #define COPPERWORDS            98
 // Sky: 169 lines * 4 + 2 wrap entry
 #define SKY_LINES              (WHITE_LINE_1 + (SCREENHEIGHT - WHITE_LINE_2 - 1))
@@ -466,10 +462,13 @@ static void AddSkyLine(UWORD **Copperlist, UWORD y)
 // Extra Copper words for mirror MOD/color adjustments within the scroller sky loop
 // MIRROR_LINE-1: BPL1MOD + BPL2MOD = 4; MIRROR_LINE: BPLCON1 + BPL1MOD + BPL2MOD + COLOR01..03 = 12
 #define MIRROR_COPPER_WORDS    16
+// Number of scanlines in the scroller region + extra Copper words for per-line COLOR01+COLOR03 rainbow
+#define SCROLLER_LINES         (SCREENHEIGHT - WHITE_LINE_2 - 1) // 85
+#define RAINBOW_COPPER_WORDS   (SCROLLER_LINES * 4)              // 340
 
 BOOL Init_CopperList(void)
 {
-	const ULONG CopperListLength = COPPERWORDS + (PLASMA_LINES * LINE_WORDS) + (SKY_LINES * 4 + 2) + SHADOW_COPPER_WORDS + MIRROR_COPPER_WORDS;
+	const ULONG CopperListLength = COPPERWORDS + (PLASMA_LINES * LINE_WORDS) + (SKY_LINES * 4 + 2) + SHADOW_COPPER_WORDS + MIRROR_COPPER_WORDS + RAINBOW_COPPER_WORDS;
 
 	CopperListSize = CopperListLength * sizeof(UWORD);
 
@@ -656,6 +655,13 @@ BOOL Init_CopperList(void)
 	{
 		AddSkyLine(&Copperlist, y);
 
+		// Per-line rainbow: MOVE COLOR01 + MOVE COLOR03; record index of the COLOR01 value slot
+		*Copperlist++ = 0x182;
+		ScrollRainbowIdx[y - (WHITE_LINE_2 + 1)] = (UWORD)(Copperlist - CopperList);
+		*Copperlist++ = SCROLLER_TEXT_COLOR;
+		*Copperlist++ = 0x186;
+		*Copperlist++ = SCROLLER_TEXT_COLOR;
+
 		if (y == SCROLLER_START_LINE + SHADOW_DY - 1)
 		{
 			// Pull BPL2 back SHADOW_DY interleaved rows so it starts replaying from row 0
@@ -739,6 +745,40 @@ void Update_BitplanePointers(UBYTE Buffer)
 	CopperList[ScrollBPL2PTL_Idx] = (UWORD)ScrollAddr;
 }
 
+// Compute an RGB4 rainbow color for a given scroller line and animation phase.
+// SinTab256 range 0..63; >>2 maps to 0..15 (fits RGB4 channel).
+// line*3 spreads one full hue cycle over the 85 scroller lines.
+static UWORD GetRainbowColor(UWORD line, UBYTE phase)
+{
+	const UBYTE idx = (UBYTE)(line * 3u + phase);
+	const UBYTE r   = SinTab256[idx]                    >> 2;
+	const UBYTE g   = SinTab256[(UBYTE)(idx +  85u)]    >> 2;
+	const UBYTE b   = SinTab256[(UBYTE)(idx + 170u)]    >> 2;
+	return (UWORD)((r << 8) | (g << 4) | b);
+}
+
+// Update per-line COLOR01 and COLOR03 in the Copper list every frame.
+// Mirror lines (>= SCROLLER_MIRROR_LINE) get a half-brightness version.
+void Update_ScrollerRainbow(void)
+{
+	const UWORD MirrorStart = SCROLLER_MIRROR_LINE - (WHITE_LINE_2 + 1);
+
+	for (UWORD i = 0; i < SCROLLER_LINES; ++i)
+	{
+		UWORD c = GetRainbowColor(i, RainbowPhase);
+
+		if (i >= MirrorStart)
+		{
+			c = (c >> 1) & 0x0777; // dim each channel by half for the mirror reflection
+		}
+
+		CopperList[ScrollRainbowIdx[i]]     = c; // COLOR01 (text)
+		CopperList[ScrollRainbowIdx[i] + 2] = c; // COLOR03 (text+shadow overlap)
+	}
+
+	++RainbowPhase;
+}
+
 // =====================================================================
 // Plasma
 // =====================================================================
@@ -801,45 +841,6 @@ void Update_Plasma(void)
 // Cleanup & Main
 // =====================================================================
 
-static BOOL Init_ScreenBitmaps(void)
-{
-	const ULONG screenBytes = (ULONG)BYTESPERROW * NUMBEROFBITPLANES * SCREENHEIGHT;
-
-	for (UBYTE i = 0; i < 2; ++i)
-	{
-		if (!(ScreenBitmapMem[i] = (UBYTE*)AllocMem(screenBytes, MEMF_CHIP | MEMF_CLEAR)))
-		{
-			return FALSE;
-		}
-
-		InitBitMap(&ScreenBitmapStruct[i], NUMBEROFBITPLANES, SCREENWIDTH, SCREENHEIGHT);
-		ScreenBitmapStruct[i].BytesPerRow = BYTESPERROW * NUMBEROFBITPLANES;
-
-		for (UBYTE p = 0; p < NUMBEROFBITPLANES; ++p)
-		{
-			ScreenBitmapStruct[i].Planes[p] = (PLANEPTR)(ScreenBitmapMem[i] + (ULONG)p * BYTESPERROW);
-		}
-
-		ScreenBitmap[i] = &ScreenBitmapStruct[i];
-	}
-
-	return TRUE;
-}
-
-static void Cleanup_ScreenBitmaps(void)
-{
-	const ULONG screenBytes = (ULONG)BYTESPERROW * NUMBEROFBITPLANES * SCREENHEIGHT;
-
-	for (UBYTE i = 0; i < 2; ++i)
-	{
-		if (ScreenBitmapMem[i])
-		{
-			FreeMem(ScreenBitmapMem[i], screenBytes);
-			ScreenBitmapMem[i] = NULL;
-		}
-	}
-}
-
 void Cleanup_All(void)
 {
 	Cleanup_SineScroller();
@@ -852,7 +853,7 @@ void Cleanup_All(void)
 		FreeMem(CopperList, CopperListSize);
 	}
 
-	Cleanup_ScreenBitmaps();
+	lwmf_CleanupScreenBitmaps();
 
 	lwmf_CleanupAll();
 }
@@ -870,7 +871,7 @@ int main()
 		return 20;
 	}
 
-	if (!Init_ScreenBitmaps())
+	if (!lwmf_InitScreenBitmaps())
 	{
 		Cleanup_All();
 		return 20;
@@ -898,6 +899,10 @@ int main()
 
 	lwmf_TakeOverOS();
 
+	// mt_install must happen AFTER TakeOverOS so ptplayer sets its INTENA bit
+	// after the OS interrupt handlers have been disabled — not before.
+	lwmf_InstallModPlayer(&MOD_Demosong);
+
 	lwmf_StartMODPlayer(&MOD_Demosong);
 
 	UBYTE CurrentBuffer = 1;
@@ -919,12 +924,16 @@ int main()
 			*COLOR00 = 0xF00;
 		}
 
-		// Set bitplane pointers before VBlank so Copper picks them up at frame start
-		Update_BitplanePointers(CurrentBuffer);
+		// Wait for vertical blank before modifying the Copper list.
+		// All writes happen here in the blanking interval where bitplane DMA is
+		// inactive, giving full Chip RAM bandwidth and no Copper conflicts.
 		lwmf_WaitVertBlank();
+
+		Update_BitplanePointers(CurrentBuffer);
+		Update_ScrollerRainbow();
+
 		CurrentBuffer ^= 1;
 
-		// VBlank: no bitplane DMA active - full Chip RAM bandwidth for plasma writes
 		Update_Plasma();
 	}
 

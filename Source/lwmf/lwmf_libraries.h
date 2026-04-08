@@ -3,7 +3,7 @@
 
 #include <exec/exec.h>
 #include <clib/exec_protos.h>
-#include <clib/graphics_protos.h>
+#include <graphics/gfx.h>
 #include <proto/dos.h>
 
 //

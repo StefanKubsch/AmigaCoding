@@ -7,12 +7,8 @@
 #define LVOSupervisor	0xffffffffffffffe2
 #define LVOCloseLibrary	0xfffffffffffffe62
 #define LVOOpenLibrary	0xfffffffffffffdd8
-#define LVOSetTaskPri	0xfffffffffffffed4
-#define LVOFindTask	0xfffffffffffffeda
 #define LVOPermit	0xffffffffffffff76
 #define LVOForbid	0xffffffffffffff7c
-#define LVODisownBlitter	0xfffffffffffffe32
-#define LVOOwnBlitter	0xfffffffffffffe38
 #define LVOWaitTOF	0xfffffffffffffef2
 #define LVOLoadView	0xffffffffffffff22
 #define DMAB_BLITTER	0x6

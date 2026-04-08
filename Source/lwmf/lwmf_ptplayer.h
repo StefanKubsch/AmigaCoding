@@ -18,7 +18,7 @@ void mt_end(__reg("a6") void *custom);
 extern UBYTE mt_Enable;
 
 // CUSTOM base adress used for ptplayer; it´s a redefine wth a different name
-struct Custom *ptplayer_custom = (struct Custom *)0xDFF000;
+static struct Custom *ptplayer_custom = (struct Custom *)0xDFF000;
 
 struct MODFile
 {
@@ -77,13 +77,20 @@ static APTR lwmf_LoadMODFile(const STRPTR Filename, LONG *Size_Out)
 
 BOOL lwmf_InitModPlayer(struct MODFile *mod, const STRPTR Filename)
 {
-	// Load MOD file into memory
+	// Load MOD file into Chip RAM only (no hardware access - safe to call before TakeOverOS)
 	if (!(mod->File = lwmf_LoadMODFile(Filename, &mod->Size)))
 	{
         PutStr("Could not load modfile.\n");
         return FALSE;
     }
 
+	return TRUE;
+}
+
+// Call this AFTER lwmf_TakeOverOS() so that mt_install sets up its INTENA bit
+// cleanly, without the OS interrupt handlers interfering or being re-disabled.
+void lwmf_InstallModPlayer(struct MODFile *mod)
+{
 	// Get VBR for ptplayer usage
 	const ULONG VBR = lwmf_GetVBR();
 
@@ -95,8 +102,6 @@ BOOL lwmf_InitModPlayer(struct MODFile *mod, const STRPTR Filename)
 
     // Init ptplayer with the loaded MOD file; no separate sample loading, ptplayer will handle it internally
 	mt_init(ptplayer_custom, mod->File, NULL, 0);
-
-	return TRUE;
 }
 
 void lwmf_StartMODPlayer(struct MODFile *mod)

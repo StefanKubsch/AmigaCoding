@@ -61,14 +61,10 @@ DMAB_BLITTER        equ		6				; DMACONR bit 14 - blitter busy flag
 ; graphics.library
 LVOLoadView         equ     -222
 LVOWaitTOF          equ     -270
-LVOOwnBlitter		equ		-456
-LVODisownBlitter	equ		-462
 
 ; exec.library
 LVOForbid           equ     -132
 LVOPermit           equ     -138
-LVOFindTask         equ     -294
-LVOSetTaskPri       equ     -300
 LVOOpenLibrary      equ     -552
 LVOCloseLibrary     equ     -414
 LVOSupervisor       equ     -30
@@ -214,17 +210,15 @@ _lwmf_TakeOverOS::
 
 	bsr     _lwmf_WaitBlitter        	; wait for any in-progress blit before killing DMA
 
+	move.w  #$7FFF,INTENA       		; disable ALL hardware interrupt enables
+	move.w  #$7FFF,INTREQ       		; clear all pending interrupt requests (write twice - hardware quirk)
+	move.w  #$7FFF,INTREQ
+
 	move.w  #$7FFF,DMACON       		; clear all DMA channels
 	move.w  #DMASET_DEMO,DMACON 		; re-enable bitplane/copper/blitter DMA
 
 	move.l	EXECBASE.w,a6
-	suba.l  a1,a1                   	; zero a1 (NULL = current task for FindTask)
-	jsr     LVOFindTask(a6)         	; find current task
-	move.l  d0,a1
-	moveq   #20,d0                  	; set task priority (20 should be enough!)
-	jsr     LVOSetTaskPri(a6)
-
-	jsr     LVOForbid(a6)
+	jsr     LVOForbid(a6)               ; prevent task switches when ptplayer later re-enables its INTENA bit
 
 	move.l	(sp)+,a6                	; restore register
 	rts
@@ -240,9 +234,11 @@ _lwmf_ReleaseOS::
 
 	move.w  #$7FFF,DMACON
 	move.w  olddma(pc),DMACON
-	move.w  #$7FFF,INTREQ               ; clear all pending interrupts before re-enabling (write twice - hardware quirk)
+	move.w  #$7FFF,INTREQ               ; clear all pending interrupt requests (write twice - hardware quirk)
 	move.w  #$7FFF,INTREQ
-	move.w  oldintreq(pc),INTREQ
+	; NOTE: oldintreq is intentionally NOT restored - INTREQ is a status register,
+	; not a mask. Writing back stale request bits would artificially re-trigger
+	; OS interrupt handlers for events that occurred before TakeOverOS.
 	move.w  #$7FFF,INTENA
 	move.w  oldintena(pc),INTENA
 	move.w  #$7FFF,ADKCON
@@ -268,12 +264,12 @@ _lwmf_ReleaseOS::
 ;
 ; void lwmf_OwnBlitter(void);
 ;
+; Direct hardware: enable blitter-nasty mode (CPU yields bus to blitter).
+; No OS arbiter needed — lwmf_TakeOverOS has already called Forbid().
+;
 
 _lwmf_OwnBlitter::
-	move.l	a6,-(sp)                ; save register on stack
-	move.l  _GfxBase(pc),a6
-	jsr     LVOOwnBlitter(a6)
-	move.l	(sp)+,a6                ; restore register
+	move.w  #$8400,DMACON           ; set BLTPRI (blitter nasty)
    	rts
 
 ;
@@ -281,10 +277,7 @@ _lwmf_OwnBlitter::
 ;
 
 _lwmf_DisownBlitter::
-	move.l	a6,-(sp)                ; save register on stack
-	move.l  _GfxBase(pc),a6
-	jsr     LVODisownBlitter(a6)
-	move.l	(sp)+,a6                ; restore register
+	move.w  #$0400,DMACON           ; clear BLTPRI (blitter nasty)
    	rts
 
 ;
