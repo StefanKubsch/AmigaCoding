@@ -1,11 +1,12 @@
 //**********************************************************************
-//* Three-Part Demo for Amiga with at least Kickstart 1.3 (OS 1.3)     *
+//* Amiga 1200 Intro                                                   *
+//* Will run on Amiga 500, but very slow                               *
 //*                                                                    *
 //* (C) 2020-2026 by Stefan Kubsch                                     *
 //* Project for vbcc                                                   *
 //*                                                                    *
 //* Compile & link with:                                               *
-//* make_ThreePartDemo.cmd                                             *
+//* make_A1200-Intro.cmd                                               *
 //*                                                                    *
 //* Quit with mouse click                                              *
 //**********************************************************************
@@ -352,22 +353,19 @@ static UWORD ScrollBPL2PTH_Idx = 0;
 static UWORD ScrollBPL2PTL_Idx = 0;
 
 // Per-line rainbow: CopperList index of each line's COLOR01 value slot
-static UWORD ScrollRainbowIdx[85]; // 85 = SCREENHEIGHT - WHITE_LINE_2 - 1
+static UWORD ScrollRainbowIdx[84]; // 84 = SCREENHEIGHT - WHITE_LINE_2 - 1
 static UBYTE RainbowPhase      = 0;
 
-// Layout: 84 + 1 + 85 + 1 + 85 = 256
+// Layout: 84 + 1 + 86 + 1 + 84 = 256
 #define WHITE_LINE_1        84
 #define PLASMA_START_LINE   85
-#define PLASMA_LINES        85
-#define WHITE_LINE_2        170
-#define SCROLLER_START_LINE 171
+#define PLASMA_LINES        86
+#define WHITE_LINE_2        171
+#define SCROLLER_START_LINE 172
 
 #define PLASMA_COLS             40
 #define PLASMA_COLS_PER_BLOCK   8
 #define PLASMA_BLOCKS           (PLASMA_COLS / PLASMA_COLS_PER_BLOCK)
-#if (PLASMA_BLOCKS * PLASMA_COLS_PER_BLOCK) != PLASMA_COLS
-#error "PLASMA_COLS must be a multiple of PLASMA_COLS_PER_BLOCK"
-#endif
 #define LINE_WORDS              (2 + 2 + 2 * PLASMA_COLS + 2)
 
 // Modulo to add to BPLxPT after each row in an interleaved bitmap (skips the other planes)
@@ -463,8 +461,8 @@ static void AddSkyLine(UWORD **Copperlist, UWORD y)
 // MIRROR_LINE-1: BPL1MOD + BPL2MOD = 4; MIRROR_LINE: BPLCON1 + BPL1MOD + BPL2MOD + COLOR01..03 = 12
 #define MIRROR_COPPER_WORDS    16
 // Number of scanlines in the scroller region + extra Copper words for per-line COLOR01+COLOR03 rainbow
-#define SCROLLER_LINES         (SCREENHEIGHT - WHITE_LINE_2 - 1) // 85
-#define RAINBOW_COPPER_WORDS   (SCROLLER_LINES * 4)              // 340
+#define SCROLLER_LINES         (SCREENHEIGHT - WHITE_LINE_2 - 1) // 84
+#define RAINBOW_COPPER_WORDS   (SCROLLER_LINES * 4)              // 336
 
 BOOL Init_CopperList(void)
 {
@@ -758,22 +756,24 @@ static UWORD GetRainbowColor(UWORD line, UBYTE phase)
 }
 
 // Update per-line COLOR01 and COLOR03 in the Copper list every frame.
-// Mirror lines (>= SCROLLER_MIRROR_LINE) get a half-brightness version.
+// Two separate loops avoid a per-iteration branch on the mirror threshold.
 void Update_ScrollerRainbow(void)
 {
-	const UWORD MirrorStart = SCROLLER_MIRROR_LINE - (WHITE_LINE_2 + 1);
+	const UWORD MirrorStart = SCROLLER_MIRROR_LINE - SCROLLER_START_LINE;
 
-	for (UWORD i = 0; i < SCROLLER_LINES; ++i)
+	for (UWORD i = 0; i < MirrorStart; ++i)
 	{
-		UWORD c = GetRainbowColor(i, RainbowPhase);
+		const UWORD c = GetRainbowColor(i, RainbowPhase);
+		CopperList[ScrollRainbowIdx[i]]     = c;
+		CopperList[ScrollRainbowIdx[i] + 2] = c;
+	}
 
-		if (i >= MirrorStart)
-		{
-			c = (c >> 1) & 0x0777; // dim each channel by half for the mirror reflection
-		}
-
-		CopperList[ScrollRainbowIdx[i]]     = c; // COLOR01 (text)
-		CopperList[ScrollRainbowIdx[i] + 2] = c; // COLOR03 (text+shadow overlap)
+	// Mirror region: half-brightness to simulate water reflection
+	for (UWORD i = MirrorStart; i < SCROLLER_LINES; ++i)
+	{
+		const UWORD c = (GetRainbowColor(i, RainbowPhase) >> 1) & 0x0777;
+		CopperList[ScrollRainbowIdx[i]]     = c;
+		CopperList[ScrollRainbowIdx[i] + 2] = c;
 	}
 
 	++RainbowPhase;
@@ -805,12 +805,21 @@ static void Init_Plasma(void)
 
 void Update_Plasma(void)
 {
-	static UBYTE Phase1 = 0;
+	static UBYTE Phase1    = 0;
+	// Interlaced row update: process only even or odd rows per frame.
+	// Each row is refreshed at 25 Hz instead of 50 Hz, halving the number of
+	// Chip RAM writes per frame (~43 rows instead of 85 = 50% less bus traffic).
+	// The Phase2 value computed for each processed row is identical to the
+	// non-interlaced version, so visual quality is preserved.
+	static UBYTE RowToggle = 0;
 
-	UBYTE p = Phase1;
-	UWORD *lineBase = &CopperList[PlasmaStart];
+	// Start p at the phase that corresponds to the first processed row
+	// (RowToggle=0 → row 0, RowToggle=1 → row 1); since p = Phase1 + row
+	// in both cases this keeps the per-row color identical to the original.
+	UBYTE p = Phase1 + RowToggle;
+	UWORD *lineBase = &CopperList[PlasmaStart] + RowToggle * LINE_WORDS;
 
-	for (UWORD row = 0; row < PLASMA_LINES; ++row)
+	for (UWORD row = RowToggle; row < PLASMA_LINES; row += 2)
 	{
 		UBYTE Phase2 = (UBYTE)(SinTab256[p] + SinTab256[(UBYTE)(p + 90)] + Phase1);
 
@@ -830,10 +839,11 @@ void Update_Plasma(void)
 			*lcop++ = PlasmaColorLUT[Phase2++];
 		}
 
-		++p;
-		lineBase += LINE_WORDS;
+		p         += 2;
+		lineBase  += 2 * LINE_WORDS;
 	}
 
+	RowToggle ^= 1;
 	++Phase1;
 }
 
