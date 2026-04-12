@@ -2,9 +2,9 @@
 
 Coding for classic 68k Amigas in C99 and Assembler
 
-I uploaded some examples for oldschool demo scene effects, written in C99 and Assembler (vasm), targeted at classic Amiga 500 OCS and up.
+I uploaded some examples for oldschool demo scene effects, written in C99 and Assembler (vasm), targeted at classic Amiga 500 OCS (PAL) and up.
 
-Requierements: Kickstart 1.3, 68000 CPU
+Minimum requierements: Kickstart 1.3, 68000 CPU, 512KB Chip-RAM.
 
 For better handling of reusable code, I am writing a framework called "lwmf" - lightweight media framework.
 
@@ -33,7 +33,7 @@ I test my code on:
 
 - a real Amiga 1200 with an iComp ACA1221 accelerator card and Amiga OS 3.1.4
 - an emulated 14MHz A1200 in WinUAE and Amiga OS 3.1.4 (Kickstart 3.0, 2MB Chip-RAM, 2MB Fast-RAM)
-- an emulated Amiga 500 in WinUAE (Kickstart 2.04, 512KB Chip-RAM, 512KB Slow-RAM)
+- an emulated Amiga 500 in WinUAE (Kickstart 2.04, 512KB Chip-RAM)
 
 Useful links:
 
