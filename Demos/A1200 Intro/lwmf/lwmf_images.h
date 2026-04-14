@@ -138,7 +138,7 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 		{
 			numColors = (UBYTE)(chunkSize / 3);
 
-			if ((cmap = (ULONG*)AllocMem((ULONG)numColors * sizeof(ULONG), MEMF_ANY)))
+			if ((cmap = (ULONG*)lwmf_AllocCpuMem((ULONG)numColors * sizeof(ULONG), MEMF_CLEAR)))
 			{
 				// Read all RGB triples in a single call
 				UBYTE cmapRaw[256 * 3];
@@ -179,7 +179,7 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 			const ULONG dataSize  = rowStride * bmhd_h;
 
 			planeData = (UBYTE*)AllocMem(dataSize, MEMF_CHIP);
-			img       = (struct lwmf_Image*)AllocMem(sizeof(struct lwmf_Image), MEMF_ANY);
+			img       = (struct lwmf_Image*)lwmf_AllocCpuMem(sizeof(struct lwmf_Image), MEMF_CLEAR);
 
 			if (!planeData || !img)
 			{
@@ -210,7 +210,7 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 			{
 				// Pre-read the entire compressed chunk into a temp buffer,
 				// then decompress from RAM — avoids one AmigaDOS syscall per byte
-				UBYTE* compBuf = (UBYTE*)AllocMem(chunkSize, MEMF_ANY);
+				UBYTE* compBuf = (UBYTE*)lwmf_AllocCpuMem(chunkSize, MEMF_CLEAR);
 
 				if (compBuf)
 				{

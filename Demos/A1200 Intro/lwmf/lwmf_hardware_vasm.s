@@ -230,13 +230,13 @@ _lwmf_WaitBlitter::
 ;
 
 _lwmf_WaitVertBlank::
-.loop
-	move.l	$dff004,d0
-	and.l	#$1ff00,d0
-	cmp.l	#303<<8,d0
-	bne.b	.loop
-	rts
-
+.waithigh
+    btst.b  #0,VPOSR+1        		; wait until V8 = 1 (line 256+)
+    beq.s   .waithigh
+.waitlow
+    cmp.b   #(303&$FF),VPOSR+2		; wait until low byte = $2F
+    bne.s   .waitlow
+    rts
 ;
 ; void lwmf_ClearMemCPU(__reg("a1") long* StartAddress, __reg("d7") long NumberOfBytes);
 ;

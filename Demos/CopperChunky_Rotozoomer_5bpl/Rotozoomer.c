@@ -43,7 +43,7 @@ extern void DrawRotoBodyAsm(__reg("a0") const struct RotoAsmParams *Params);
 // Effect constants
 // =====================================================================
 
-#define TEXTURE_FILENAME         "gfx/girl128x128_2.iff"
+#define TEXTURE_FILENAME         "gfx/128x128_5bpl_2.iff"
 #define TEXTURE_SOURCE_WIDTH     128
 #define TEXTURE_SOURCE_HEIGHT    128
 #define TEXTURE_WIDTH            256
@@ -214,7 +214,7 @@ static BOOL BuildChunkyTextureFromBitmap(struct lwmf_Image *RotoBitmap)
 	}
 
 	TextureChunkySize = (ULONG)TEXTURE_WIDTH * (ULONG)TEXTURE_HEIGHT;
-	TextureChunky = (UBYTE*)AllocMem(TextureChunkySize, MEMF_ANY | MEMF_CLEAR);
+	TextureChunky = (UBYTE*)lwmf_AllocCpuMem(TextureChunkySize, MEMF_CLEAR);
 
 	if (!TextureChunky)
 	{
@@ -343,7 +343,7 @@ BOOL Init_RotoZoomer(void)
 	}
 
 	DeltaTabSize = sizeof(RotoDelta) * 256u * ROTO_ZOOM_STEPS;
-	DeltaTab = (RotoDelta*)AllocMem(DeltaTabSize, MEMF_ANY);
+	DeltaTab = (RotoDelta*)lwmf_AllocCpuMem(DeltaTabSize, MEMF_CLEAR);
 
 	if (!DeltaTab)
 	{

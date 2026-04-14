@@ -3,6 +3,7 @@
 
 #include "lwmf_Defines.h"
 #include "lwmf_libraries.h"
+#include "lwmf_memory.h"
 #include "lwmf_hardware.h"
 #include "lwmf_bitmaps.h"
 #include "lwmf_cleanup.h"

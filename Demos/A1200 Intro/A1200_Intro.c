@@ -137,7 +137,7 @@ BOOL Init_SineScroller(void)
 	struct lwmf_Image* FontBitmap;
 
 	ScrollRowOffsetSize = sizeof(UWORD) * SCREENWIDTH;
-	if (!(ScrollRowOffset = (UWORD*)AllocMem(ScrollRowOffsetSize, MEMF_ANY)))
+	if (!(ScrollRowOffset = (UWORD*)lwmf_AllocCpuMem(ScrollRowOffsetSize, MEMF_CLEAR)))
 	{
 		return FALSE;
 	}
@@ -154,7 +154,7 @@ BOOL Init_SineScroller(void)
 	// Precompute RainbowTab[256]: full RGB4 color for each possible idx value.
 	RainbowTabSize = sizeof(UWORD) * 256;
 
-	if (!(RainbowTab = (UWORD*)AllocMem(RainbowTabSize, MEMF_ANY)))
+	if (!(RainbowTab = (UWORD*)lwmf_AllocCpuMem(RainbowTabSize, MEMF_CLEAR)))
 	{
 		FreeMem(ScrollRowOffset, ScrollRowOffsetSize);
 		ScrollRowOffset = NULL;
@@ -225,13 +225,13 @@ BOOL Init_SineScroller(void)
 	}
 
 	FontColumnDstSize = sizeof(WORD) * MaxColumns;
-	if (!(Font.ColumnDst = (WORD*)AllocMem(FontColumnDstSize, MEMF_ANY)))
+	if (!(Font.ColumnDst = (WORD*)lwmf_AllocCpuMem(FontColumnDstSize, MEMF_CLEAR)))
 	{
 		return FALSE;
 	}
 
 	FontColumnBitsSize = (ULONG)MaxColumns * (ULONG)CharHeight;
-	if (!(Font.ColumnBits = (UBYTE*)AllocMem(FontColumnBitsSize, MEMF_ANY)))
+	if (!(Font.ColumnBits = (UBYTE*)lwmf_AllocCpuMem(FontColumnBitsSize, MEMF_CLEAR)))
 	{
 		FreeMem(Font.ColumnDst, FontColumnDstSize);
 		Font.ColumnDst = NULL;

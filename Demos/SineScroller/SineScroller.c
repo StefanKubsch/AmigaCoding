@@ -98,7 +98,7 @@ BOOL Init_SineScroller(void)
 
 	ScrollBottomWordOffsetSize = sizeof(UWORD) * SCREENWIDTH;
 
-	if (!(ScrollBottomWordOffset = (UWORD*)AllocMem(ScrollBottomWordOffsetSize, MEMF_ANY)))
+	if (!(ScrollBottomWordOffset = (UWORD*)lwmf_AllocCpuMem(ScrollBottomWordOffsetSize, MEMF_CLEAR)))
 	{
 		return FALSE;
 	}
@@ -107,7 +107,7 @@ BOOL Init_SineScroller(void)
 	// Indexed as (i*3 + phase) & 0xFF, so the table is phase-independent.
 	RainbowTabSize = sizeof(UWORD) * 256;
 
-	if (!(RainbowTab = (UWORD*)AllocMem(RainbowTabSize, MEMF_ANY)))
+	if (!(RainbowTab = (UWORD*)lwmf_AllocCpuMem(RainbowTabSize, MEMF_CLEAR)))
 	{
 		FreeMem(ScrollBottomWordOffset, ScrollBottomWordOffsetSize);
 		ScrollBottomWordOffset = NULL;
@@ -187,7 +187,7 @@ BOOL Init_SineScroller(void)
 	// FontData is a merged array: hi-word = ColumnBits (pixel pattern), lo-word = ColumnDst (text X).
 	// One ULONG read per column in the ASM inner loop instead of two separate array reads.
 	FontDataSize = (ULONG)MaxColumns * sizeof(ULONG);
-	if (!(Font.FontData = (ULONG*)AllocMem(FontDataSize, MEMF_ANY)))
+	if (!(Font.FontData = (ULONG*)lwmf_AllocCpuMem(FontDataSize, MEMF_CLEAR)))
 	{
 		return FALSE;
 	}
