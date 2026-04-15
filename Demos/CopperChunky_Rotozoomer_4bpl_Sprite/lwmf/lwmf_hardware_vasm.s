@@ -242,7 +242,7 @@ _lwmf_WaitVertBlank::
 ;
 
 _lwmf_ClearMemCPU::
-	movem.l d2-d6/a2-a6,-(sp)       ; save all registers
+	movem.l d2-d7/a2-a6,-(sp)       ; save all registers
 
 	adda.l  d7,a1                   ; we go top -> down
 	lsr.l   #2,d7                   ; divide by 4
@@ -285,7 +285,7 @@ _lwmf_ClearMemCPU::
 	subq.l  #1,d7
 	bne.s   .setword
 .done
-	movem.l (sp)+,d2-d6/a2-a6       ; restore registers
+	movem.l (sp)+,d2-d7/a2-a6       ; restore registers
 	rts
 
 ;
@@ -410,162 +410,6 @@ _lwmf_SetPixel::
     dbra    d4,.loop
 
     movem.l (sp)+,d2-d4				; restore registers
-    rts
-
-; void lwmf_BlitTile(__reg("a0") long* SrcAddr, __reg("d0") WORD SrcX, __reg("d1") WORD SrcY, __reg("a1") long* DstAddr, __reg("d2") WORD DstX, __reg("d3") WORD DstY, __reg("d4") WORD Width, __reg("d5") WORD Height, __reg("d6") WORD SrcWidth);
-;
-; All coordinates (SrcX, SrcY, DstX, DstY) and dimensions (Width, Height) are in pixels -> works currently only fine for multiples of 16 pixels (word-aligned) due to the way masks are calculated. Non-word-aligned blits will require additional masking and shifting logic.
-; Source bitmap is interleaved with NUMBEROFBITPLANES planes; destination uses SCREENWIDTHTOTAL row stride.
-;
-
-_lwmf_BlitTile::
-    movem.l d2-d7/a2,-(sp)                    ; a3 no longer needed
-    lea     CUSTOMREGS,a2
-
-    ; --------------------------------------------------
-    ; 1) src_bprow = SrcWidth / 8
-    ;    src_row_bytes = src_bprow * NUMBEROFBITPLANES
-    ; --------------------------------------------------
-    move.w  d6,d7                             ; d7 = SrcWidth
-    lsr.w   #3,d7                             ; d7 = src_bprow
-    move.w  d7,d6                             ; d6 = src_bprow (keep for SrcModulo)
-    add.w   d7,d7                             ; d7 = src_bprow * 2
-    add.w   d6,d7                             ; d7 = src_row_bytes (*3)
-
-    ; --------------------------------------------------
-    ; 2) Source pointer
-    ;    a0 += SrcY * src_row_bytes + (SrcX & ~15) / 8
-    ; --------------------------------------------------
-    mulu.w  d7,d1                             ; d1 = SrcY * src_row_bytes
-    adda.l  d1,a0
-    move.w  d0,d1
-    andi.w  #WORD_ALIGN_MASK,d1
-    lsr.w   #3,d1
-    adda.w  d1,a0
-
-    ; --------------------------------------------------
-    ; 3) Destination pointer
-    ;    a1 += DstY * SCREENWIDTHTOTAL + (DstX & ~15) / 8
-    ; --------------------------------------------------
-    mulu.w  #SCREENWIDTHTOTAL,d3
-    adda.l  d3,a1
-    move.w  d2,d3
-    andi.w  #WORD_ALIGN_MASK,d3
-    lsr.w   #3,d3
-    adda.w  d3,a1
-
-    ; --------------------------------------------------
-    ; 4) shift = ((DstX & 15) - (SrcX & 15)) & 15
-    ;    d3 = srcStartBit
-    ;    d1 = shift
-    ; --------------------------------------------------
-    move.w  d0,d3
-    andi.w  #$000F,d3
-    move.w  d2,d1
-    andi.w  #$000F,d1
-    sub.w   d3,d1
-    andi.w  #$000F,d1
-
-    ; --------------------------------------------------
-    ; 5) blitWidthWords
-    ;    srcWidthWords  = (srcStartBit + Width + 15) >> 4
-    ;    +1 if shift != 0
-    ; --------------------------------------------------
-    move.w  d3,d0
-    add.w   d4,d0                             ; d0 = srcStartBit + Width
-    move.w  d0,d2                             ; keep for LWM calc
-    add.w   #$000F,d0
-    lsr.w   #4,d0                             ; d0 = srcWidthWords
-    tst.w   d1
-    beq.s   .noextra
-    addq.w  #1,d0
-.noextra
-    move.w  d0,d7                             ; d7 = blitWidthWords
-
-    ; --------------------------------------------------
-    ; 6) BLTAFWM = $FFFF >> srcStartBit
-    ; --------------------------------------------------
-    moveq   #-1,d0
-    lsr.w   d3,d0                             ; d0 = FWM
-
-    ; --------------------------------------------------
-    ; 7) BLTALWM
-    ;    if shift != 0 => extra word, so LWM = 0
-    ; --------------------------------------------------
-    tst.w   d1
-    beq.s   .calcLWM
-    moveq   #0,d3                             ; d3 = LWM
-    bra.s   .masksReady
-
-.calcLWM:
-    move.w  d2,d3
-    subq.w  #1,d3
-    andi.w  #$000F,d3                         ; d3 = srcEndBit
-    eori.w  #$000F,d3                         ; d3 = 15 - srcEndBit
-    moveq   #-1,d4
-    lsl.w   d3,d4
-    move.w  d4,d3                             ; d3 = LWM
-
-.masksReady:
-    ; d0 = FWM
-    ; d3 = LWM
-    ; d1 = shift
-
-    ; --------------------------------------------------
-    ; 8) BLTCON0 = (shift << 12) | $09F0
-    ; --------------------------------------------------
-    move.w  d1,d4
-	lsl.w   #4,d4
-	lsl.w   #8,d4
-    ori.w   #BLTCON0_COPY_A_TO_D,d4
-
-    ; --------------------------------------------------
-    ; 9) Modulos
-    ;    SrcModulo = src_bprow - blitWidthBytes
-    ;    DstModulo = BYTESPERROW - blitWidthBytes
-    ; --------------------------------------------------
-    move.w  d7,d1
-    add.w   d1,d1                             ; d1 = blitWidthBytes
-
-    move.w  d6,d2
-    sub.w   d1,d2                             ; d2 = SrcModulo
-
-    move.w  #BYTESPERROW,d6
-    sub.w   d1,d6                             ; d6 = DstModulo
-
-    ; --------------------------------------------------
-    ; 10) Wait + program blitter
-    ; --------------------------------------------------
-    bsr     _lwmf_WaitBlitter
-
-    move.l  a0,(BLTAPTH-CUSTOMREGS,a2)
-    move.l  a1,(BLTDPTH-CUSTOMREGS,a2)
-
-    ; BLTCON0 + BLTCON1
-    swap    d4
-    clr.w   d4
-    move.l  d4,(BLTCON0-CUSTOMREGS,a2)
-
-    ; BLTAFWM + BLTALWM
-    swap    d0
-    move.w  d3,d0
-    move.l  d0,(BLTAFWM-CUSTOMREGS,a2)
-
-    ; BLTAMOD + BLTDMOD
-    swap    d2
-    move.w  d6,d2
-    move.l  d2,(BLTAMOD-CUSTOMREGS,a2)
-
-    ; BLTSIZE (OCS): bits 15-6 = rows, bits 5-0 = width in words
-    ; total rows = Height * NUMBEROFBITPLANES = Height * 3
-    move.w  d5,d0
-    add.w   d5,d5
-    add.w   d0,d5                             ; d5 = Height * 3
-    lsl.w   #6,d5                             ; d5 = rows << 6
-    or.w    d7,d5                             ; d5 = (rows << 6) | blitWidthWords
-    move.w  d5,(BLTSIZE-CUSTOMREGS,a2)
-
-    movem.l (sp)+,d2-d7/a2
     rts
 
 ; ***************************************************************************************************

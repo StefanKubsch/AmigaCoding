@@ -76,7 +76,7 @@ void Draw_TextLogo(UBYTE Buffer)
 {
 	static UBYTE SinTabCount = 0;
 
-	lwmf_BlitTile((long*)LogoBitmap->Image.Planes[0], 0, 0, (long*)ScreenBitmap[Buffer]->Planes[0], LogoSinTabX[SinTabCount], LogoSinTabY[SinTabCount], LOGO_WIDTH, LOGO_HEIGHT, 320);
+	BltBitMap(&LogoBitmap->Image, 0, 0, ScreenBitmap[Buffer], LogoSinTabX[SinTabCount], LogoSinTabY[SinTabCount], LOGO_WIDTH, LOGO_HEIGHT, 0xC0, 0xFF, NULL);
 
 	if (++SinTabCount >= 64)
 	{
