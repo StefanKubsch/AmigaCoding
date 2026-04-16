@@ -13,13 +13,14 @@
 
 #include "lwmf/lwmf.h"
 
-extern void VB_DrawVectorBallsBlit(__reg("a0") UBYTE* DestPlane0, __reg("a1") const UWORD* SortedDrawOffsetPtr, __reg("a2") UWORD* const * SortedMaskPtr, __reg("a3") UWORD* const * SortedSourcePtr);
+extern void VB_ClearBoxBlit(__reg("a0") UBYTE* DestPlane0);
+extern void VB_DrawVectorBallsBlit(__reg("a0") UBYTE* DestPlane0, __reg("a1") const UBYTE* ZOrderPtr, __reg("a2") const UWORD* DrawOffsetPtr, __reg("a3") const UBYTE* DrawShiftPtr, __reg("a4") UWORD* const * BobMaskShiftPtr, __reg("a6") UWORD* const * BobSourceShiftPtr);
 
 // ---------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------
 
-#define VECTORBALL_FILE      "gfx/Vecball.iff"
+#define VECTORBALL_FILE      "gfx/vecball1.iff"
 
 #define VB_NUM_BALLS         48
 #define VB_BALL_SIZE         16
@@ -29,7 +30,7 @@ extern void VB_DrawVectorBallsBlit(__reg("a0") UBYTE* DestPlane0, __reg("a1") co
 
 // Overall perspective scale in 8.8 fixed.
 // Smaller = balls closer together.
-#define VB_DISPLAY_SCALE     95      /* 95/256 = 0.3711 */
+#define VB_DISPLAY_SCALE     80      /* 80/256 = 0.3125 */
 
 // Angle increments as 8.8 phase into 256-entry LUT.
 #define VB_ANGLE_INC_X       408
@@ -110,11 +111,6 @@ static WORD BallZ[VB_NUM_BALLS];
 static UWORD DrawOffset[VB_NUM_BALLS];
 static UBYTE DrawShift[VB_NUM_BALLS];
 
-// Linear draw command stream built once per frame after Z sorting.
-static UWORD SortedDrawOffset[VB_NUM_BALLS];
-static UWORD* SortedMaskPtr[VB_NUM_BALLS];
-static UWORD* SortedSourcePtr[VB_NUM_BALLS];
-
 // Unique X values present in VectorBallsDefX[]
 static const BYTE XValues[VB_NUM_X_CLASSES] =
 {
@@ -138,15 +134,15 @@ static const WORD YValuesFix[VB_NUM_Y_CLASSES] =
 	(WORD)( 1 * FIX_ONE), (WORD)( 2 * FIX_ONE)
 };
 
-// Per-frame contributions of the 15 X classes after the combined XYZ matrix.
-static WORD FrameXToX4[VB_NUM_X_CLASSES];
-static WORD FrameXToY4[VB_NUM_X_CLASSES];
-static WORD FrameXToZ4[VB_NUM_X_CLASSES];
+// Per-frame contributions of the 15 X classes
+static WORD FrameXToX3[VB_NUM_X_CLASSES];
+static WORD FrameXToZ[VB_NUM_X_CLASSES];
 
-// Per-frame contributions of the 5 Y classes after the combined XYZ matrix.
-static WORD FrameYToX4[VB_NUM_Y_CLASSES];
-static WORD FrameYToY4[VB_NUM_Y_CLASSES];
-static WORD FrameYToZ4[VB_NUM_Y_CLASSES];
+// Per-frame contributions of the 5 Y classes
+static WORD FrameYToX3[VB_NUM_Y_CLASSES];
+static WORD FrameYToZ[VB_NUM_Y_CLASSES];
+static WORD FrameY3SinZ[VB_NUM_Y_CLASSES];
+static WORD FrameY3CosZ[VB_NUM_Y_CLASSES];
 
 // Pre-shifted, interleaved 16x16 bob source and mask data in CHIP RAM.
 // Layout per shift:
@@ -309,19 +305,6 @@ static void SortZOrderInsertionPersistent(void)
 	}
 }
 
-static void Build_DrawCommandStream(void)
-{
-	for (UWORD i = 0; i < VB_NUM_BALLS; ++i)
-	{
-		const UBYTE Index = ZOrder[i];
-		const UBYTE Shift = DrawShift[Index];
-
-		SortedDrawOffset[i] = DrawOffset[Index];
-		SortedMaskPtr[i] = BobMaskShift[Shift];
-		SortedSourcePtr[i] = BobSourceShift[Shift];
-	}
-}
-
 static inline void Prepare_DrawPosition(UWORD Index, WORD X4, WORD Y4, WORD Z4)
 {
 	LONG factor = (LONG)Z4 + (15L << FIX_SHIFT);
@@ -361,39 +344,29 @@ void Update_VectorBalls(void)
 	const WORD sinZ = VBSin(az);
 	const WORD cosZ = VBCos(az);
 
-	// Combined XYZ coefficients for points with base Z = 0.
-	//
-	// x4 = x*A + y*B
-	// y4 = x*C + y*D
-	// z4 = x*E + y*F
-	//
-	// This is intentionally the faster 6-coefficient path. It trades the old
-	// step-by-step fixed-point rounding for fewer per-ball multiplies.
-	const WORD A = FixMul(cosY, cosZ);
-	const WORD B = (WORD)(FixMul(FixMul(sinX, sinY), cosZ) - FixMul(cosX, sinZ));
-	const WORD C = FixMul(cosY, sinZ);
-	const WORD D = (WORD)(FixMul(FixMul(sinX, sinY), sinZ) + FixMul(cosX, cosZ));
-	const WORD E = (WORD)-sinY;
-	const WORD F = FixMul(sinX, cosY);
-
 	// Build the 15 possible X contributions for this frame.
 	for (UWORD xidx = 0; xidx < VB_NUM_X_CLASSES; ++xidx)
 	{
 		const WORD x = XValuesFix[xidx];
 
-		FrameXToX4[xidx] = FixMul(x, A);
-		FrameXToY4[xidx] = FixMul(x, C);
-		FrameXToZ4[xidx] = FixMul(x, E);
+		FrameXToX3[xidx] = FixMul(x, cosY);
+		FrameXToZ[xidx] = -FixMul(x, sinY);
 	}
 
 	// Build the 5 possible Y contributions for this frame.
+	// To preserve the original fixed-point rounding, the combined x3 term
+	// is still rotated around Z per ball, while the pure y3 term is reused
+	// per Y row. */
 	for (UWORD yidx = 0; yidx < VB_NUM_Y_CLASSES; ++yidx)
 	{
 		const WORD y = YValuesFix[yidx];
+		const WORD z2 = FixMul(y, sinX);
+		const WORD y3 = FixMul(y, cosX);
 
-		FrameYToX4[yidx] = FixMul(y, B);
-		FrameYToY4[yidx] = FixMul(y, D);
-		FrameYToZ4[yidx] = FixMul(y, F);
+		FrameYToX3[yidx] = FixMul(z2, sinY);
+		FrameYToZ[yidx] = FixMul(z2, cosY);
+		FrameY3SinZ[yidx] = FixMul(y3, sinZ);
+		FrameY3CosZ[yidx] = FixMul(y3, cosZ);
 	}
 
 	// Combine class contributions for all 48 balls and directly prepare
@@ -402,20 +375,20 @@ void Update_VectorBalls(void)
 	{
 		const UBYTE xc = XClass[i];
 		const UBYTE yc = YClass[i];
-		const WORD x4 = (WORD)(FrameXToX4[xc] + FrameYToX4[yc]);
-		const WORD y4 = (WORD)(FrameXToY4[xc] + FrameYToY4[yc]);
-		const WORD z4 = (WORD)(FrameXToZ4[xc] + FrameYToZ4[yc]);
+		const WORD x3 = (WORD)(FrameXToX3[xc] + FrameYToX3[yc]);
+		const WORD x4 = (WORD)(FixMul(x3, cosZ) - FrameY3SinZ[yc]);
+		const WORD y4 = (WORD)(FixMul(x3, sinZ) + FrameY3CosZ[yc]);
+		const WORD z4 = (WORD)(FrameXToZ[xc] + FrameYToZ[yc]);
 
 		Prepare_DrawPosition(i, x4, y4, z4);
 	}
 
 	SortZOrderInsertionPersistent();
-	Build_DrawCommandStream();
 }
 
 void Draw_VectorBalls(UBYTE Buffer)
 {
-	VB_DrawVectorBallsBlit((UBYTE*)ScreenBitmap[Buffer]->Planes[0], SortedDrawOffset, SortedMaskPtr, SortedSourcePtr);
+	VB_DrawVectorBallsBlit((UBYTE*)ScreenBitmap[Buffer]->Planes[0], ZOrder,	DrawOffset,	DrawShift, BobMaskShift, BobSourceShift);
 
 	AngleX += VB_ANGLE_INC_X;
 	AngleY += VB_ANGLE_INC_Y;
@@ -637,7 +610,7 @@ int main(void)
 
 	while (*CIAA_PRA & 0x40)
 	{
-		lwmf_ClearScreen((long*)ScreenBitmap[CurrentBuffer]->Planes[0]);
+		VB_ClearBoxBlit((UBYTE*)ScreenBitmap[CurrentBuffer]->Planes[0]);
 		Update_VectorBalls();
 		Draw_VectorBalls(CurrentBuffer);
 
