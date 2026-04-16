@@ -64,7 +64,7 @@ VB_BOB_BLTSIZE            equ (VB_BOB_ROWS<<6)|VB_BOB_WORDS
 VB_BOB_DEST_MOD           equ BYTESPERROW-VB_BOB_BYTES
 
 ; ---------------------------------------------------------------------------
-; void VB_DrawVectorBallsBlit(
+; void DrawVectorBallsBlit(
 ;   __reg("a0") UBYTE *dstPlane0,
 ;   __reg("a1") const UWORD *sortedDrawOffsetPtr,
 ;   __reg("a2") UWORD * const *sortedMaskPtr,
@@ -96,8 +96,9 @@ VB_BOB_DEST_MOD           equ BYTESPERROW-VB_BOB_BYTES
 ;   d7 = loop counter for 48 bobs
 ; ---------------------------------------------------------------------------
 
-_VB_DrawVectorBallsBlit::
-	movem.l	d2-d7/a2-a5,-(sp)
+_DrawVectorBallsBlit::
+	; Save only the registers we actually clobber in this fixed draw path.
+	movem.l	d4-d7/a2-a3/a5,-(sp)
 	lea	CUSTOMREGS,a5
 
 	; Wait for any previous blit to finish before programming the constant state
@@ -151,5 +152,5 @@ _VB_DrawVectorBallsBlit::
 	btst.b	#DMAB_BLITTER,(DMACONR-CUSTOMREGS,a5)
 	bne.s	.wait_draw_last
 
-	movem.l	(sp)+,d2-d7/a2-a5
+	movem.l	(sp)+,d4-d7/a2-a3/a5
 	rts

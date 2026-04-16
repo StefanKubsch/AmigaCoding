@@ -13,13 +13,13 @@
 
 #include "lwmf/lwmf.h"
 
-extern void VB_DrawVectorBallsBlit(__reg("a0") UBYTE* DestPlane0, __reg("a1") const UWORD* SortedDrawOffsetPtr, __reg("a2") UWORD* const * SortedMaskPtr, __reg("a3") UWORD* const * SortedSourcePtr);
+extern void DrawVectorBallsBlit(__reg("a0") UBYTE* DestPlane0, __reg("a1") const UWORD* SortedDrawOffsetPtr, __reg("a2") UWORD* const * SortedMaskPtr, __reg("a3") UWORD* const * SortedSourcePtr);
 
 // ---------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------
 
-#define VECTORBALL_FILE      "gfx/Vecball.iff"
+#define VECTORBALL_FILE      "gfx/Vecball16x16.iff"
 
 #define VB_NUM_BALLS         48
 #define VB_BALL_SIZE         16
@@ -32,16 +32,14 @@ extern void VB_DrawVectorBallsBlit(__reg("a0") UBYTE* DestPlane0, __reg("a1") co
 #define VB_DISPLAY_SCALE     95      /* 95/256 = 0.3711 */
 
 // Angle increments as 8.8 phase into 256-entry LUT.
-#define VB_ANGLE_INC_X       408
-#define VB_ANGLE_INC_Y       326
-#define VB_ANGLE_INC_Z       244
+#define VB_ANGLE_INC_X       700
+#define VB_ANGLE_INC_Y       700
+#define VB_ANGLE_INC_Z       700
 
 #define FIX_SHIFT            8
 #define FIX_ONE              (1 << FIX_SHIFT)
 
 #define VB_NUM_X_CLASSES     15
-#define VB_NUM_Y_CLASSES      5
-
 #define VB_BOB_WORDS         2
 #define VB_BOB_ROWS          (VB_BALL_SIZE * NUMBEROFBITPLANES)
 #define VB_BOB_DATA_WORDS    (VB_BOB_ROWS * VB_BOB_WORDS)
@@ -53,6 +51,13 @@ extern void VB_DrawVectorBallsBlit(__reg("a0") UBYTE* DestPlane0, __reg("a1") co
 // All base Z values are 0, so the rotation can be specialized.
 // ---------------------------------------------------------------------
 
+// X coordinates for the flat point cloud.
+// Y is implied by 5 fixed row blocks:
+//   0..11  => -2
+//  12..19  => -1
+//  20..31  =>  0
+//  32..37  =>  1
+//  38..47  =>  2
 static const BYTE VectorBallsDefX[VB_NUM_BALLS] =
 {
 	-9,-8,-5,-4,-3,-1,0,1,3,4,5,7,
@@ -60,15 +65,6 @@ static const BYTE VectorBallsDefX[VB_NUM_BALLS] =
 	-9,-7,-5,-4,-1,0,3,4,5,7,8,9,
 	-9,-7,-5,-1,3,9,
 	-9,-8,-5,-4,-3,-1,0,1,3,9
-};
-
-static const BYTE VectorBallsDefY[VB_NUM_BALLS] =
-{
-	 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-	 1, 1, 1, 1, 1, 1, 1, 1,
-	 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	-1,-1,-1,-1,-1,-1,
-	-2,-2,-2,-2,-2,-2,-2,-2,-2,-2
 };
 
 // ---------------------------------------------------------------------
@@ -102,51 +98,53 @@ static const WORD SinTab256[256] =
 
 struct lwmf_Image* VectorBallImg;
 
-static UBYTE ZOrder[VB_NUM_BALLS];
 static UBYTE XClass[VB_NUM_BALLS];
-static UBYTE YClass[VB_NUM_BALLS];
 
-static WORD BallZ[VB_NUM_BALLS];
+// Specialized runtime Z-order for the current effect.
+// Because AngleX/Y/Z start equal and advance with the same increment,
+// the visible state depends only on one 8-bit phase (AngleX >> 8).
+// Precomputing all 256 Z orders removes the periodic insertion-sort spikes.
+static UBYTE ZOrderLUT[256][VB_NUM_BALLS];
+
+// CPU-side frame data. Keep these in default RAM, not CHIP.
 static UWORD DrawOffset[VB_NUM_BALLS];
 static UBYTE DrawShift[VB_NUM_BALLS];
+static UWORD RowOffset[256];
 
-// Linear draw command stream built once per frame after Z sorting.
+// Linear draw command stream built once per frame from the phase-specific Z order.
 static UWORD SortedDrawOffset[VB_NUM_BALLS];
 static UWORD* SortedMaskPtr[VB_NUM_BALLS];
 static UWORD* SortedSourcePtr[VB_NUM_BALLS];
 
-// Unique X values present in VectorBallsDefX[]
-static const BYTE XValues[VB_NUM_X_CLASSES] =
+/* Maps X in range [-9..+9] to XClass [0..14].
+   Unused entries are 0xFF. */
+static const UBYTE XClassLUT[19] =
 {
-	-9, -8, -7, -5, -4, -3, -1, 0, 1, 3, 4, 5, 7, 8, 9
-};
-
-// Same values in 8.8 fixed for the frame contribution build-up
-static const WORD XValuesFix[VB_NUM_X_CLASSES] =
-{
-	(WORD)(-9 * FIX_ONE), (WORD)(-8 * FIX_ONE), (WORD)(-7 * FIX_ONE),
-	(WORD)(-5 * FIX_ONE), (WORD)(-4 * FIX_ONE), (WORD)(-3 * FIX_ONE),
-	(WORD)(-1 * FIX_ONE), (WORD)( 0 * FIX_ONE), (WORD)( 1 * FIX_ONE),
-	(WORD)( 3 * FIX_ONE), (WORD)( 4 * FIX_ONE), (WORD)( 5 * FIX_ONE),
-	(WORD)( 7 * FIX_ONE), (WORD)( 8 * FIX_ONE), (WORD)( 9 * FIX_ONE)
-};
-
-// 5 Y rows (-2..2) in 8.8 fixed
-static const WORD YValuesFix[VB_NUM_Y_CLASSES] =
-{
-	(WORD)(-2 * FIX_ONE), (WORD)(-1 * FIX_ONE), (WORD)(0 * FIX_ONE),
-	(WORD)( 1 * FIX_ONE), (WORD)( 2 * FIX_ONE)
+	0,    /* -9 */
+	1,    /* -8 */
+	2,    /* -7 */
+	0xFF, /* -6 unused */
+	3,    /* -5 */
+	4,    /* -4 */
+	5,    /* -3 */
+	0xFF, /* -2 unused */
+	6,    /* -1 */
+	7,    /*  0 */
+	8,    /*  1 */
+	0xFF, /*  2 unused */
+	9,    /*  3 */
+	10,   /*  4 */
+	11,   /*  5 */
+	0xFF, /*  6 unused */
+	12,   /*  7 */
+	13,   /*  8 */
+	14    /*  9 */
 };
 
 // Per-frame contributions of the 15 X classes after the combined XYZ matrix.
 static WORD FrameXToX4[VB_NUM_X_CLASSES];
 static WORD FrameXToY4[VB_NUM_X_CLASSES];
 static WORD FrameXToZ4[VB_NUM_X_CLASSES];
-
-// Per-frame contributions of the 5 Y classes after the combined XYZ matrix.
-static WORD FrameYToX4[VB_NUM_Y_CLASSES];
-static WORD FrameYToY4[VB_NUM_Y_CLASSES];
-static WORD FrameYToZ4[VB_NUM_Y_CLASSES];
 
 // Pre-shifted, interleaved 16x16 bob source and mask data in CHIP RAM.
 // Layout per shift:
@@ -184,17 +182,52 @@ static inline WORD FixMul(WORD a, WORD b)
 	return (WORD)(((LONG)a * (LONG)b) >> FIX_SHIFT);
 }
 
-static UBYTE FindXClass(BYTE x)
+static inline WORD MulHi16(WORD a, WORD b)
 {
-	for (UBYTE i = 0; i < VB_NUM_X_CLASSES; ++i)
-	{
-		if (XValues[i] == x)
-		{
-			return i;
-		}
-	}
+	return (WORD)(((LONG)a * (LONG)b) >> 16);
+}
 
-	return 0;
+static inline WORD ScalePerspective(WORD Value)
+{
+#if VB_DISPLAY_SCALE == 95
+	const LONG Scaled = ((LONG)Value << 6) + ((LONG)Value << 4) + ((LONG)Value << 3) +
+					 ((LONG)Value << 2) + ((LONG)Value << 1) + (LONG)Value;
+
+	return (WORD)(Scaled >> FIX_SHIFT);
+#else
+	return (WORD)(((LONG)Value * VB_DISPLAY_SCALE) >> FIX_SHIFT);
+#endif
+}
+
+static inline void BuildXContributionTable(WORD* Out, WORD Value)
+{
+	const WORD Value2 = (WORD)(Value + Value);
+	const WORD Value4 = (WORD)(Value2 + Value2);
+	const WORD Value8 = (WORD)(Value4 + Value4);
+
+	Out[0] = (WORD)-(Value8 + Value);   // -9
+	Out[1] = (WORD)-Value8;             // -8
+	Out[2] = (WORD)(Value - Value8);    // -7
+	Out[3] = (WORD)-(Value4 + Value);   // -5
+	Out[4] = (WORD)-Value4;             // -4
+	Out[5] = (WORD)-(Value2 + Value);   // -3
+	Out[6] = (WORD)-Value;              // -1
+	Out[7] = 0;                         //  0
+	Out[8] = Value;                     //  1
+	Out[9] = (WORD)(Value2 + Value);    //  3
+	Out[10] = Value4;                   //  4
+	Out[11] = (WORD)(Value4 + Value);   //  5
+	Out[12] = (WORD)(Value8 - Value);   //  7
+	Out[13] = Value8;                   //  8
+	Out[14] = (WORD)(Value8 + Value);   //  9
+}
+
+static void Init_RowOffsetTable(void)
+{
+	for (UWORD y = 0; y < 256; ++y)
+	{
+		RowOffset[y] = (UWORD)(y * VB_INTERLEAVED_ROW_BYTES);
+	}
 }
 
 // ---------------------------------------------------------------------
@@ -265,21 +298,104 @@ static BOOL Build_BobData(void)
 	return TRUE;
 }
 
+static void Build_DrawCommandStream(const UBYTE* Order)
+{
+	for (UWORD i = 0; i < VB_NUM_BALLS; ++i)
+	{
+		const UBYTE Index = Order[i];
+		const UBYTE Shift = DrawShift[Index];
+
+		SortedDrawOffset[i] = DrawOffset[Index];
+		SortedMaskPtr[i] = BobMaskShift[Shift];
+		SortedSourcePtr[i] = BobSourceShift[Shift];
+	}
+}
+
+static void Build_ZOrderLUT(void)
+{
+	WORD PhaseXToZ4[VB_NUM_X_CLASSES];
+	WORD ZTemp[VB_NUM_BALLS];
+	UBYTE Order[VB_NUM_BALLS];
+
+	for (UWORD phase = 0; phase < 256; ++phase)
+	{
+		const UBYTE a = (UBYTE)phase;
+		const WORD sinA = VBSin(a);
+		const WORD cosA = VBCos(a);
+		const WORD E = (WORD)-sinA;
+		const WORD F = FixMul(sinA, cosA);
+		const WORD F2 = (WORD)(F + F);
+
+		BuildXContributionTable(PhaseXToZ4, E);
+
+		for (UWORD i = 0; i < 12; ++i)
+		{
+			ZTemp[i] = (WORD)(PhaseXToZ4[XClass[i]] - F2);
+		}
+
+		for (UWORD i = 12; i < 20; ++i)
+		{
+			ZTemp[i] = (WORD)(PhaseXToZ4[XClass[i]] - F);
+		}
+
+		for (UWORD i = 20; i < 32; ++i)
+		{
+			ZTemp[i] = PhaseXToZ4[XClass[i]];
+		}
+
+		for (UWORD i = 32; i < 38; ++i)
+		{
+			ZTemp[i] = (WORD)(PhaseXToZ4[XClass[i]] + F);
+		}
+
+		for (UWORD i = 38; i < 48; ++i)
+		{
+			ZTemp[i] = (WORD)(PhaseXToZ4[XClass[i]] + F2);
+		}
+
+		for (UWORD i = 0; i < VB_NUM_BALLS; ++i)
+		{
+			Order[i] = (UBYTE)i;
+		}
+
+		for (UWORD i = 1; i < VB_NUM_BALLS; ++i)
+		{
+			const UBYTE Key = Order[i];
+			const WORD KeyZ = ZTemp[Key];
+			WORD j = (WORD)i - 1;
+
+			while (j >= 0 && ZTemp[Order[j]] > KeyZ)
+			{
+				Order[j + 1] = Order[j];
+				--j;
+			}
+
+			Order[j + 1] = Key;
+		}
+
+		for (UWORD i = 0; i < VB_NUM_BALLS; ++i)
+		{
+			ZOrderLUT[phase][i] = Order[i];
+		}
+	}
+}
+
 BOOL Init_VectorBall(void)
 {
 	VectorBallImg = lwmf_LoadImage(VECTORBALL_FILE);
 
 	CopyPaletteFromImage(VectorBallImg);
 	Build_BobData();
+	Init_RowOffsetTable();
 
 	// Classify every point once; the actual rotation is built from
-	// 15 X contributions and 5 Y contributions per frame.
+	// 15 X contributions per frame, while the 5 Y rows stay in fixed blocks.
 	for (UWORD i = 0; i < VB_NUM_BALLS; ++i)
 	{
-		XClass[i] = FindXClass(VectorBallsDefX[i]);
-		YClass[i] = (UBYTE)(VectorBallsDefY[i] + 2);
-		ZOrder[i] = (UBYTE)i;
+		XClass[i] = XClassLUT[(WORD)VectorBallsDefX[i] + 9];
 	}
+
+	Build_ZOrderLUT();
 
 	lwmf_DeleteImage(VectorBallImg);
 	VectorBallImg = NULL;
@@ -291,61 +407,17 @@ BOOL Init_VectorBall(void)
 	return TRUE;
 }
 
-static void SortZOrderInsertionPersistent(void)
-{
-	for (UWORD i = 1; i < VB_NUM_BALLS; ++i)
-	{
-		const UBYTE Key = ZOrder[i];
-		const WORD KeyZ = BallZ[Key];
-		WORD j = (WORD)i - 1;
-
-		while (j >= 0 && BallZ[ZOrder[j]] > KeyZ)
-		{
-			ZOrder[j + 1] = ZOrder[j];
-			--j;
-		}
-
-		ZOrder[j + 1] = Key;
-	}
-}
-
-static void Build_DrawCommandStream(void)
-{
-	for (UWORD i = 0; i < VB_NUM_BALLS; ++i)
-	{
-		const UBYTE Index = ZOrder[i];
-		const UBYTE Shift = DrawShift[Index];
-
-		SortedDrawOffset[i] = DrawOffset[Index];
-		SortedMaskPtr[i] = BobMaskShift[Shift];
-		SortedSourcePtr[i] = BobSourceShift[Shift];
-	}
-}
-
 static inline void Prepare_DrawPosition(UWORD Index, WORD X4, WORD Y4, WORD Z4)
 {
-	LONG factor = (LONG)Z4 + (15L << FIX_SHIFT);
-
-	if (factor < (4L << FIX_SHIFT))
-	{
-		factor = (4L << FIX_SHIFT);
-	}
-	else if (factor > (26L << FIX_SHIFT))
-	{
-		factor = (26L << FIX_SHIFT);
-	}
-
-	LONG proj = (factor * VB_DISPLAY_SCALE) >> FIX_SHIFT;
-
-	WORD x = (WORD)(VB_CENTER_X + (((LONG)X4 * (proj << 1)) >> 16));
-	WORD y = (WORD)(VB_CENTER_Y + (((LONG)Y4 * (proj << 1)) >> 16));
-
-	x -= (VB_BALL_SIZE >> 1);
-	y -= (VB_BALL_SIZE >> 1);
+	// For the current DEEP4 point cloud the old perspective clamp never triggers,
+	// so keep the hot path branch-free here.
+	const WORD proj = ScalePerspective((WORD)(Z4 + (15 << FIX_SHIFT)));
+	const WORD proj2 = (WORD)(proj + proj);
+	const WORD x = (WORD)(VB_CENTER_X - (VB_BALL_SIZE >> 1) + MulHi16(X4, proj2));
+	const WORD y = (WORD)(VB_CENTER_Y - (VB_BALL_SIZE >> 1) + MulHi16(Y4, proj2));
 
 	DrawShift[Index] = (UBYTE)(x & 15);
-	DrawOffset[Index] = (UWORD)(((UWORD)y * VB_INTERLEAVED_ROW_BYTES) + (((UWORD)x >> 4) << 1));
-	BallZ[Index] = Z4;
+	DrawOffset[Index] = (UWORD)(RowOffset[(UBYTE)y] + (((UWORD)x >> 4) << 1));
 }
 
 void Update_VectorBalls(void)
@@ -360,6 +432,7 @@ void Update_VectorBalls(void)
 	const WORD cosY = VBCos(ay);
 	const WORD sinZ = VBSin(az);
 	const WORD cosZ = VBCos(az);
+	const WORD sinXsinY = FixMul(sinX, sinY);
 
 	// Combined XYZ coefficients for points with base Z = 0.
 	//
@@ -370,52 +443,104 @@ void Update_VectorBalls(void)
 	// This is intentionally the faster 6-coefficient path. It trades the old
 	// step-by-step fixed-point rounding for fewer per-ball multiplies.
 	const WORD A = FixMul(cosY, cosZ);
-	const WORD B = (WORD)(FixMul(FixMul(sinX, sinY), cosZ) - FixMul(cosX, sinZ));
+	const WORD B = (WORD)(FixMul(sinXsinY, cosZ) - FixMul(cosX, sinZ));
 	const WORD C = FixMul(cosY, sinZ);
-	const WORD D = (WORD)(FixMul(FixMul(sinX, sinY), sinZ) + FixMul(cosX, cosZ));
+	const WORD D = (WORD)(FixMul(sinXsinY, sinZ) + FixMul(cosX, cosZ));
 	const WORD E = (WORD)-sinY;
 	const WORD F = FixMul(sinX, cosY);
 
-	// Build the 15 possible X contributions for this frame.
-	for (UWORD xidx = 0; xidx < VB_NUM_X_CLASSES; ++xidx)
-	{
-		const WORD x = XValuesFix[xidx];
+	const WORD BX2 = (WORD)(B + B);
+	const WORD DX2 = (WORD)(D + D);
+	const WORD FX2 = (WORD)(F + F);
 
-		FrameXToX4[xidx] = FixMul(x, A);
-		FrameXToY4[xidx] = FixMul(x, C);
-		FrameXToZ4[xidx] = FixMul(x, E);
+	// Build the 15 possible X contributions for this frame without FixMul(x<<8, ...).
+	BuildXContributionTable(FrameXToX4, A);
+	BuildXContributionTable(FrameXToY4, C);
+	BuildXContributionTable(FrameXToZ4, E);
+
+	// The point list is stored in 5 fixed Y blocks:
+	//   0..11  => Y = -2
+	//  12..19  => Y = -1
+	//  20..31  => Y =  0
+	//  32..37  => Y =  1
+	//  38..47  => Y =  2
+	//
+	// This removes YClass[] and all per-ball Y-table reads from the hot loop.
+	{
+		const WORD YX = (WORD)-BX2;
+		const WORD YY = (WORD)-DX2;
+		const WORD YZ = (WORD)-FX2;
+
+		for (UWORD i = 0; i < 12; ++i)
+		{
+			const UBYTE xc = XClass[i];
+			Prepare_DrawPosition(i,
+				(WORD)(FrameXToX4[xc] + YX),
+				(WORD)(FrameXToY4[xc] + YY),
+				(WORD)(FrameXToZ4[xc] + YZ));
+		}
 	}
 
-	// Build the 5 possible Y contributions for this frame.
-	for (UWORD yidx = 0; yidx < VB_NUM_Y_CLASSES; ++yidx)
 	{
-		const WORD y = YValuesFix[yidx];
+		const WORD YX = (WORD)-B;
+		const WORD YY = (WORD)-D;
+		const WORD YZ = (WORD)-F;
 
-		FrameYToX4[yidx] = FixMul(y, B);
-		FrameYToY4[yidx] = FixMul(y, D);
-		FrameYToZ4[yidx] = FixMul(y, F);
+		for (UWORD i = 12; i < 20; ++i)
+		{
+			const UBYTE xc = XClass[i];
+			Prepare_DrawPosition(i,
+				(WORD)(FrameXToX4[xc] + YX),
+				(WORD)(FrameXToY4[xc] + YY),
+				(WORD)(FrameXToZ4[xc] + YZ));
+		}
 	}
 
-	// Combine class contributions for all 48 balls and directly prepare
-	// screen offsets + shift indices for the fixed blitter bob path.
-	for (UWORD i = 0; i < VB_NUM_BALLS; ++i)
+	for (UWORD i = 20; i < 32; ++i)
 	{
 		const UBYTE xc = XClass[i];
-		const UBYTE yc = YClass[i];
-		const WORD x4 = (WORD)(FrameXToX4[xc] + FrameYToX4[yc]);
-		const WORD y4 = (WORD)(FrameXToY4[xc] + FrameYToY4[yc]);
-		const WORD z4 = (WORD)(FrameXToZ4[xc] + FrameYToZ4[yc]);
-
-		Prepare_DrawPosition(i, x4, y4, z4);
+		Prepare_DrawPosition(i,
+			FrameXToX4[xc],
+			FrameXToY4[xc],
+			FrameXToZ4[xc]);
 	}
 
-	SortZOrderInsertionPersistent();
-	Build_DrawCommandStream();
+	{
+		const WORD YX = B;
+		const WORD YY = D;
+		const WORD YZ = F;
+
+		for (UWORD i = 32; i < 38; ++i)
+		{
+			const UBYTE xc = XClass[i];
+			Prepare_DrawPosition(i,
+				(WORD)(FrameXToX4[xc] + YX),
+				(WORD)(FrameXToY4[xc] + YY),
+				(WORD)(FrameXToZ4[xc] + YZ));
+		}
+	}
+
+	{
+		const WORD YX = BX2;
+		const WORD YY = DX2;
+		const WORD YZ = FX2;
+
+		for (UWORD i = 38; i < 48; ++i)
+		{
+			const UBYTE xc = XClass[i];
+			Prepare_DrawPosition(i,
+				(WORD)(FrameXToX4[xc] + YX),
+				(WORD)(FrameXToY4[xc] + YY),
+				(WORD)(FrameXToZ4[xc] + YZ));
+		}
+	}
+
+	Build_DrawCommandStream(ZOrderLUT[ax]);
 }
 
 void Draw_VectorBalls(UBYTE Buffer)
 {
-	VB_DrawVectorBallsBlit((UBYTE*)ScreenBitmap[Buffer]->Planes[0], SortedDrawOffset, SortedMaskPtr, SortedSourcePtr);
+	DrawVectorBallsBlit((UBYTE*)ScreenBitmap[Buffer]->Planes[0], SortedDrawOffset, SortedMaskPtr, SortedSourcePtr);
 
 	AngleX += VB_ANGLE_INC_X;
 	AngleY += VB_ANGLE_INC_Y;
@@ -637,8 +762,8 @@ int main(void)
 
 	while (*CIAA_PRA & 0x40)
 	{
-		lwmf_ClearScreen((long*)ScreenBitmap[CurrentBuffer]->Planes[0]);
 		Update_VectorBalls();
+		lwmf_ClearScreen((long*)ScreenBitmap[CurrentBuffer]->Planes[0]);
 		Draw_VectorBalls(CurrentBuffer);
 
 		lwmf_WaitVertBlank();
