@@ -6,6 +6,23 @@ I uploaded some examples for oldschool demo scene effects, written in C99 and As
 
 Minimum requierements: Kickstart 1.3, 68000 CPU, 512KB Chip-RAM + 512KB Slow-RAM.
 
+---
+
+Included examples, coded for speed and memory, so there are no guards etc:
+
+- Copper-Chunky Rotozoomer 4 bitplanes
+- Copper-Chunky Rotozoomer 4 bitplanes with sprite assist
+- Copper-Chunky Rotozoomer 5 bitplanes
+- Copper Plasma
+- Sinescroller
+- Vectorballs
+
+A demo with proper errorhandling etc. is also included:
+
+- Amiga 1200 intro
+
+---
+
 For better handling of reusable code, I am writing a framework called "lwmf" - lightweight media framework.
 
 Performance-critical parts are done in assembly, like memory clearing, setting pixels etc.

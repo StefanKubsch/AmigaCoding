@@ -195,11 +195,11 @@ static UBYTE MovePhaseY = 64;
 
 static void BuildPairExpandTable(void)
 {
-	/*
-	 * Pair2Idx:
-	 * Combine two already-sampled packed pairs directly into the two
-	 * 8-bit 4-pixel indices needed by Expand4Pix.
-	 */
+	//
+	// Pair2Idx:
+	// Combine two already-sampled packed pairs directly into the two
+	// 8-bit 4-pixel indices needed by Expand4Pix.
+	///
 	for (UWORD pair1 = 0; pair1 < 256u; ++pair1)
 	{
 		const UBYTE c0 = (UBYTE)(pair1 & 0x0Fu);
@@ -225,9 +225,9 @@ static void BuildPairExpandTable(void)
 		}
 	}
 
-	/*
-	 * Expand 4 pixels with 2 bits each into two plane words.
-	 */
+	//
+	// Expand 4 pixels with 2 bits each into two plane words.
+	//
 	for (UWORD idx = 0; idx < EXPAND4PIX_STRIDE; ++idx)
 	{
 		const UBYTE p0 = (UBYTE)( idx        & 0x03u);
@@ -248,28 +248,14 @@ static void BuildPairExpandTable(void)
 	}
 }
 
-static BOOL BuildChunkyTextureFromBitmap(struct lwmf_Image *RotoBitmap)
+static void BuildChunkyTextureFromBitmap(struct lwmf_Image *RotoBitmap)
 {
 	const UBYTE PlaneCount = RotoBitmap->Image.Depth;
 	const UWORD BytesPerRow = RotoBitmap->Image.BytesPerRow;
 	const UWORD ColorCount = (UWORD)RotoBitmap->NumberOfColors;
 
-	if (RotoBitmap->Width != TEXTURE_SOURCE_WIDTH ||
-	    RotoBitmap->Height != TEXTURE_SOURCE_HEIGHT ||
-	    PlaneCount != 4u ||
-	    ColorCount == 0u ||
-	    ColorCount > SCREEN_COLORS)
-	{
-		return FALSE;
-	}
-
 	TextureChunkySize = (ULONG)TEXTURE_WIDTH * (ULONG)TEXTURE_HEIGHT;
 	TextureChunky = (UBYTE*)lwmf_AllocCpuMem(TextureChunkySize, MEMF_CLEAR);
-
-	if (!TextureChunky)
-	{
-		return FALSE;
-	}
 
 	TextureSampleBase = NULL;
 
@@ -299,7 +285,7 @@ static BOOL BuildChunkyTextureFromBitmap(struct lwmf_Image *RotoBitmap)
 	/*
 	 * Internal texture layout is 256x256.
 	 *
-	 * We still duplicate each source row horizontally, so (U >> 8) remains a
+	 * We duplicate each source row horizontally, so (U >> 8) remains a
 	 * direct 0..255 texel X coordinate.
 	 *
 	 * Additionally, we duplicate the 128 source rows vertically into both halves
@@ -339,18 +325,17 @@ static BOOL BuildChunkyTextureFromBitmap(struct lwmf_Image *RotoBitmap)
 
 			Index = (UBYTE)(Index + TextureColorBase);
 
-			/* first half: rows used by negative signed offsets */
+			// first half: rows used by negative signed offsets
 			DstNeg[x] = Index;
 			DstNeg[x + TEXTURE_SOURCE_WIDTH] = Index;
 
-			/* second half: rows used by positive signed offsets */
+			// second half: rows used by positive signed offsets
 			DstPos[x] = Index;
 			DstPos[x + TEXTURE_SOURCE_WIDTH] = Index;
 		}
 	}
 
 	TextureSampleBase = TextureChunky + TEXTURE_SAMPLE_BIAS;
-	return TRUE;
 }
 
 // =====================================================================
@@ -412,62 +397,33 @@ static void BuildRowPointerTable(void)
 
 void Cleanup_RotoZoomer(void)
 {
-	if (TextureChunky)
-	{
-		FreeMem(TextureChunky, TextureChunkySize);
-		TextureChunky = NULL;
-		TextureSampleBase = NULL;
-		TextureChunkySize = 0;
-	}
-
-	if (PairExpand)
-	{
-		FreeMem(PairExpand, PairExpandSize);
-		PairExpand = NULL;
-		PairExpandSize = 0;
-	}
-
-	if (DeltaTab)
-	{
-		FreeMem(DeltaTab, DeltaTabSize);
-		DeltaTab = NULL;
-		DeltaTabSize = 0;
-	}
+	FreeMem(TextureChunky, TextureChunkySize);
+	TextureChunky = NULL;
+	TextureSampleBase = NULL;
+	TextureChunkySize = 0;
+	FreeMem(PairExpand, PairExpandSize);
+	PairExpand = NULL;
+	PairExpandSize = 0;
+	FreeMem(DeltaTab, DeltaTabSize);
+	DeltaTab = NULL;
+	DeltaTabSize = 0;
 }
 
-BOOL Init_RotoZoomer(void)
+void Init_RotoZoomer(void)
 {
 	struct lwmf_Image *RotoBitmap;
 
 	RotoBitmap = lwmf_LoadImage(TEXTURE_FILENAME);
-	if (!RotoBitmap)
-	{
-		return FALSE;
-	}
 
-	if (!BuildChunkyTextureFromBitmap(RotoBitmap))
-	{
-		lwmf_DeleteImage(RotoBitmap);
-		return FALSE;
-	}
+	BuildChunkyTextureFromBitmap(RotoBitmap);
 
 	lwmf_DeleteImage(RotoBitmap);
 
 	DeltaTabSize = sizeof(RotoDelta) * 256u * ROTO_ZOOM_STEPS;
 	DeltaTab = (RotoDelta*)lwmf_AllocCpuMem(DeltaTabSize, MEMF_CLEAR);
-	if (!DeltaTab)
-	{
-		Cleanup_RotoZoomer();
-		return FALSE;
-	}
 
 	PairExpandSize = (ULONG)sizeof(PairExpandSet);
 	PairExpand = (PairExpandSet*)lwmf_AllocCpuMem(PairExpandSize, MEMF_CLEAR);
-	if (!PairExpand)
-	{
-		Cleanup_RotoZoomer();
-		return FALSE;
-	}
 
 	BuildPairExpandTable();
 	BuildMoveTable();
@@ -478,8 +434,6 @@ BOOL Init_RotoZoomer(void)
 	ZoomPhase  = 0;
 	MovePhaseX = 0;
 	MovePhaseY = 64;
-
-	return TRUE;
 }
 
 void Draw_RotoZoomer(UBYTE Buffer)
@@ -526,14 +480,10 @@ static UWORD BPLPTL_Idx[NUMBEROFBITPLANES];
 #define COPPER_EXTRA_WAIT_WORDS  (((ROTO_VPOS_START + ROTO_DISPLAY_HEIGHT) > 256) ? 2 : 0)
 #define COPPERWORDS (16 + (NUMBEROFBITPLANES * 4) + (SCREEN_COLORS * 2) + (ROTO_DISPLAY_HEIGHT * 6) + COPPER_EXTRA_WAIT_WORDS + 2)
 
-BOOL Init_CopperList(void)
+void Init_CopperList(void)
 {
 	CopperListSize = COPPERWORDS * sizeof(UWORD);
-
-	if (!(CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR)))
-	{
-		return FALSE;
-	}
+	CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR);
 
 	UWORD Index = 0;
 
@@ -605,8 +555,6 @@ BOOL Init_CopperList(void)
 	CopperList[Index++] = 0xFFFE;
 
 	*COP1LC = (ULONG)CopperList;
-
-	return TRUE;
 }
 
 void Update_BitplanePointers(UBYTE Buffer)
@@ -637,11 +585,8 @@ void Cleanup_All(void)
 {
 	Cleanup_RotoZoomer();
 
-	if (CopperList)
-	{
-		FreeMem(CopperList, CopperListSize);
-		CopperList = NULL;
-	}
+	FreeMem(CopperList, CopperListSize);
+	CopperList = NULL;
 
 	lwmf_CleanupScreenBitmaps();
 	lwmf_CleanupAll();
@@ -649,28 +594,10 @@ void Cleanup_All(void)
 
 int main(void)
 {
-	if (lwmf_LoadGraphicsLib() != 0)
-	{
-		return 20;
-	}
-
-	if (!lwmf_InitScreenBitmaps())
-	{
-		Cleanup_All();
-		return 20;
-	}
-
-	if (!Init_RotoZoomer())
-	{
-		Cleanup_All();
-		return 20;
-	}
-
-	if (!Init_CopperList())
-	{
-		Cleanup_All();
-		return 20;
-	}
+	lwmf_LoadGraphicsLib();
+	lwmf_InitScreenBitmaps();
+	Init_RotoZoomer();
+	Init_CopperList();
 
 	lwmf_TakeOverOS();
 

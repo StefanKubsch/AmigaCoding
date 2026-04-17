@@ -103,16 +103,12 @@ static void AddSkyLine(UWORD **Copperlist, UWORD y)
 // Sky: 169 lines * 4 = 676 words + 2 extra for VPOS-wrap in AddSkyLine (y=212, VPOS=256)
 #define SKY_LINES              (WHITE_LINE_1 + (SCREENHEIGHT - WHITE_LINE_2 - 1))
 
-BOOL Init_CopperList(void)
+void Init_CopperList(void)
 {
 	const ULONG CopperListLength = COPPERWORDS + (PLASMA_LINES * LINE_WORDS) + (SKY_LINES * 4 + 2);
 
 	CopperListSize = CopperListLength * sizeof(UWORD);
-
-	if (!(CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR)))
-	{
-		return FALSE;
-	}
+	CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR);
 
 	UWORD Index = 0;
 
@@ -216,8 +212,6 @@ BOOL Init_CopperList(void)
 	CopperList[Index++] = 0xFFFE;
 
 	*COP1LC = (ULONG)CopperList;
-
-	return TRUE;
 }
 
 // =====================================================================
@@ -317,27 +311,15 @@ void Update_Plasma(void)
 
 void Cleanup_All(void)
 {
-	if (CopperList)
-	{
-		FreeMem(CopperList, CopperListSize);
-	}
+	FreeMem(CopperList, CopperListSize);
 
 	lwmf_CleanupAll();
 }
 
 int main()
 {
-	if (lwmf_LoadGraphicsLib() != 0)
-	{
-		return 20;
-	}
-
-	if (!Init_CopperList())
-	{
-		Cleanup_All();
-		return 20;
-	}
-
+	lwmf_LoadGraphicsLib();
+	Init_CopperList();
 	Init_Plasma();
 
 	lwmf_TakeOverOS();

@@ -101,9 +101,6 @@ struct lwmf_Image* VectorBallImg;
 static UBYTE XClass[VB_NUM_BALLS];
 
 // Specialized runtime Z-order for the current effect.
-// Because AngleX/Y/Z start equal and advance with the same increment,
-// the visible state depends only on one 8-bit phase (AngleX >> 8).
-// Precomputing all 256 Z orders removes the periodic insertion-sort spikes.
 static UBYTE ZOrderLUT[256][VB_NUM_BALLS];
 
 // CPU-side frame data. Keep these in default RAM, not CHIP.
@@ -409,8 +406,6 @@ BOOL Init_VectorBall(void)
 
 static inline void Prepare_DrawPosition(UWORD Index, WORD X4, WORD Y4, WORD Z4)
 {
-	// For the current DEEP4 point cloud the old perspective clamp never triggers,
-	// so keep the hot path branch-free here.
 	const WORD proj = ScalePerspective((WORD)(Z4 + (15 << FIX_SHIFT)));
 	const WORD proj2 = (WORD)(proj + proj);
 	const WORD x = (WORD)(VB_CENTER_X - (VB_BALL_SIZE >> 1) + MulHi16(X4, proj2));
@@ -440,8 +435,7 @@ void Update_VectorBalls(void)
 	// y4 = x*C + y*D
 	// z4 = x*E + y*F
 	//
-	// This is intentionally the faster 6-coefficient path. It trades the old
-	// step-by-step fixed-point rounding for fewer per-ball multiplies.
+	// This is intentionally the faster 6-coefficient path.
 	const WORD A = FixMul(cosY, cosZ);
 	const WORD B = (WORD)(FixMul(sinXsinY, cosZ) - FixMul(cosX, sinZ));
 	const WORD C = FixMul(cosY, sinZ);
@@ -464,75 +458,50 @@ void Update_VectorBalls(void)
 	//  20..31  => Y =  0
 	//  32..37  => Y =  1
 	//  38..47  => Y =  2
-	//
-	// This removes YClass[] and all per-ball Y-table reads from the hot loop.
-	{
-		const WORD YX = (WORD)-BX2;
-		const WORD YY = (WORD)-DX2;
-		const WORD YZ = (WORD)-FX2;
+	WORD YX = (WORD)-BX2;
+	WORD YY = (WORD)-DX2;
+	WORD YZ = (WORD)-FX2;
 
-		for (UWORD i = 0; i < 12; ++i)
-		{
-			const UBYTE xc = XClass[i];
-			Prepare_DrawPosition(i,
-				(WORD)(FrameXToX4[xc] + YX),
-				(WORD)(FrameXToY4[xc] + YY),
-				(WORD)(FrameXToZ4[xc] + YZ));
-		}
+	for (UWORD i = 0; i < 12; ++i)
+	{
+		UBYTE xc = XClass[i];
+		Prepare_DrawPosition(i,	(WORD)(FrameXToX4[xc] + YX), (WORD)(FrameXToY4[xc] + YY), (WORD)(FrameXToZ4[xc] + YZ));
 	}
 
-	{
-		const WORD YX = (WORD)-B;
-		const WORD YY = (WORD)-D;
-		const WORD YZ = (WORD)-F;
+	YX = (WORD)-B;
+	YY = (WORD)-D;
+	YZ = (WORD)-F;
 
-		for (UWORD i = 12; i < 20; ++i)
-		{
-			const UBYTE xc = XClass[i];
-			Prepare_DrawPosition(i,
-				(WORD)(FrameXToX4[xc] + YX),
-				(WORD)(FrameXToY4[xc] + YY),
-				(WORD)(FrameXToZ4[xc] + YZ));
-		}
+	for (UWORD i = 12; i < 20; ++i)
+	{
+		const UBYTE xc = XClass[i];
+		Prepare_DrawPosition(i, (WORD)(FrameXToX4[xc] + YX), (WORD)(FrameXToY4[xc] + YY), (WORD)(FrameXToZ4[xc] + YZ));
 	}
 
 	for (UWORD i = 20; i < 32; ++i)
 	{
 		const UBYTE xc = XClass[i];
-		Prepare_DrawPosition(i,
-			FrameXToX4[xc],
-			FrameXToY4[xc],
-			FrameXToZ4[xc]);
+		Prepare_DrawPosition(i,	FrameXToX4[xc],	FrameXToY4[xc],	FrameXToZ4[xc]);
 	}
 
-	{
-		const WORD YX = B;
-		const WORD YY = D;
-		const WORD YZ = F;
+	YX = B;
+	YY = D;
+	YZ = F;
 
-		for (UWORD i = 32; i < 38; ++i)
-		{
-			const UBYTE xc = XClass[i];
-			Prepare_DrawPosition(i,
-				(WORD)(FrameXToX4[xc] + YX),
-				(WORD)(FrameXToY4[xc] + YY),
-				(WORD)(FrameXToZ4[xc] + YZ));
-		}
+	for (UWORD i = 32; i < 38; ++i)
+	{
+		const UBYTE xc = XClass[i];
+		Prepare_DrawPosition(i,	(WORD)(FrameXToX4[xc] + YX), (WORD)(FrameXToY4[xc] + YY), (WORD)(FrameXToZ4[xc] + YZ));
 	}
 
-	{
-		const WORD YX = BX2;
-		const WORD YY = DX2;
-		const WORD YZ = FX2;
+	YX = BX2;
+	YY = DX2;
+	YZ = FX2;
 
-		for (UWORD i = 38; i < 48; ++i)
-		{
-			const UBYTE xc = XClass[i];
-			Prepare_DrawPosition(i,
-				(WORD)(FrameXToX4[xc] + YX),
-				(WORD)(FrameXToY4[xc] + YY),
-				(WORD)(FrameXToZ4[xc] + YZ));
-		}
+	for (UWORD i = 38; i < 48; ++i)
+	{
+		const UBYTE xc = XClass[i];
+		Prepare_DrawPosition(i,	(WORD)(FrameXToX4[xc] + YX), (WORD)(FrameXToY4[xc] + YY), (WORD)(FrameXToZ4[xc] + YZ));
 	}
 
 	Build_DrawCommandStream(ZOrderLUT[ax]);
@@ -626,20 +595,13 @@ static void AddSkyLine(UWORD **Copperlist, UWORD y)
 
 BOOL Init_CopperList(void)
 {
-	UWORD Index;
-	UWORD p;
-	UBYTE i;
 	UWORD *Copperlist;
 	const ULONG CopperListLength = COPPER_FIXED_WORDS + SKY_COPPER_WORDS;
-
 	CopperListSize = CopperListLength * sizeof(UWORD);
 
-	if (!(CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR)))
-	{
-		return FALSE;
-	}
+	CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR);
 
-	Index = 0;
+	UWORD Index = 0;
 
 	// PAL display window
 	CopperList[Index++] = 0x08E;
@@ -668,7 +630,7 @@ BOOL Init_CopperList(void)
 	CopperList[Index++] = BYTESPERROW * (NUMBEROFBITPLANES - 1);
 
 	// Bitplane pointers
-	for (p = 0; p < NUMBEROFBITPLANES; ++p)
+	for (UWORD p = 0; p < NUMBEROFBITPLANES; ++p)
 	{
 		CopperList[Index++] = (UWORD)(0x0E0u + (p * 4u));
 		BPLPTH_Idx[p] = Index;
@@ -684,7 +646,7 @@ BOOL Init_CopperList(void)
 	CopperList[Index++] = 0x0000;
 
 	// Ball palette colors 1..15. COLOR00 is owned by the Copper sky.
-	for (i = 1; i < 16; ++i)
+	for (UBYTE i = 1; i < 16; ++i)
 	{
 		CopperList[Index++] = (UWORD)(0x0180 + (i << 1));
 		CopperList[Index++] = BallPalette[i];

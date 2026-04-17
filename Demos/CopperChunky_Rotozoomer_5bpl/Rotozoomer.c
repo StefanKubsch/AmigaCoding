@@ -198,28 +198,18 @@ static void BuildPairExpandTable(void)
 
 		PairExpand.Plane01[packed] = (UWORD)(((UWORD)b1 << 8) | (UWORD)b0);
 		PairExpand.Plane23[packed] = (UWORD)(((UWORD)b3 << 8) | (UWORD)b2);
-		PairExpand.Plane4[packed]  = b4;
+		PairExpand.Plane4[packed] = b4;
 	}
 }
 
-static BOOL BuildChunkyTextureFromBitmap(struct lwmf_Image *RotoBitmap)
+static void BuildChunkyTextureFromBitmap(struct lwmf_Image *RotoBitmap)
 {
 	const UBYTE PlaneCount = RotoBitmap->Image.Depth;
 	const UWORD BytesPerRow = RotoBitmap->Image.BytesPerRow;
 	const UWORD ColorCount = (UWORD)RotoBitmap->NumberOfColors;
 
-	if (RotoBitmap->Width != TEXTURE_SOURCE_WIDTH || RotoBitmap->Height != TEXTURE_SOURCE_HEIGHT || PlaneCount == 0u || PlaneCount > NUMBEROFBITPLANES || ColorCount == 0u ||	ColorCount > SCREEN_COLORS)
-	{
-		return FALSE;
-	}
-
 	TextureChunkySize = (ULONG)TEXTURE_WIDTH * (ULONG)TEXTURE_HEIGHT;
 	TextureChunky = (UBYTE*)lwmf_AllocCpuMem(TextureChunkySize, MEMF_CLEAR);
-
-	if (!TextureChunky)
-	{
-		return FALSE;
-	}
 
 	for (UWORD i = 0; i < SCREEN_COLORS; ++i)
 	{
@@ -278,8 +268,6 @@ static BOOL BuildChunkyTextureFromBitmap(struct lwmf_Image *RotoBitmap)
 			Dst[x + TEXTURE_SOURCE_WIDTH] = Index;
 		}
 	}
-
-	return TRUE;
 }
 
 // =====================================================================
@@ -332,33 +320,16 @@ static void BuildRowPointerTable(void)
 	}
 }
 
-BOOL Init_RotoZoomer(void)
+void Init_RotoZoomer(void)
 {
 	struct lwmf_Image *RotoBitmap;
 
 	RotoBitmap = lwmf_LoadImage(TEXTURE_FILENAME);
-	if (!RotoBitmap)
-	{
-		return FALSE;
-	}
 
 	DeltaTabSize = sizeof(RotoDelta) * 256u * ROTO_ZOOM_STEPS;
 	DeltaTab = (RotoDelta*)lwmf_AllocCpuMem(DeltaTabSize, MEMF_CLEAR);
 
-	if (!DeltaTab)
-	{
-		lwmf_DeleteImage(RotoBitmap);
-		return FALSE;
-	}
-
-	if (!BuildChunkyTextureFromBitmap(RotoBitmap))
-	{
-		lwmf_DeleteImage(RotoBitmap);
-		FreeMem(DeltaTab, DeltaTabSize);
-		DeltaTab = NULL;
-		DeltaTabSize = 0;
-		return FALSE;
-	}
+	BuildChunkyTextureFromBitmap(RotoBitmap);
 
 	lwmf_DeleteImage(RotoBitmap);
 
@@ -371,8 +342,6 @@ BOOL Init_RotoZoomer(void)
 	ZoomPhase  = 0;
 	MovePhaseX = 0;
 	MovePhaseY = 64;
-
-	return TRUE;
 }
 
 void Draw_RotoZoomer(UBYTE Buffer)
@@ -408,19 +377,12 @@ void Draw_RotoZoomer(UBYTE Buffer)
 
 void Cleanup_RotoZoomer(void)
 {
-	if (TextureChunky)
-	{
-		FreeMem(TextureChunky, TextureChunkySize);
-		TextureChunky = NULL;
-		TextureChunkySize = 0;
-	}
-
-	if (DeltaTab)
-	{
-		FreeMem(DeltaTab, DeltaTabSize);
-		DeltaTab = NULL;
-		DeltaTabSize = 0;
-	}
+	FreeMem(TextureChunky, TextureChunkySize);
+	TextureChunky = NULL;
+	TextureChunkySize = 0;
+	FreeMem(DeltaTab, DeltaTabSize);
+	DeltaTab = NULL;
+	DeltaTabSize = 0;
 }
 
 // =====================================================================
@@ -443,14 +405,10 @@ static UWORD BPLPTL_Idx[NUMBEROFBITPLANES];
 #define COPPER_EXTRA_WAIT_WORDS  (((ROTO_VPOS_START + ROTO_DISPLAY_HEIGHT) > 256) ? 2 : 0)
 #define COPPERWORDS (16 + (NUMBEROFBITPLANES * 4) + (SCREEN_COLORS * 2) + (ROTO_DISPLAY_HEIGHT * 6) + COPPER_EXTRA_WAIT_WORDS + 2)
 
-BOOL Init_CopperList(void)
+void Init_CopperList(void)
 {
 	CopperListSize = COPPERWORDS * sizeof(UWORD);
-
-	if (!(CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR)))
-	{
-		return FALSE;
-	}
+	CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR);
 
 	UWORD Index = 0;
 
@@ -531,8 +489,6 @@ BOOL Init_CopperList(void)
 	CopperList[Index++] = 0xFFFE;
 
 	*COP1LC = (ULONG)CopperList;
-
-	return TRUE;
 }
 
 void Update_BitplanePointers(UBYTE Buffer)
@@ -567,11 +523,8 @@ void Cleanup_All(void)
 {
 	Cleanup_RotoZoomer();
 
-	if (CopperList)
-	{
-		FreeMem(CopperList, CopperListSize);
-		CopperList = NULL;
-	}
+	FreeMem(CopperList, CopperListSize);
+	CopperList = NULL;
 
 	lwmf_CleanupScreenBitmaps();
 	lwmf_CleanupAll();
@@ -579,28 +532,10 @@ void Cleanup_All(void)
 
 int main(void)
 {
-	if (lwmf_LoadGraphicsLib() != 0)
-	{
-		return 20;
-	}
-
-	if (!lwmf_InitScreenBitmaps())
-	{
-		Cleanup_All();
-		return 20;
-	}
-
-	if (!Init_RotoZoomer())
-	{
-		Cleanup_All();
-		return 20;
-	}
-
-	if (!Init_CopperList())
-	{
-		Cleanup_All();
-		return 20;
-	}
+	lwmf_LoadGraphicsLib();
+	lwmf_InitScreenBitmaps();
+	Init_RotoZoomer();
+	Init_CopperList();
 
 	lwmf_TakeOverOS();
 

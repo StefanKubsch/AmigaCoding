@@ -243,42 +243,22 @@ static ULONG *SpriteDataBase[2] = { NULL, NULL };
 static UWORD *SpriteDMABuffer[2] = { NULL, NULL };
 static UWORD *SpriteChannelPtr[2][SPRITE_CHANNEL_COUNT];
 
-/* Forward declarations for Copper-managed sprite pointers. */
+// Forward declarations for Copper-managed sprite pointers.
 static UWORD *CopperList;
 static UWORD SPRPTH_Idx[SPRITE_CHANNEL_COUNT];
 static UWORD SPRPTL_Idx[SPRITE_CHANNEL_COUNT];
 
-static BOOL OsTakenOver = FALSE;
+// ==========================================================================
+// Rotozoomer initialization and cleanup, texture loading and precomputation
+// ==========================================================================
 
-// =====================================================================
-// Local hardware register access
-// =====================================================================
-
-static volatile UWORD * const COPJMP1_REG = (volatile UWORD* const)0xDFF088;
-static volatile UWORD * const DMACON_REG  = (volatile UWORD* const)0xDFF096;
-static volatile ULONG * const VPOSR_REG  = (volatile ULONG* const)0xDFF004;
-
-static void WaitNextVertBlankEdge(void)
-{
-	while ((*VPOSR_REG & 0x0001FF00ul) == (303ul << 8))
-	{
-	}
-
-	while ((*VPOSR_REG & 0x0001FF00ul) != (303ul << 8))
-	{
-	}
-}
-
-static BOOL Init_RotoScreenBitmaps(void)
+static void Init_RotoScreenBitmaps(void)
 {
 	const ULONG screenBytes = (ULONG)ROTO_BUFFER_STRIDE * (ULONG)ROTO_ROWS;
 
 	for (UBYTE i = 0; i < 2u; ++i)
 	{
-		if (!(ScreenBitmapMem[i] = (UBYTE*)AllocMem(screenBytes, MEMF_CHIP | MEMF_CLEAR)))
-		{
-			return FALSE;
-		}
+		ScreenBitmapMem[i] = (UBYTE*)AllocMem(screenBytes, MEMF_CHIP | MEMF_CLEAR);
 
 		lwmf_InitBitMap(&ScreenBitmapStruct[i], NUMBEROFBITPLANES, ROTO_DISPLAY_WIDTH, ROTO_ROWS);
 		ScreenBitmapStruct[i].BytesPerRow = (UWORD)ROTO_BUFFER_STRIDE;
@@ -291,8 +271,6 @@ static BOOL Init_RotoScreenBitmaps(void)
 
 		ScreenBitmap[i] = &ScreenBitmapStruct[i];
 	}
-
-	return TRUE;
 }
 
 static void Cleanup_RotoScreenBitmaps(void)
@@ -301,39 +279,19 @@ static void Cleanup_RotoScreenBitmaps(void)
 
 	for (UBYTE i = 0; i < 2u; ++i)
 	{
-		if (ScreenBitmapMem[i])
-		{
-			FreeMem(ScreenBitmapMem[i], screenBytes);
-			ScreenBitmapMem[i] = NULL;
-		}
-
+		FreeMem(ScreenBitmapMem[i], screenBytes);
+		ScreenBitmapMem[i] = NULL;
 		ScreenBitmap[i] = NULL;
 	}
 }
-
 
 // =====================================================================
 // Texture loading and precomputation
 // =====================================================================
 
-static APTR AllocCpuMem(ULONG Size, ULONG Flags)
-{
-	APTR Ptr = AllocMem(Size, MEMF_FAST | Flags);
-
-	if (!Ptr)
-	{
-		Ptr = AllocMem(Size, MEMF_ANY | Flags);
-	}
-
-	return Ptr;
-}
-
 static void BuildPairExpandTable(void)
 {
-	/*
-	 * pair1 contributes the low nibbles of idx01 / idx23,
-	 * pair2 contributes the high nibbles.
-	 */
+	// pair1 contributes the low nibbles of idx01 / idx23, pair2 contributes the high nibbles.
 	for (UWORD pair = 0; pair < PAIR_SPLIT_STRIDE; ++pair)
 	{
 		const UBYTE c0 = (UBYTE)(pair & 0x0Fu);
@@ -346,9 +304,7 @@ static void BuildPairExpandTable(void)
 		PairExpand->PairSplit[pair].Hi = (UWORD)(((UWORD)idx23 << 12) | ((UWORD)idx01 << 4));
 	}
 
-	/*
-	 * Expand 4 pixels with 2 bits each into two plane words.
-	 */
+	// Expand 4 pixels with 2 bits each into two plane words.
 	for (UWORD idx = 0; idx < EXPAND4PIX_STRIDE; ++idx)
 	{
 		const UBYTE p0 = (UBYTE)( idx        & 0x03u);
@@ -369,28 +325,14 @@ static void BuildPairExpandTable(void)
 	}
 }
 
-static BOOL BuildChunkyTextureFromBitmap(struct lwmf_Image *RotoBitmap)
+static void BuildChunkyTextureFromBitmap(struct lwmf_Image *RotoBitmap)
 {
 	const UBYTE PlaneCount = RotoBitmap->Image.Depth;
 	const UWORD BytesPerRow = RotoBitmap->Image.BytesPerRow;
 	const UWORD ColorCount = (UWORD)RotoBitmap->NumberOfColors;
 
-	if (RotoBitmap->Width != TEXTURE_SOURCE_WIDTH ||
-	    RotoBitmap->Height != TEXTURE_SOURCE_HEIGHT ||
-	    PlaneCount != 4u ||
-	    ColorCount == 0u ||
-	    ColorCount > SCREEN_COLORS)
-	{
-		return FALSE;
-	}
-
 	TextureChunkySize = (ULONG)TEXTURE_WIDTH * (ULONG)TEXTURE_HEIGHT;
-	TextureChunky = (UBYTE*)AllocCpuMem(TextureChunkySize, MEMF_CLEAR);
-
-	if (!TextureChunky)
-	{
-		return FALSE;
-	}
+	TextureChunky = (UBYTE*)lwmf_AllocCpuMem(TextureChunkySize, MEMF_CLEAR);
 
 	TextureSampleBase = NULL;
 
@@ -461,12 +403,14 @@ static BOOL BuildChunkyTextureFromBitmap(struct lwmf_Image *RotoBitmap)
 	}
 
 	TextureSampleBase = TextureChunky + TEXTURE_SAMPLE_BIAS;
-	return TRUE;
 }
 
 // =====================================================================
-// Rotozoomer
+// Rotozoomer / Sprites
 // =====================================================================
+
+static volatile UWORD * const COPJMP1_REG = (volatile UWORD* const)0xDFF088;
+static volatile UWORD * const DMACON_REG  = (volatile UWORD* const)0xDFF096;
 
 static void BuildMoveTable(void)
 {
@@ -585,95 +529,46 @@ static void DisableSpriteDMA(void)
 	*DMACON_REG = 0x0020u;
 }
 
-static void CommitSpritePointers(UBYTE Buffer)
-{
-	/*
-	 * Sprite pointers are now emitted by the Copper at frame start. Updating the
-	 * Copper list contents during vertical blank is sufficient; no per-frame DMA
-	 * toggling is required here.
-	 */
-	UpdateSpritePointers(Buffer);
-}
-
 void Cleanup_RotoZoomer(void)
 {
 	for (UBYTE Buffer = 0; Buffer < 2u; ++Buffer)
 	{
-		if (SpriteDMABuffer[Buffer])
-		{
-			FreeMem(SpriteDMABuffer[Buffer], SPRITE_BYTES_PER_BUFFER);
-			SpriteDMABuffer[Buffer] = NULL;
-		}
-
+		FreeMem(SpriteDMABuffer[Buffer], SPRITE_BYTES_PER_BUFFER);
+		SpriteDMABuffer[Buffer] = NULL;
 		SpriteDataBase[Buffer] = NULL;
 	}
 
-	if (TextureChunky)
-	{
-		FreeMem(TextureChunky, TextureChunkySize);
-		TextureChunky = NULL;
-		TextureSampleBase = NULL;
-		TextureChunkySize = 0;
-	}
+	FreeMem(TextureChunky, TextureChunkySize);
+	TextureChunky = NULL;
+	TextureSampleBase = NULL;
+	TextureChunkySize = 0;
 
-	if (PairExpand)
-	{
-		FreeMem(PairExpand, PairExpandSize);
-		PairExpand = NULL;
-		PairExpandSize = 0;
-	}
+	FreeMem(PairExpand, PairExpandSize);
+	PairExpand = NULL;
+	PairExpandSize = 0;
 
-	if (DeltaTab)
-	{
-		FreeMem(DeltaTab, DeltaTabSize);
-		DeltaTab = NULL;
-		DeltaTabSize = 0;
-	}
+	FreeMem(DeltaTab, DeltaTabSize);
+	DeltaTab = NULL;
+	DeltaTabSize = 0;
 }
 
-BOOL Init_RotoZoomer(void)
+void Init_RotoZoomer(void)
 {
 	struct lwmf_Image *RotoBitmap;
 
 	RotoBitmap = lwmf_LoadImage(TEXTURE_FILENAME);
-	if (!RotoBitmap)
-	{
-		return FALSE;
-	}
-
-	if (!BuildChunkyTextureFromBitmap(RotoBitmap))
-	{
-		lwmf_DeleteImage(RotoBitmap);
-		return FALSE;
-	}
-
+	BuildChunkyTextureFromBitmap(RotoBitmap);
 	lwmf_DeleteImage(RotoBitmap);
 
 	DeltaTabSize = sizeof(RotoDelta) * 256u * ROTO_ZOOM_STEPS;
-	DeltaTab = (RotoDelta*)AllocCpuMem(DeltaTabSize, 0u);
-	if (!DeltaTab)
-	{
-		Cleanup_RotoZoomer();
-		return FALSE;
-	}
+	DeltaTab = (RotoDelta*)lwmf_AllocCpuMem(DeltaTabSize, 0u);
 
 	PairExpandSize = (ULONG)sizeof(PairExpandSet);
-	PairExpand = (PairExpandSet*)AllocCpuMem(PairExpandSize, 0u);
-	if (!PairExpand)
-	{
-		Cleanup_RotoZoomer();
-		return FALSE;
-	}
+	PairExpand = (PairExpandSet*)lwmf_AllocCpuMem(PairExpandSize, 0u);
 
 	for (UBYTE Buffer = 0; Buffer < 2u; ++Buffer)
 	{
-
-		SpriteDMABuffer[Buffer] = (UWORD*)AllocMem(SPRITE_BYTES_PER_BUFFER, MEMF_CHIP | MEMF_CLEAR);
-		if (!SpriteDMABuffer[Buffer])
-		{
-			Cleanup_RotoZoomer();
-			return FALSE;
-		}
+		SpriteDMABuffer[Buffer] = (UWORD*)lwmf_AllocCpuMem(SPRITE_BYTES_PER_BUFFER, MEMF_CHIP | MEMF_CLEAR);
 	}
 
 	BuildPairExpandTable();
@@ -685,22 +580,20 @@ BOOL Init_RotoZoomer(void)
 	ZoomPhase  = 0;
 	MovePhaseX = 0;
 	MovePhaseY = 64;
-
-	return TRUE;
 }
 
 static void PrepareDrawParams(RotoAsmParams *Params, const RotoDelta *D, UBYTE Buffer, WORD RowU, WORD RowV)
 {
-	Params->Texture      = TextureSampleBase;
+	Params->Texture = TextureSampleBase;
 	Params->PlayfieldBase = (UBYTE*)ScreenBitmap[Buffer]->Planes[0];
 	Params->SpriteDataBase = SpriteDataBase[Buffer];
 	Params->PairExpand   = (const UBYTE*)PairExpand;
-	Params->DuDx         = D->DuDx;
-	Params->DvDx         = D->DvDx;
-	Params->DuDy         = D->DuDy;
-	Params->DvDy         = D->DvDy;
-	Params->RowU         = RowU;
-	Params->RowV         = RowV;
+	Params->DuDx = D->DuDx;
+	Params->DvDx = D->DvDx;
+	Params->DuDy = D->DuDy;
+	Params->DvDy = D->DvDy;
+	Params->RowU = RowU;
+	Params->RowV = RowV;
 }
 
 static void BuildSpriteSelfTest(UBYTE Buffer)
@@ -768,8 +661,8 @@ void Draw_RotoZoomer(UBYTE Buffer)
 // Copper list
 // =====================================================================
 
-static UWORD *CopperList     = NULL;
-static ULONG  CopperListSize = 0;
+static UWORD *CopperList = NULL;
+static ULONG CopperListSize = 0;
 
 static UWORD BPLPTH_Idx[NUMBEROFBITPLANES];
 static UWORD BPLPTL_Idx[NUMBEROFBITPLANES];
@@ -778,16 +671,12 @@ static UWORD BPLPTL_Idx[NUMBEROFBITPLANES];
 #define COPPER_MOD_EVENTS        ((ROTO_ROWS * 2u) - 1u)
 #define COPPERWORDS (18u + (NUMBEROFBITPLANES * 4u) + (SPRITE_CHANNEL_COUNT * 4u) + (SCREEN_COLORS * 2u) + (SPRITE_COLORS * 2u) + (COPPER_MOD_EVENTS * 6u) + COPPER_EXTRA_WAIT_WORDS + 2u)
 
-#define MAYBE_INSERT_256_WAIT(ptr_, flag_, vpos_) 	do 	{ 		if (!(flag_) && ((vpos_) >= 256u)) 		{ 			*(ptr_)++ = 0xFFDFu; 			*(ptr_)++ = 0xFFFEu; 			(flag_) = TRUE; 		} 	} while (0)
+#define MAYBE_INSERT_256_WAIT(ptr_, flag_, vpos_) do { if (!(flag_) && ((vpos_) >= 256u)) { *(ptr_)++ = 0xFFDFu; *(ptr_)++ = 0xFFFEu; (flag_) = TRUE; }	} while (0)
 
-BOOL Init_CopperList(void)
+void Init_CopperList(void)
 {
 	CopperListSize = COPPERWORDS * sizeof(UWORD);
-
-	if (!(CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR)))
-	{
-		return FALSE;
-	}
+	CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR);
 
 	UWORD Index = 0;
 
@@ -884,8 +773,6 @@ BOOL Init_CopperList(void)
 
 	CopperList[Index++] = 0xFFFF;
 	CopperList[Index++] = 0xFFFE;
-
-	return TRUE;
 }
 
 static void ActivateCopperList(void)
@@ -920,20 +807,12 @@ void Update_BitplanePointers(UBYTE Buffer)
 
 void Cleanup_All(void)
 {
-	if (OsTakenOver)
-	{
-		DisableSpriteDMA();
-		lwmf_ReleaseOS();
-		OsTakenOver = FALSE;
-	}
-
+	DisableSpriteDMA();
+	lwmf_ReleaseOS();
 	Cleanup_RotoZoomer();
 
-	if (CopperList)
-	{
-		FreeMem(CopperList, CopperListSize);
-		CopperList = NULL;
-	}
+	FreeMem(CopperList, CopperListSize);
+	CopperList = NULL;
 
 	Cleanup_RotoScreenBitmaps();
 	lwmf_CloseLibraries();
@@ -941,54 +820,33 @@ void Cleanup_All(void)
 
 int main(void)
 {
-	if (lwmf_LoadGraphicsLib() != 0)
-	{
-		return 20;
-	}
-
-	if (!Init_RotoScreenBitmaps())
-	{
-		Cleanup_All();
-		return 20;
-	}
-
-	if (!Init_RotoZoomer())
-	{
-		Cleanup_All();
-		return 20;
-	}
-
-	if (!Init_CopperList())
-	{
-		Cleanup_All();
-		return 20;
-	}
+	lwmf_LoadGraphicsLib();
+	Init_RotoScreenBitmaps();
+	Init_RotoZoomer();
+	Init_CopperList();
 
 	lwmf_TakeOverOS();
-	OsTakenOver = TRUE;
 
 	/* Build a valid first frame before enabling sprite DMA. */
 	Draw_RotoZoomer(0);
 	Update_BitplanePointers(0);
-	CommitSpritePointers(0);
+	UpdateSpritePointers(0);
 	ActivateCopperList();
 	EnableSpriteDMA();
 
+	UBYTE CurrentBuffer = 1;
+
+	while (*CIAA_PRA & 0x40)
 	{
-		UBYTE CurrentBuffer = 1;
+		Draw_RotoZoomer(CurrentBuffer);
 
-		while (*CIAA_PRA & 0x40)
-		{
-			Draw_RotoZoomer(CurrentBuffer);
+		DBG_COLOR(0x0F0);
+		lwmf_WaitVertBlank();
+		DBG_COLOR(0x000);
 
-			DBG_COLOR(0x0F0);
-			lwmf_WaitVertBlank();
-			DBG_COLOR(0x000);
-
-			Update_BitplanePointers(CurrentBuffer);
-			CommitSpritePointers(CurrentBuffer);
-			CurrentBuffer ^= 1u;
-		}
+		Update_BitplanePointers(CurrentBuffer);
+		UpdateSpritePointers(CurrentBuffer);
+		CurrentBuffer ^= 1u;
 	}
 
 	Cleanup_All();
