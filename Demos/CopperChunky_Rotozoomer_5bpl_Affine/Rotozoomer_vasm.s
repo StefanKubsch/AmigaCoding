@@ -24,13 +24,14 @@
 ; -----------------------------------------------------------------------------
 ROTO_ROWS        equ 48                 ; render 48 logical rows
 ROTO_LOOP_COUNT  equ 12                 ; 12 iterations * 2 pairs = 24 packed pairs = 48 pixels
+ROTO_ROW_ADVANCE equ (BYTESPERROW*5)-24 ; step from row end to next row start in interleaved memory
 
 ; -----------------------------------------------------------------------------
 ; struct RotoAsmParams layout
 ; Must match the C struct exactly.
 ; -----------------------------------------------------------------------------
 RA_Texture       equ  0                 ; const UBYTE *Texture
-RA_RowPtr        equ  4                 ; UBYTE **RowPtr
+RA_Dest          equ  4                 ; UBYTE *Dest (plane 0 base + ROTO_START_BYTE)
 RA_Expand        equ  8                 ; const UBYTE *PairExpand
 RA_RowU          equ 12                 ; WORD RowU
 RA_RowV          equ 14                 ; WORD RowV
@@ -106,11 +107,11 @@ PROCESS_PAIR macro
 ; void DrawRotoBodyAsm(__reg("a0") const struct RotoAsmParams *Params)
 ; -----------------------------------------------------------------------------
 _DrawRotoBodyAsm::
-	movem.l d2-d7/a1-a6,-(sp)              ; save all registers used by this routine
+	movem.l d2-d7/a1-a5,-(sp)              ; save all registers used by this routine
 	lea     -6(sp),sp                      ; reserve 6 bytes for local variables
 
 	movea.l RA_Texture(a0),a1              ; load texture base pointer
-	movea.l RA_RowPtr(a0),a6               ; load pointer to the per-row destination pointer list
+	movea.l RA_Dest(a0),a5                 ; load destination pointer for the first row
 	movea.l RA_Expand(a0),a2               ; load base of the contiguous PairExpand block
 	lea     2048(a2),a3                    ; split out plane 2/3 word table base
 	lea     4096(a2),a4                    ; split out plane 4 byte table base
@@ -140,7 +141,6 @@ _DrawRotoBodyAsm::
 	move.w  d7,LOC_RowStepV(sp)            ; store end-of-row V correction
 
 .row_loop:
-	movea.l (a6)+,a5                        ; fetch destination pointer for this row
 	moveq   #ROTO_LOOP_COUNT-1,d6           ; initialize inner loop for 24 packed pairs
 
 .pair_loop:
@@ -150,9 +150,10 @@ _DrawRotoBodyAsm::
 
 	add.w   LOC_RowStepU(sp),d0             ; convert end-of-row U into next row-start U
 	add.w   LOC_RowStepV(sp),d1             ; convert end-of-row V into next row-start V
+	adda.w  #ROTO_ROW_ADVANCE,a5            ; advance from row end to the next logical row start
 	subq.w  #1,LOC_RowCount(sp)             ; decrement remaining row counter
 	bpl.w   .row_loop                       ; continue while rows remain
 
 	lea     6(sp),sp                        ; release local stack storage
-	movem.l (sp)+,d2-d7/a1-a6               ; restore saved registers
+	movem.l (sp)+,d2-d7/a1-a5               ; restore saved registers
 	rts                                     ; return to the C caller

@@ -10,9 +10,9 @@ Minimum requierements: Kickstart 1.3, 68000 CPU, 512KB Chip-RAM + 512KB Slow-RAM
 
 Included examples, coded for speed and memory, so there are no guards etc:
 
-- Copper-Chunky Rotozoomer 4 bitplanes
+- Copper-Chunky Rotozoomer 4 bitplanes (Affine rotation)
 - Copper-Chunky Rotozoomer 4 bitplanes with sprite assist
-- Copper-Chunky Rotozoomer 5 bitplanes
+- Copper-Chunky Rotozoomer 5 bitplanes (Affine rotation)
 - Copper Plasma
 - Sinescroller
 - Vectorballs

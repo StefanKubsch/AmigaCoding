@@ -27,7 +27,7 @@
 typedef struct RotoAsmParams
 {
 	const UBYTE *Texture;
-	UBYTE       **RowPtr;
+	UBYTE        *Dest;
 	const UBYTE *PairExpand;
 	WORD         RowU;
 	WORD         RowV;
@@ -94,18 +94,24 @@ extern void DrawRotoBodyAsm(__reg("a0") const struct RotoAsmParams *Params);
 #define ROTO_DDFSTRT             0x0058
 #define ROTO_DDFSTOP             0x00B0
 
-// Precalculated movement table size: 256 values for a full sine wave cycle, covering all possible angle phases.
+// Precalculated delta table stores only the independent matrix terms.
+// The animation advances AnglePhase by 2 every frame, so only the 128 even
+// angle phases are ever used. For a pure rotation matrix the vertical row step
+// can be reconstructed from the horizontal step:
+//   DuDy = -DvDx
+//   DvDy =  DuDx
+// Therefore the table only stores DuDx and DvDx.
 typedef struct
 {
 	WORD DuDx;
 	WORD DvDx;
-	WORD DuDy;
-	WORD DvDy;
 } RotoDelta;
 
-#define ROTO_HALF_COLUMNS   (ROTO_COLUMNS / 2)
-#define ROTO_HALF_ROWS      (ROTO_ROWS / 2)
-#define ROTO_ZOOM_STEPS     32
+#define ROTO_HALF_COLUMNS      (ROTO_COLUMNS / 2)
+#define ROTO_HALF_ROWS         (ROTO_ROWS / 2)
+#define ROTO_ZOOM_STEPS        32
+#define ROTO_ANGLE_PHASE_STEP   2
+#define ROTO_ANGLE_STEPS        (256 / ROTO_ANGLE_PHASE_STEP)
 
 static WORD MoveTab[256];
 static RotoDelta *DeltaTab = NULL;
@@ -151,7 +157,6 @@ typedef struct PairExpandSet
 } PairExpandSet;
 
 static PairExpandSet PairExpand;
-static UBYTE *RotoRowPtr[2][ROTO_ROWS];
 
 static UBYTE AnglePhase = 0;
 static UBYTE ZoomPhase = 0;
@@ -284,41 +289,25 @@ static void BuildMoveTable(void)
 
 static void BuildDeltaTable(void)
 {
-	for (UWORD a = 0; a < 256; ++a)
+	for (UWORD a = 0; a < ROTO_ANGLE_STEPS; ++a)
 	{
-		const WORD SinV = (WORD)SinTab256[a] - 32;
-		const WORD CosV = (WORD)SinTab256[(UBYTE)(a + 64u)] - 32;
+		const UBYTE Angle = (UBYTE)(a * ROTO_ANGLE_PHASE_STEP);
+		const WORD SinV = (WORD)SinTab256[Angle] - 32;
+		const WORD CosV = (WORD)SinTab256[(UBYTE)(Angle + 64u)] - 32;
 
 		for (UWORD z = 0; z < ROTO_ZOOM_STEPS; ++z)
 		{
 			const WORD ZoomMod = (WORD)(((WORD)z << 1) - 32);
 			const WORD Zoom = (WORD)(ROTO_ZOOM_BASE + ((ZoomMod * ROTO_ZOOM_AMPLITUDE) >> 5));
 
-			const WORD Ux = (WORD)(((LONG)CosV * (LONG)Zoom) >> 5);
-			const WORD Vx = (WORD)(((LONG)SinV * (LONG)Zoom) >> 5);
-
 			RotoDelta *D = &DeltaTab[a * ROTO_ZOOM_STEPS + z];
 
-			D->DuDx = Ux;
-			D->DvDx = Vx;
-			D->DuDy = (WORD)(-Vx);
-			D->DvDy = Ux;
+			D->DuDx = (WORD)(((LONG)CosV * (LONG)Zoom) >> 5);
+			D->DvDx = (WORD)(((LONG)SinV * (LONG)Zoom) >> 5);
 		}
 	}
 }
 
-static void BuildRowPointerTable(void)
-{
-	for (UBYTE Buffer = 0; Buffer < 2u; ++Buffer)
-	{
-		UBYTE *Base = (UBYTE*)ScreenBitmap[Buffer]->Planes[0];
-
-		for (UWORD y = 0; y < ROTO_ROWS; ++y)
-		{
-			RotoRowPtr[Buffer][y] = Base + ((ULONG)y * INTERLEAVED_STRIDE) + ROTO_START_BYTE;
-		}
-	}
-}
 
 void Init_RotoZoomer(void)
 {
@@ -326,7 +315,7 @@ void Init_RotoZoomer(void)
 
 	RotoBitmap = lwmf_LoadImage(TEXTURE_FILENAME);
 
-	DeltaTabSize = sizeof(RotoDelta) * 256u * ROTO_ZOOM_STEPS;
+	DeltaTabSize = sizeof(RotoDelta) * ROTO_ANGLE_STEPS * ROTO_ZOOM_STEPS;
 	DeltaTab = (RotoDelta*)lwmf_AllocCpuMem(DeltaTabSize, MEMF_CLEAR);
 
 	BuildChunkyTextureFromBitmap(RotoBitmap);
@@ -336,7 +325,6 @@ void Init_RotoZoomer(void)
 	BuildPairExpandTable();
 	BuildMoveTable();
 	BuildDeltaTable();
-	BuildRowPointerTable();
 
 	AnglePhase = 0;
 	ZoomPhase  = 0;
@@ -348,22 +336,27 @@ void Draw_RotoZoomer(UBYTE Buffer)
 {
 	RotoAsmParams Params;
 	const UBYTE ZoomIndex = (UBYTE)(SinTab256[ZoomPhase] >> 1);
-	const RotoDelta *D = &DeltaTab[(AnglePhase * ROTO_ZOOM_STEPS) + ZoomIndex];
+	const UBYTE AngleIndex = (UBYTE)(AnglePhase >> 1);
+	const RotoDelta *D = &DeltaTab[((UWORD)AngleIndex * ROTO_ZOOM_STEPS) + ZoomIndex];
+	const WORD DuDx = D->DuDx;
+	const WORD DvDx = D->DvDx;
+	const WORD DuDy = (WORD)(-DvDx);
+	const WORD DvDy = DuDx;
 
 	const WORD CenterU = MoveTab[MovePhaseX];
 	const WORD CenterV = MoveTab[MovePhaseY];
 
 	Params.Texture    = TextureChunky;
-	Params.RowPtr     = RotoRowPtr[Buffer];
+	Params.Dest       = (UBYTE*)ScreenBitmap[Buffer]->Planes[0] + (ULONG)ROTO_START_BYTE;
 	Params.PairExpand = (const UBYTE*)&PairExpand;
 
-	Params.DuDx = D->DuDx;
-	Params.DvDx = D->DvDx;
-	Params.DuDy = D->DuDy;
-	Params.DvDy = D->DvDy;
+	Params.DuDx = DuDx;
+	Params.DvDx = DvDx;
+	Params.DuDy = DuDy;
+	Params.DvDy = DvDy;
 
-	Params.RowU = (WORD)(CenterU - (ROTO_HALF_COLUMNS * D->DuDx) - (ROTO_HALF_ROWS * D->DuDy));
-	Params.RowV = (WORD)(CenterV - (ROTO_HALF_COLUMNS * D->DvDx) - (ROTO_HALF_ROWS * D->DvDy));
+	Params.RowU = (WORD)(CenterU - (ROTO_HALF_COLUMNS * DuDx) - (ROTO_HALF_ROWS * DuDy));
+	Params.RowV = (WORD)(CenterV - (ROTO_HALF_COLUMNS * DvDx) - (ROTO_HALF_ROWS * DvDy));
 
 	DBG_COLOR(0xF00);          /* red = hotloop */
 	DrawRotoBodyAsm(&Params);
