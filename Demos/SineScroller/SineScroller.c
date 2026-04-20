@@ -18,16 +18,6 @@ extern void InitScrollerBlitter(void);
 extern void DrawScrollerBlit(__reg("a0") const ULONG *dataPtr, __reg("a2") const ULONG *DataEnd, __reg("a3") const UWORD *offsetTab, __reg("a4") const UBYTE *dstPlane, __reg("d0") WORD scrollX, __reg("d1") WORD rightVisX);
 extern void UpdateScrollerRainbow(__reg("a0") UWORD **colorPtrTab, __reg("a1") const UWORD *rainbowTab, __reg("d0") UWORD phase, __reg("d1") UWORD totalLines);
 
-// Enable (set to 1) for debugging
-// When enabled, load per frame will be displayed via Color changing of background
-#define DEBUG 				0
-
-#if DEBUG
-#define DBG_COLOR(c) (*COLOR00 = (c))
-#else
-#define DBG_COLOR(c) ((void)0)
-#endif
-
 // =====================================================================
 // Sine table, used by the sine scroller effects
 // =====================================================================
@@ -98,21 +88,14 @@ BOOL Init_SineScroller(void)
 
 	ScrollBottomWordOffsetSize = sizeof(UWORD) * SCREENWIDTH;
 
-	if (!(ScrollBottomWordOffset = (UWORD*)lwmf_AllocCpuMem(ScrollBottomWordOffsetSize, MEMF_CLEAR)))
-	{
-		return FALSE;
-	}
+	ScrollBottomWordOffset = (UWORD*)lwmf_AllocCpuMem(ScrollBottomWordOffsetSize, MEMF_CLEAR);
 
 	// Precompute RainbowTab[256]: full RGB4 color for each possible idx value.
 	// Indexed as (i*3 + phase) & 0xFF, so the table is phase-independent.
 	RainbowTabSize = sizeof(UWORD) * 256;
 
-	if (!(RainbowTab = (UWORD*)lwmf_AllocCpuMem(RainbowTabSize, MEMF_CLEAR)))
-	{
-		FreeMem(ScrollBottomWordOffset, ScrollBottomWordOffsetSize);
-		ScrollBottomWordOffset = NULL;
-		return FALSE;
-	}
+	RainbowTab = (UWORD*)lwmf_AllocCpuMem(RainbowTabSize, MEMF_CLEAR);
+
 	for (UWORD i = 0; i < 256; ++i)
 	{
 		const UBYTE r = SinTab256[i]                    >> 2;
@@ -132,12 +115,7 @@ BOOL Init_SineScroller(void)
 		ScrollBottomWordOffset[x] = (UWORD)(((SCROLLER_START_LINE + 16 + ((s * 14 + 16) >> 5)) + 15u) * INTERLEAVED_STRIDE + ((x >> 3u) & ~(UWORD)1u));
 	}
 
-	if (!(FontBitmap = lwmf_LoadImage("gfx/font16x16.ilbm")))
-	{
-		FreeMem(ScrollBottomWordOffset, ScrollBottomWordOffsetSize);
-		ScrollBottomWordOffset = NULL;
-		return FALSE;
-	}
+	FontBitmap = lwmf_LoadImage("gfx/font16x16.ilbm");
 
 	const char *Text           = "...HERE WE GO! THIS IS A SINE SCROLLER DEMO WITH RAINBOW COLORS, WRITTEN IN C AND ASM FOR THE AMIGA 500. ENJOY THE SHOW! (C) 2026 BY DEEP4...";
 	const char *CharMap        = "! #$%& ()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ ";
@@ -187,10 +165,7 @@ BOOL Init_SineScroller(void)
 	// FontData is a merged array: hi-word = ColumnBits (pixel pattern), lo-word = ColumnDst (text X).
 	// One ULONG read per column in the ASM inner loop instead of two separate array reads.
 	FontDataSize = (ULONG)MaxColumns * sizeof(ULONG);
-	if (!(Font.FontData = (ULONG*)lwmf_AllocCpuMem(FontDataSize, MEMF_CLEAR)))
-	{
-		return FALSE;
-	}
+	Font.FontData = (ULONG*)lwmf_AllocCpuMem(FontDataSize, MEMF_CLEAR);
 
 	const UBYTE *srcPlane0 = (const UBYTE *)FontBitmap->Image.Planes[0];
 	const UWORD  srcBPR    = FontBitmap->Image.BytesPerRow;
@@ -265,9 +240,7 @@ void Draw_SineScroller(UBYTE Buffer)
 
 	Font.FirstVisibleColumn = (UWORD)(dataPtr - FontData);
 
-	DBG_COLOR(0xF00);          /* red = hotloop */
 	DrawScrollerBlit(dataPtr, DataEnd, ScrollBottomWordOffset, DstPlane, ScrollX, RightVisibleTextX);
-	DBG_COLOR(0x000);          /* end of hotloop bar */
 
 	Font.ScrollX -= 2;  // scroll 2 pixels per frame
 
@@ -280,23 +253,12 @@ void Draw_SineScroller(UBYTE Buffer)
 
 void Cleanup_SineScroller(void)
 {
-	if (RainbowTab)
-	{
-		FreeMem(RainbowTab, RainbowTabSize);
-		RainbowTab = NULL;
-	}
-
-	if (ScrollBottomWordOffset)
-	{
-		FreeMem(ScrollBottomWordOffset, ScrollBottomWordOffsetSize);
-		ScrollBottomWordOffset = NULL;
-	}
-
-	if (Font.FontData)
-	{
-		FreeMem(Font.FontData, FontDataSize);
-		Font.FontData = NULL;
-	}
+	FreeMem(RainbowTab, RainbowTabSize);
+	RainbowTab = NULL;
+	FreeMem(ScrollBottomWordOffset, ScrollBottomWordOffsetSize);
+	ScrollBottomWordOffset = NULL;
+	FreeMem(Font.FontData, FontDataSize);
+	Font.FontData = NULL;
 }
 
 // =====================================================================
@@ -334,61 +296,6 @@ static UBYTE RainbowPhase = 0;
 #define SHADOW_COLOR           0x246
 #define SCROLLER_TEXT_COLOR    0xC0D
 
-typedef struct
-{
-	UWORD Line;
-	UWORD Color;
-} SKYKEY;
-
-static const SKYKEY SkyKeys[] =
-{
-	// Line, RGB4 Color
-	{   0, 0x012 }, // very dark blue
-	{  28, 0x124 }, // blue-violet
-	{  56, 0x336 }, // purple
-	{  84, 0x648 }, // warm purple
-	{ 112, 0xA63 }, // sunrise orange
-	{ 140, 0xD95 }, // bright peach
-	{ 168, 0xCB8 }, // pale warm sky
-	{ 196, 0x9BD }, // light cyan
-	{ 224, 0x8CF }, // bright sky blue
-	{ 255, 0xBDF }  // pale morning blue
-};
-
-static UWORD SkyColorForLine(UWORD y)
-{
-	// SkyKeys span [0..255] exactly — y always matches a segment
-	for (UWORD i = 0; i < (sizeof(SkyKeys) / sizeof(SkyKeys[0])) - 1; ++i)
-	{
-		const UWORD p0 = SkyKeys[i].Line;
-		const UWORD p1 = SkyKeys[i + 1].Line;
-
-		if (y >= p0 && y <= p1)
-		{
-			return lwmf_RGBLerp(SkyKeys[i].Color, SkyKeys[i + 1].Color, y - p0, p1 - p0);
-		}
-	}
-
-	return SkyKeys[(sizeof(SkyKeys) / sizeof(SkyKeys[0])) - 1].Color;
-}
-
-static void AddSkyLine(UWORD **Copperlist, UWORD y)
-{
-	const UWORD VPOS = VPOS_OFFSET + y;
-
-	// VPOS wrap at 256
-	if (VPOS == 256)
-	{
-		*(*Copperlist)++ = 0xFFDF;
-		*(*Copperlist)++ = 0xFFFE;
-	}
-
-	*(*Copperlist)++ = ((VPOS & 0xFF) << 8) | 0x07;
-	*(*Copperlist)++ = 0xFFFE;
-	*(*Copperlist)++ = 0x180;
-	*(*Copperlist)++ = SkyColorForLine(y);
-}
-
 // Copper list size:
 // Fixed header: DIWSTRT+DIWSTOP+DDFSTRT+DDFSTOP+BPLCON0+COLOR00+BPL1MOD+BPL2MOD=16,
 //               scroller init (WAIT+BPLCON0+BPL1/2 PTH/PTL+COLOR01..03+BPLCON1)=20, END=2 => 38 words
@@ -396,19 +303,15 @@ static void AddSkyLine(UWORD **Copperlist, UWORD y)
 // Per-row 4x-stretch: both BPL1MOD and BPL2MOD for 64 display lines.
 // = 64 display lines * 2 registers * 2 words = 256 extra words
 #define DOUBLE_COPPER_WORDS    (SCROLLER_CHAR_HEIGHT * 16)
-// Number of scanlines in the scroller (lower sky) region, used for per-line rainbow
+// Number of scanlines in the scroller region, used for per-line rainbow
 #define RAINBOW_COPPER_WORDS   (SCROLLER_LINES * 4)
 
-BOOL Init_CopperList(void)
+void Init_CopperList(void)
 {
 	const ULONG CopperListLength = COPPERWORDS + (SCROLLER_START_LINE * 4) + (SCROLLER_LINES * 4 + 2) + DOUBLE_COPPER_WORDS + RAINBOW_COPPER_WORDS;
 
 	CopperListSize = CopperListLength * sizeof(UWORD);
-
-	if (!(CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR)))
-	{
-		return FALSE;
-	}
+	CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR);
 
 	UWORD Index = 0;
 
@@ -432,11 +335,9 @@ BOOL Init_CopperList(void)
 	CopperList[Index++] = 0x100;
 	CopperList[Index++] = 0x0200;
 
-	// Pre-set COLOR00 immediately (no WAIT) to black.
-	// Keeps the top border (VPOS 0-43, before the first sky WAIT at line 44) black
-	// instead of leaking the sky start color or the previous frame's bottom-sky color.
+	// Set background color to dark blue
 	CopperList[Index++] = 0x180;
-	CopperList[Index++] = 0x000;
+	CopperList[Index++] = 0x003;
 
 	// BPL1MOD (interleaved: skip over other planes' rows)
 	CopperList[Index++] = 0x108;
@@ -445,16 +346,6 @@ BOOL Init_CopperList(void)
 	// BPL2MOD
 	CopperList[Index++] = 0x10A;
 	CopperList[Index++] = INTERLEAVEDMOD;
-
-	// Copper sky
-	UWORD *Copperlist = &CopperList[Index];
-
-	for (UWORD y = 0; y < SCROLLER_START_LINE; ++y)
-	{
-		AddSkyLine(&Copperlist, y);
-	}
-
-	Index = (UWORD)(Copperlist - CopperList);
 
 	// BPLCON0 Switch to 2 bitplanes for scroller (BPL1=text, BPL2=shadow)
 	CopperList[Index++] = (SCROLLER_VPOS_START << 8) | 0x07;
@@ -480,31 +371,33 @@ BOOL Init_CopperList(void)
 	ScrollBPL2PTL_Idx = Index;
 	CopperList[Index++] = 0x0000;
 
-	// COLOR00 = sky (set per-line by AddSkyLine)
-	// COLOR01 = text only (BPL1=1, BPL2=0)
 	// COLOR02 = shadow only (BPL1=0, BPL2=1)
-	// COLOR03 = text+shadow overlap (BPL1=1, BPL2=1) — same as text color
-	CopperList[Index++] = 0x182;
-	CopperList[Index++] = SCROLLER_TEXT_COLOR;
 	CopperList[Index++] = 0x184;
 	CopperList[Index++] = SHADOW_COLOR;
-	CopperList[Index++] = 0x186;
-	CopperList[Index++] = SCROLLER_TEXT_COLOR;
 
 	// BPLCON1: horizontal pixel shift for BPL2 (even plane = shadow), active for the whole scroller region.
 	// BPL2 pointer is set SHADOW_DY/2 bitmap rows ahead so the shadow appears SHADOW_DY display lines below.
 	CopperList[Index++] = 0x102;
 	CopperList[Index++] = (UWORD)(SHADOW_DX << 4);
 
-	// Copper sky behind scroller
 	// Shadow Copper control lines (relative to SCROLLER_START_LINE):
 	//   y = SCROLLER_START_LINE + SHADOW_DY - 1: set BPL2MOD to go back SHADOW_DY rows
 	//   y = SCROLLER_START_LINE + SHADOW_DY    : restore BPL2MOD, apply BPLCON1 horizontal shift
-	Copperlist = &CopperList[Index];
+	UWORD *Copperlist = &CopperList[Index];
 
 	for (UWORD y = SCROLLER_START_LINE; y < SCREENHEIGHT; ++y)
 	{
-		AddSkyLine(&Copperlist, y);
+		const UWORD VPOS = VPOS_OFFSET + y;
+
+		// VPOS wrap at 256
+		if (VPOS == 256)
+		{
+			*Copperlist++ = 0xFFDF;
+			*Copperlist++ = 0xFFFE;
+		}
+
+		*Copperlist++ = ((VPOS & 0xFF) << 8) | 0x07;
+		*Copperlist++ = 0xFFFE;
 
 		// Per-line rainbow: MOVE COLOR01 + MOVE COLOR03; store direct pointer to the COLOR01 value slot
 		*Copperlist++ = 0x182;
@@ -537,8 +430,6 @@ BOOL Init_CopperList(void)
 	CopperList[Index++] = 0xFFFE;
 
 	*COP1LC = (ULONG)CopperList;
-
-	return TRUE;
 }
 
 void Update_BitplanePointers(UBYTE Buffer)
@@ -552,15 +443,9 @@ void Update_BitplanePointers(UBYTE Buffer)
 	// BPL2 (shadow) starts SHADOW_DY/4 bitmap rows BEHIND BPL1 (lower address = earlier row).
 	// With 4x stretch each bitmap row is held for 4 display lines, so BPL2 shows the same
 	// bitmap row 4 display lines AFTER BPL1 → shadow appears SHADOW_DY lines below the text.
-	const ULONG ShadowAddr = ScrollAddr - (ULONG)(SHADOW_DY / 4u) * INTERLEAVED_STRIDE;
+	const ULONG ShadowAddr = ScrollAddr - (ULONG)(SHADOW_DY >> 2) * INTERLEAVED_STRIDE;
 	CopperList[ScrollBPL2PTH_Idx] = (UWORD)(ShadowAddr >> 16);
 	CopperList[ScrollBPL2PTL_Idx] = (UWORD)ShadowAddr;
-}
-
-void Update_ScrollerRainbow(void)
-{
-	UpdateScrollerRainbow(ScrollRainbowColorPtr, RainbowTab, (UWORD)RainbowPhase, SCROLLER_LINES);
-	++RainbowPhase;
 }
 
 // =====================================================================
@@ -569,45 +454,19 @@ void Update_ScrollerRainbow(void)
 
 void Cleanup_All(void)
 {
-	// Make sure no outstanding blit is still touching screen memory before freeing resources.
 	lwmf_WaitBlitter();
-
 	Cleanup_SineScroller();
-
-	if (CopperList)
-	{
-		FreeMem(CopperList, CopperListSize);
-	}
-
+	FreeMem(CopperList, CopperListSize);
 	lwmf_CleanupScreenBitmaps();
-
 	lwmf_CleanupAll();
 }
 
 int main()
 {
-	if (lwmf_LoadGraphicsLib() != 0)
-	{
-		return 20;
-	}
-
-	if (!lwmf_InitScreenBitmaps())
-	{
-		Cleanup_All();
-		return 20;
-	}
-
-	if (!Init_SineScroller())
-	{
-		Cleanup_All();
-		return 20;
-	}
-
-	if (!Init_CopperList())
-	{
-		Cleanup_All();
-		return 20;
-	}
+	lwmf_LoadGraphicsLib();
+	lwmf_InitScreenBitmaps();
+	Init_SineScroller();
+	Init_CopperList();
 
 	lwmf_TakeOverOS();
 
@@ -616,19 +475,16 @@ int main()
 
 	while (*CIAA_PRA & 0x40)
 	{
-		// Clear only the bitmap rows actually used by the scroller:
-		// rows SCROLLER_CLEAR_START..SCROLLER_CLEAR_START+SCROLLER_CLEAR_LINES-1 (99..145).
 		lwmf_BlitClearLines(SCROLLER_CLEAR_START, SCROLLER_CLEAR_LINES, (long*)ScreenBitmap[CurrentBuffer]->Planes[0]);
 
-		Update_ScrollerRainbow();
+		UpdateScrollerRainbow(ScrollRainbowColorPtr, RainbowTab, (UWORD)RainbowPhase, SCROLLER_LINES);
+		++RainbowPhase;
+
 		Draw_SineScroller(CurrentBuffer);
 
-		DBG_COLOR(0x0F0);          /* green = free time until VBlank */
 		lwmf_WaitVertBlank();
-		DBG_COLOR(0x000);          /* end of green bar */
 		Update_BitplanePointers(CurrentBuffer);
 		CurrentBuffer ^= 1;
-
 	}
 
 	Cleanup_All();

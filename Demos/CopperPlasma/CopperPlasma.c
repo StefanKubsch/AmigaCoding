@@ -17,7 +17,7 @@
 // Copper
 // =====================================================================
 
-static UWORD* CopperList     = NULL;
+static UWORD* CopperList = NULL;
 static ULONG CopperListSize = 0;
 static UWORD PlasmaStart = 0;
 static ULONG PlasmaColorLUT[256];
@@ -41,71 +41,14 @@ static ULONG PlasmaColorLUT[256];
 #define PLASMA_VPOS_START   	(VPOS_OFFSET + PLASMA_START_LINE)
 #define WHITE2_VPOS         	(VPOS_OFFSET + WHITE_LINE_2)
 
-typedef struct
-{
-	UWORD Line;
-	UWORD Color;
-} SKYKEY;
-
-static const SKYKEY SkyKeys[] =
-{
-	// Line, RGB4 Color
-	{   0, 0x012 }, // very dark blue
-	{  28, 0x124 }, // blue-violet
-	{  56, 0x336 }, // purple
-	{  84, 0x648 }, // warm purple
-	{ 112, 0xA63 }, // sunrise orange
-	{ 140, 0xD95 }, // bright peach
-	{ 168, 0xCB8 }, // pale warm sky
-	{ 196, 0x9BD }, // light cyan
-	{ 224, 0x8CF }, // bright sky blue
-	{ 255, 0xBDF }  // pale morning blue
-};
-
-static UWORD SkyColorForLine(UWORD y)
-{
-	// SkyKeys span [0..255] exactly — y always matches a segment
-	for (UWORD i = 0; i < (sizeof(SkyKeys) / sizeof(SkyKeys[0])) - 1; ++i)
-	{
-		const UWORD p0 = SkyKeys[i].Line;
-		const UWORD p1 = SkyKeys[i + 1].Line;
-
-		if (y >= p0 && y <= p1)
-		{
-			return lwmf_RGBLerp(SkyKeys[i].Color, SkyKeys[i + 1].Color, y - p0, p1 - p0);
-		}
-	}
-
-	return SkyKeys[(sizeof(SkyKeys) / sizeof(SkyKeys[0])) - 1].Color;
-}
-
-static void AddSkyLine(UWORD **Copperlist, UWORD y)
-{
-	const UWORD VPOS = VPOS_OFFSET + y;
-
-	// VPOS wrap at 256
-	if (VPOS == 256)
-	{
-		*(*Copperlist)++ = 0xFFDF;
-		*(*Copperlist)++ = 0xFFFE;
-	}
-
-	*(*Copperlist)++ = ((VPOS & 0xFF) << 8) | 0x07;
-	*(*Copperlist)++ = 0xFFFE;
-	*(*Copperlist)++ = 0x180;
-	*(*Copperlist)++ = SkyColorForLine(y);
-}
-
 // Copper list size:
 // COPPERWORDS: DIWSTRT+DIWSTOP+DDFSTRT+DDFSTOP+BPLCON0=10, COLOR00 pre-set=2, White1 WAIT+COLOR=4,
 //              Plasma-start WAIT+COLOR=4, White2 WAIT+COLOR=4, footer VPOS-wrap+END=4 => 28 words
 #define COPPERWORDS            28
-// Sky: 169 lines * 4 = 676 words + 2 extra for VPOS-wrap in AddSkyLine (y=212, VPOS=256)
-#define SKY_LINES              (WHITE_LINE_1 + (SCREENHEIGHT - WHITE_LINE_2 - 1))
 
 void Init_CopperList(void)
 {
-	const ULONG CopperListLength = COPPERWORDS + (PLASMA_LINES * LINE_WORDS) + (SKY_LINES * 4 + 2);
+	const ULONG CopperListLength = COPPERWORDS + (PLASMA_LINES * LINE_WORDS);
 
 	CopperListSize = CopperListLength * sizeof(UWORD);
 	CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR);
@@ -134,23 +77,11 @@ void Init_CopperList(void)
 	CopperList[Index++] = 0x100;
 	CopperList[Index++] = 0x0200;
 
-	// Pre-set COLOR00 immediately (no WAIT) to black.
-	// Keeps the top border (VPOS 0-43, before the first sky WAIT at line 44) black
-	// instead of leaking the sky start color or the previous frame's bottom-sky color.
+	// Set background color to dark blue
 	CopperList[Index++] = 0x180;
-	CopperList[Index++] = 0x000;
+	CopperList[Index++] = 0x003;
 
-	// Copper sky in upper region
-	UWORD *Copperlist = &CopperList[Index];
-
-	for (UWORD y = 0; y < WHITE_LINE_1; ++y)
-	{
-		AddSkyLine(&Copperlist, y);
-	}
-
-	Index = (UWORD)(Copperlist - CopperList);
-
-	// --- White Line 1 (between sky and plasma) ---
+	// --- White Line 1
 	// WAIT HP=$07 (fires at start of line), mask $FFFE (BFD=1, ignore blitter, compare all VP/HP bits)
 	CopperList[Index++] = (WHITE1_VPOS << 8) | 0x07;
 	CopperList[Index++] = 0xFFFE;
@@ -191,21 +122,17 @@ void Init_CopperList(void)
 		CopperList[Index++] = 0xFFFE;
 	}
 
-	// --- White Line 2 (between plasma and lower sky) ---
+	// --- White Line 2
 	CopperList[Index++] = (WHITE2_VPOS << 8) | 0x07;
 	CopperList[Index++] = 0xFFFE;
 	CopperList[Index++] = 0x180;
 	CopperList[Index++] = 0xFFF;
 
-	// Copper sky in lower region
-	Copperlist = &CopperList[Index];
-
-	for (UWORD y = WHITE_LINE_2 + 1; y < SCREENHEIGHT; ++y)
-	{
-		AddSkyLine(&Copperlist, y);
-	}
-
-	Index = (UWORD)(Copperlist - CopperList);
+ 	// Set color to dark blue
+	CopperList[Index++] = ((WHITE2_VPOS + 1) << 8) | 0x07;
+	CopperList[Index++] = 0xFFFE;
+	CopperList[Index++] = 0x180;
+	CopperList[Index++] = 0x003;
 
 	// Copper list end: $FFFF/$FFFE — Copper halts until COP1LC is reloaded on next VBlank
 	CopperList[Index++] = 0xFFFF;
@@ -312,7 +239,6 @@ void Update_Plasma(void)
 void Cleanup_All(void)
 {
 	FreeMem(CopperList, CopperListSize);
-
 	lwmf_CleanupAll();
 }
 
