@@ -38,17 +38,9 @@
 ;   - POINT3D8 is a packed 3-byte struct on the C side.
 ;   - Projected Y is used around CENTER_Y with a base of table + 256 bytes.
 ;
-; (Commented version derived from the current rowbase+frameless build.)
 ; -----------------------------------------------------------------------------
 
     machine 68000                                ; assemble for Motorola 68000
-
-    xdef    BuildMorphWordMaskFrameAdvanceAsm    ; export morph hotpath symbol
-    xdef    _BuildMorphWordMaskFrameAdvanceAsm   ; export underscore-prefixed alias
-    xdef    BuildStaticWordMaskFrameAsm          ; export static-point hotpath symbol
-    xdef    _BuildStaticWordMaskFrameAsm         ; export underscore-prefixed alias
-    xdef    UpdateFrameWordsAsm                  ; export word update routine
-    xdef    _UpdateFrameWordsAsm                 ; export underscore-prefixed alias
 
 MSAVE_SIZE          equ     44                   ; saved regs for morph path: d2-d7/a2-a6
 SSAVE_SIZE          equ     44                   ; saved regs for static path: d2-d7/a2-a6
@@ -101,8 +93,7 @@ FP_SHIFT            equ     8                    ; 8.8 fixed-point fractional sh
 ;   d0-d7/a0-a6 (preserved for caller via movem except d0 result)
 ; -----------------------------------------------------------------------------
 
-BuildMorphWordMaskFrameAdvanceAsm:               ; public symbol without underscore
-_BuildMorphWordMaskFrameAdvanceAsm:              ; public symbol with underscore
+_BuildMorphWordMaskFrameAdvanceAsm::             ; public symbol with underscore
     movem.l d2-d7/a2-a6,-(sp)                    ; save all non-result registers used by this routine
 
     movea.l MARG_CUR(sp),a0                      ; a0 = Cur pointer
@@ -209,8 +200,7 @@ _BuildMorphWordMaskFrameAdvanceAsm:              ; public symbol with underscore
 ;   d0-d7/a0-a6 (preserved for caller via movem except d0 result)
 ; -----------------------------------------------------------------------------
 
-BuildStaticWordMaskFrameAsm:                     ; public symbol without underscore
-_BuildStaticWordMaskFrameAsm:                    ; public symbol with underscore
+_BuildStaticWordMaskFrameAsm::                   ; public symbol with underscore
     movem.l d2-d7/a2-a6,-(sp)                    ; save all non-result registers used by this routine
 
     movea.l SARG_POINTS(sp),a0                   ; a0 = packed POINT3D8 source pointer
@@ -308,8 +298,7 @@ _BuildStaticWordMaskFrameAsm:                    ; public symbol with underscore
 ;   d0/d3-d7/a0-a5 (preserved for caller via movem where needed)
 ; -----------------------------------------------------------------------------
 
-UpdateFrameWordsAsm:                             ; public symbol without underscore
-_UpdateFrameWordsAsm:                            ; public symbol with underscore
+_UpdateFrameWordsAsm::                           ; public symbol with underscore
     movem.l d3-d7/a2-a5,-(sp)                    ; save all caller-visible registers used by this routine
 
     movea.l UARG_PLANE(sp),a0                    ; a0 = destination plane base

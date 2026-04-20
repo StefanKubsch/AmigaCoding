@@ -526,9 +526,6 @@ static ULONG CopperListSize = 0;
 static UWORD BPLPTH_Idx[NUMBEROFBITPLANES];
 static UWORD BPLPTL_Idx[NUMBEROFBITPLANES];
 
-// VPOS offset for PAL display (first visible line = $2C = 44)
-#define VPOS_OFFSET             0x2C
-
 // Fixed Copper words:
 // DIWSTRT+DIWSTOP+DDFSTRT+DDFSTOP+BPLCON0/1/2+BPL1MOD+BPL2MOD = 18
 // 4 bitplane pointers = 16
@@ -536,67 +533,9 @@ static UWORD BPLPTL_Idx[NUMBEROFBITPLANES];
 // END = 2
 #define COPPER_FIXED_WORDS      68
 
-// Per visible line: WAIT + MOVE COLOR00 = 4 words
-// One extra WAIT is needed when VPOS wraps from 255 to 0.
-#define SKY_COPPER_WORDS        ((SCREENHEIGHT * 4) + 2)
-
-typedef struct
-{
-	UWORD Line;
-	UWORD Color;
-} SKYKEY;
-
-static const SKYKEY SkyKeys[] =
-{
-	// Line, RGB4 Color
-	{   0, 0x012 }, // very dark blue
-	{  28, 0x124 }, // blue-violet
-	{  56, 0x336 }, // purple
-	{  84, 0x648 }, // warm purple
-	{ 112, 0xA63 }, // sunrise orange
-	{ 140, 0xD95 }, // bright peach
-	{ 168, 0xCB8 }, // pale warm sky
-	{ 196, 0x9BD }, // light cyan
-	{ 224, 0x8CF }, // bright sky blue
-	{ 255, 0xBDF }  // pale morning blue
-};
-
-static UWORD SkyColorForLine(UWORD y)
-{
-	for (UWORD i = 0; i < (sizeof(SkyKeys) / sizeof(SkyKeys[0])) - 1; ++i)
-	{
-		const UWORD p0 = SkyKeys[i].Line;
-		const UWORD p1 = SkyKeys[i + 1].Line;
-
-		if (y >= p0 && y <= p1)
-		{
-			return lwmf_RGBLerp(SkyKeys[i].Color, SkyKeys[i + 1].Color, y - p0, p1 - p0);
-		}
-	}
-
-	return SkyKeys[(sizeof(SkyKeys) / sizeof(SkyKeys[0])) - 1].Color;
-}
-
-static void AddSkyLine(UWORD **Copperlist, UWORD y)
-{
-	const UWORD VPOS = VPOS_OFFSET + y;
-
-	if (VPOS == 256)
-	{
-		*(*Copperlist)++ = 0xFFDF;
-		*(*Copperlist)++ = 0xFFFE;
-	}
-
-	*(*Copperlist)++ = ((VPOS & 0xFF) << 8) | 0x07;
-	*(*Copperlist)++ = 0xFFFE;
-	*(*Copperlist)++ = 0x180;
-	*(*Copperlist)++ = SkyColorForLine(y);
-}
-
 BOOL Init_CopperList(void)
 {
-	UWORD *Copperlist;
-	const ULONG CopperListLength = COPPER_FIXED_WORDS + SKY_COPPER_WORDS;
+	const ULONG CopperListLength = COPPER_FIXED_WORDS;
 	CopperListSize = CopperListLength * sizeof(UWORD);
 
 	CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR);
@@ -641,26 +580,16 @@ BOOL Init_CopperList(void)
 		CopperList[Index++] = 0x0000;
 	}
 
-	// Pre-set COLOR00 to black so the top border stays black until the first sky WAIT.
+	// Set background color to black
 	CopperList[Index++] = 0x0180;
 	CopperList[Index++] = 0x0000;
 
-	// Ball palette colors 1..15. COLOR00 is owned by the Copper sky.
+	// Ball palette colors 1..15.
 	for (UBYTE i = 1; i < 16; ++i)
 	{
 		CopperList[Index++] = (UWORD)(0x0180 + (i << 1));
 		CopperList[Index++] = BallPalette[i];
 	}
-
-	// Full-screen Copper sky in COLOR00 behind the vector balls.
-	Copperlist = &CopperList[Index];
-
-	for (UWORD y = 0; y < SCREENHEIGHT; ++y)
-	{
-		AddSkyLine(&Copperlist, y);
-	}
-
-	Index = (UWORD)(Copperlist - CopperList);
 
 	CopperList[Index++] = 0xFFFF;
 	CopperList[Index++] = 0xFFFE;

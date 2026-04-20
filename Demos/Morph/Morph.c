@@ -12,52 +12,6 @@
 
 #include "lwmf/lwmf.h"
 
-// ---------------------------------------------------------------------
-// Morphing dots
-// ---------------------------------------------------------------------
-
-#define OBJECT_COUNT              3
-#define SPHERE_RINGS             12
-#define POINTS_PER_RING          36
-#define SPHERE_POINT_COUNT       (SPHERE_RINGS * POINTS_PER_RING)
-#define OCTA_EDGE_COUNT          12
-#define ICOSA_EDGE_COUNT         30
-#define POINT_COUNT              SPHERE_POINT_COUNT
-
-#define ANGLE_MASK               255
-#define FP_SHIFT                  8
-#define MORPH_FRAMES             40
-#define HOLD_FRAMES              160
-
-#define CENTER_X                 (SCREENWIDTH / 2)
-#define CENTER_Y                 (SCREENHEIGHT / 2)
-#define PROJ_DIST                300
-#define Z_OFFSET                 440
-
-#define SPHERE_RADIUS             78
-#define OCTA_RADIUS               82
-#define ICOSA_UNIT                50
-#define ICOSA_PHI                 81
-
-#define BASE_ANGLE_X              20
-#define BASE_ANGLE_Y              20
-#define ROCK_ANGLE_Y              56
-
-#define YROT_MIN_ANGLE           (BASE_ANGLE_Y - ROCK_ANGLE_Y)
-#define YROT_MAX_ANGLE           (BASE_ANGLE_Y + ROCK_ANGLE_Y)
-#define YROT_ANGLE_COUNT         (YROT_MAX_ANGLE - YROT_MIN_ANGLE + 1)
-
-#define PHASE_STEP_COUNT        128
-#define ROTATION_SLOT_COUNT      58
-
-#define SRC_COORD_BIAS          100
-#define SRC_COORD_RANGE         ((SRC_COORD_BIAS * 2) + 1)
-#define PROJ_COORD_BIAS         125
-#define PROJ_COORD_RANGE        ((PROJ_COORD_BIAS * 2) + 1)
-#define PROJ_Z_MIN              316
-#define PROJ_Z_MAX              562
-#define PROJ_Z_RANGE            (PROJ_Z_MAX - PROJ_Z_MIN + 1)
-
 typedef signed char SBYTE;
 
 typedef struct
@@ -80,43 +34,58 @@ typedef struct
     UBYTE b;
 } EDGE;
 
+extern UWORD BuildMorphWordMaskFrameAdvanceAsm(POINT3D* Cur, const POINT3D* Step, ULONG PointCount, const SBYTE* RotC, const SBYTE* RotS, const SBYTE* const* ProjRows, UWORD* WordMaskAccum, UWORD* FrameWordIndex);
+extern UWORD BuildStaticWordMaskFrameAsm(const POINT3D8* Points, ULONG PointCount, const SBYTE* RotC, const SBYTE* RotS, const SBYTE* const* ProjRows, UWORD* WordMaskAccum, UWORD* FrameWordIndex);
+extern void UpdateFrameWordsAsm(UWORD* Plane, UWORD* PrevOffset, UWORD* PrevCount, ULONG FrameWordCount, UWORD* WordMaskAccum, const UWORD* FrameWordIndex);
+
+// ---------------------------------------------------------------------
+// Morphing dots
+// ---------------------------------------------------------------------
+
+#define OBJECT_COUNT              2
+#define SPHERE_RINGS             12
+#define POINTS_PER_RING          36
+#define SPHERE_POINT_COUNT       (SPHERE_RINGS * POINTS_PER_RING)
+#define OCTA_EDGE_COUNT          12
+
+#define POINT_COUNT              SPHERE_POINT_COUNT
+
+#define ANGLE_MASK               255
+#define FP_SHIFT                  8
+#define MORPH_FRAMES             40
+#define HOLD_FRAMES              160
+
+#define CENTER_X                 (SCREENWIDTH / 2)
+#define CENTER_Y                 (SCREENHEIGHT / 2)
+#define PROJ_DIST                250
+#define Z_OFFSET                 440
+
+#define SPHERE_RADIUS             90
+#define OCTA_RADIUS               100
+
+#define BASE_ANGLE_X              20
+#define BASE_ANGLE_Y              20
+#define ROCK_ANGLE_Y              56
+
+#define YROT_MIN_ANGLE           (BASE_ANGLE_Y - ROCK_ANGLE_Y)
+#define YROT_MAX_ANGLE           (BASE_ANGLE_Y + ROCK_ANGLE_Y)
+#define YROT_ANGLE_COUNT         (YROT_MAX_ANGLE - YROT_MIN_ANGLE + 1)
+
+#define PHASE_STEP_COUNT        128
+#define ROTATION_SLOT_COUNT      58
+
+#define SRC_COORD_BIAS          100
+#define SRC_COORD_RANGE         ((SRC_COORD_BIAS * 2) + 1)
+#define PROJ_COORD_BIAS         125
+#define PROJ_COORD_RANGE        ((PROJ_COORD_BIAS * 2) + 1)
+#define PROJ_Z_MIN              316
+#define PROJ_Z_MAX              562
+#define PROJ_Z_RANGE            (PROJ_Z_MAX - PROJ_Z_MIN + 1)
+
 #define OBJECT_INDEX(obj, pt)    ((ULONG)(obj) * (ULONG)POINT_COUNT + (ULONG)(pt))
 
 #define SCREEN_WORDS_PER_ROW     (SCREENWIDTH >> 4)
 #define SCREEN_WORD_COUNT        (SCREEN_WORDS_PER_ROW * SCREENHEIGHT)
-
-#if (CENTER_X != 160) || (CENTER_Y != 128) || (SRC_COORD_BIAS != 100) || \
-    (PROJ_COORD_BIAS != 125) || ((Z_OFFSET - PROJ_Z_MIN) != 124) || \
-    (SCREEN_WORDS_PER_ROW != 20) || (FP_SHIFT != 8)
-#error VASM core expects the current fixed projection and screen constants
-#endif
-
-extern UWORD BuildMorphWordMaskFrameAdvanceAsm(
-    POINT3D* Cur,
-    const POINT3D* Step,
-    ULONG PointCount,
-    const SBYTE* RotC,
-    const SBYTE* RotS,
-    const SBYTE* const* ProjRows,
-    UWORD* WordMaskAccum,
-    UWORD* FrameWordIndex);
-
-extern UWORD BuildStaticWordMaskFrameAsm(
-    const POINT3D8* Points,
-    ULONG PointCount,
-    const SBYTE* RotC,
-    const SBYTE* RotS,
-    const SBYTE* const* ProjRows,
-    UWORD* WordMaskAccum,
-    UWORD* FrameWordIndex);
-
-extern void UpdateFrameWordsAsm(
-    UWORD* Plane,
-    UWORD* PrevOffset,
-    UWORD* PrevCount,
-    ULONG FrameWordCount,
-    UWORD* WordMaskAccum,
-    const UWORD* FrameWordIndex);
 
 static POINT3D8 ObjectPoints[OBJECT_COUNT * POINT_COUNT];
 static POINT3D MorphStep[POINT_COUNT];
@@ -269,30 +238,6 @@ static const EDGE OctaEdges[OCTA_EDGE_COUNT] =
     { 2, 4 }, { 2, 5 }, { 3, 4 }, { 3, 5 }
 };
 
-static const POINT3D8 IcosaVerts[12] =
-{
-    {   0, -ICOSA_UNIT, -ICOSA_PHI }, {   0, -ICOSA_UNIT,  ICOSA_PHI },
-    {   0,  ICOSA_UNIT, -ICOSA_PHI }, {   0,  ICOSA_UNIT,  ICOSA_PHI },
-    { -ICOSA_UNIT, -ICOSA_PHI, 0 },   { -ICOSA_UNIT,  ICOSA_PHI, 0 },
-    {  ICOSA_UNIT, -ICOSA_PHI, 0 },   {  ICOSA_UNIT,  ICOSA_PHI, 0 },
-    { -ICOSA_PHI, 0, -ICOSA_UNIT },   { -ICOSA_PHI, 0,  ICOSA_UNIT },
-    {  ICOSA_PHI, 0, -ICOSA_UNIT },   {  ICOSA_PHI, 0,  ICOSA_UNIT }
-};
-
-static const EDGE IcosaEdges[ICOSA_EDGE_COUNT] =
-{
-    { 0, 2 }, { 0, 4 }, { 0, 6 }, { 0, 8 }, { 0, 10 },
-    { 1, 3 }, { 1, 4 }, { 1, 6 }, { 1, 9 }, { 1, 11 },
-    { 2, 5 }, { 2, 7 }, { 2, 8 }, { 2, 10 },
-    { 3, 5 }, { 3, 7 }, { 3, 9 }, { 3, 11 },
-    { 4, 6 }, { 4, 8 }, { 4, 9 },
-    { 5, 7 }, { 5, 8 }, { 5, 9 },
-    { 6, 10 }, { 6, 11 },
-    { 7, 10 }, { 7, 11 },
-    { 8, 9 },
-    { 10, 11 }
-};
-
 static void InitWireObject(UWORD ObjIndex, const POINT3D8* Verts, UWORD VertexCount, const EDGE* Edges, UWORD EdgeCount)
 {
     UWORD Index = 0;
@@ -364,33 +309,27 @@ static BOOL PointSortBefore(const POINT3D8* Points, UWORD a, UWORD b)
         return (BOOL)(Pa->y > Pb->y);
     }
 
-    {
-        const BOOL Ha = IsFrontHalfXZ(Pa);
-        const BOOL Hb = IsFrontHalfXZ(Pb);
+    const BOOL Ha = IsFrontHalfXZ(Pa);
+    const BOOL Hb = IsFrontHalfXZ(Pb);
 
-        if (Ha != Hb)
-        {
-            return (BOOL)(Ha > Hb);
-        }
+    if (Ha != Hb)
+    {
+        return (BOOL)(Ha > Hb);
     }
 
-    {
-        const LONG Cross = ((LONG)(WORD)Pa->x * (LONG)(WORD)Pb->z) - ((LONG)(WORD)Pa->z * (LONG)(WORD)Pb->x);
+    const LONG Cross = ((LONG)(WORD)Pa->x * (LONG)(WORD)Pb->z) - ((LONG)(WORD)Pa->z * (LONG)(WORD)Pb->x);
 
-        if (Cross != 0)
-        {
-            return (BOOL)(Cross > 0);
-        }
+    if (Cross != 0)
+    {
+        return (BOOL)(Cross > 0);
     }
 
-    {
-        const WORD Ra = (WORD)(AbsW((WORD)Pa->x) + AbsW((WORD)Pa->z));
-        const WORD Rb = (WORD)(AbsW((WORD)Pb->x) + AbsW((WORD)Pb->z));
+    const WORD Ra = (WORD)(AbsW((WORD)Pa->x) + AbsW((WORD)Pa->z));
+    const WORD Rb = (WORD)(AbsW((WORD)Pb->x) + AbsW((WORD)Pb->z));
 
-        if (Ra != Rb)
-        {
-            return (BOOL)(Ra > Rb);
-        }
+    if (Ra != Rb)
+    {
+        return (BOOL)(Ra > Rb);
     }
 
     return (BOOL)(a < b);
@@ -423,9 +362,7 @@ static void SortPointOrder(const POINT3D8* Points)
 
 static UWORD PointDistance(const POINT3D8* A, const POINT3D8* B)
 {
-    return (UWORD)(AbsW((WORD)A->x - (WORD)B->x) +
-                   AbsW((WORD)A->y - (WORD)B->y) +
-                   AbsW((WORD)A->z - (WORD)B->z));
+    return (UWORD)(AbsW((WORD)A->x - (WORD)B->x) + AbsW((WORD)A->y - (WORD)B->y) + AbsW((WORD)A->z - (WORD)B->z));
 }
 
 static void BuildMorphMap(UWORD Obj)
@@ -481,7 +418,6 @@ static void InitObjects(void)
 {
     InitSpherePoints();
     InitWireObject(1, OctaVerts,  (UWORD)(sizeof(OctaVerts) / sizeof(OctaVerts[0])), OctaEdges,  (UWORD)(sizeof(OctaEdges) / sizeof(OctaEdges[0])));
-    InitWireObject(2, IcosaVerts, (UWORD)(sizeof(IcosaVerts) / sizeof(IcosaVerts[0])), IcosaEdges, (UWORD)(sizeof(IcosaEdges) / sizeof(IcosaEdges[0])));
     ApplyBaseXTilt();
     InitMorphMaps();
 }
@@ -490,9 +426,7 @@ static UWORD BuildStaticWordMaskFrame(UWORD ObjIndex, UBYTE RotSlot)
 {
     const ULONG RotBase = (ULONG)RotSlot * (ULONG)SRC_COORD_RANGE;
 
-    return BuildStaticWordMaskFrameAsm(&ObjectPoints[OBJECT_INDEX(ObjIndex, 0)], (ULONG)POINT_COUNT,
-                                       &RotCosY[RotBase + SRC_COORD_BIAS], &RotSinY[RotBase + SRC_COORD_BIAS],
-                                       &ProjRows[Z_OFFSET - PROJ_Z_MIN], WordMaskAccum, FrameWordIndex);
+    return BuildStaticWordMaskFrameAsm(&ObjectPoints[OBJECT_INDEX(ObjIndex, 0)], (ULONG)POINT_COUNT, &RotCosY[RotBase + SRC_COORD_BIAS], &RotSinY[RotBase + SRC_COORD_BIAS], &ProjRows[Z_OFFSET - PROJ_Z_MIN], WordMaskAccum, FrameWordIndex);
 }
 
 static void InitMorphState(UWORD PairIndex)
@@ -529,9 +463,7 @@ static UWORD BuildMorphWordMaskFrameAdvance(UBYTE RotSlot)
 {
     const ULONG RotBase = (ULONG)RotSlot * (ULONG)SRC_COORD_RANGE;
 
-    return BuildMorphWordMaskFrameAdvanceAsm(MorphCur, MorphStep, (ULONG)POINT_COUNT,
-                                             &RotCosY[RotBase + SRC_COORD_BIAS], &RotSinY[RotBase + SRC_COORD_BIAS],
-                                             &ProjRows[Z_OFFSET - PROJ_Z_MIN], WordMaskAccum, FrameWordIndex);
+    return BuildMorphWordMaskFrameAdvanceAsm(MorphCur, MorphStep, (ULONG)POINT_COUNT, &RotCosY[RotBase + SRC_COORD_BIAS], &RotSinY[RotBase + SRC_COORD_BIAS], &ProjRows[Z_OFFSET - PROJ_Z_MIN], WordMaskAccum, FrameWordIndex);
 }
 
 static void UpdateFrameWords(UWORD* Plane, UBYTE Buffer, UWORD FrameWordCount)
@@ -540,7 +472,7 @@ static void UpdateFrameWords(UWORD* Plane, UBYTE Buffer, UWORD FrameWordCount)
 }
 
 // ---------------------------------------------------------------------
-// Copper / palette
+// Copper
 // ---------------------------------------------------------------------
 
 static UWORD* CopperList = NULL;
@@ -548,66 +480,11 @@ static ULONG CopperListSize = 0;
 static UWORD BPL1PTH_Idx;
 static UWORD BPL1PTL_Idx;
 
-#define VPOS_OFFSET             0x2C
-
-typedef struct
-{
-    UWORD Line;
-    UWORD Color;
-} SKYKEY;
-
-static const SKYKEY SkyKeys[] =
-{
-    {   0, 0x012 },
-    {  28, 0x124 },
-    {  56, 0x336 },
-    {  84, 0x648 },
-    { 112, 0xA63 },
-    { 140, 0xD95 },
-    { 168, 0xCB8 },
-    { 196, 0x9BD },
-    { 224, 0x8CF },
-    { 255, 0xBDF }
-};
-
-static UWORD SkyColorForLine(UWORD y)
-{
-    for (UWORD i = 0; i < (UWORD)((sizeof(SkyKeys) / sizeof(SkyKeys[0])) - 1u); ++i)
-    {
-        const UWORD p0 = SkyKeys[i].Line;
-        const UWORD p1 = SkyKeys[i + 1u].Line;
-
-        if (y >= p0 && y <= p1)
-        {
-            return lwmf_RGBLerp(SkyKeys[i].Color, SkyKeys[i + 1u].Color, y - p0, p1 - p0);
-        }
-    }
-
-    return SkyKeys[(sizeof(SkyKeys) / sizeof(SkyKeys[0])) - 1u].Color;
-}
-
-static void AddSkyLine(UWORD** CopperPtr, UWORD y)
-{
-    UWORD VPOS = (UWORD)(VPOS_OFFSET + y);
-
-    if (VPOS == 256u)
-    {
-        *(*CopperPtr)++ = 0xFFDF;
-        *(*CopperPtr)++ = 0xFFFE;
-    }
-
-    *(*CopperPtr)++ = (UWORD)(((VPOS & 0x00FFu) << 8) | 0x0007u);
-    *(*CopperPtr)++ = 0xFFFE;
-    *(*CopperPtr)++ = 0x0180;
-    *(*CopperPtr)++ = SkyColorForLine(y);
-}
-
-#define COPPER_FIXED_WORDS      28
-#define SKY_COPPER_WORDS        ((SCREENHEIGHT * 4) + 2)
+#define COPPER_FIXED_WORDS      40
 
 void Init_CopperList(void)
 {
-    const ULONG CopperListLength = (ULONG)COPPER_FIXED_WORDS + (ULONG)SKY_COPPER_WORDS;
+    const ULONG CopperListLength = (ULONG)COPPER_FIXED_WORDS;
 
     CopperListSize = CopperListLength * sizeof(UWORD);
     CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR);
@@ -640,22 +517,13 @@ void Init_CopperList(void)
     BPL1PTL_Idx = (UWORD)Index;
     CopperList[Index++] = 0x0000;
 
-    // Black background, white foreground
+    // Blue background, white foreground
     CopperList[Index++] = 0x0180;
-    CopperList[Index++] = 0x0000;
+    CopperList[Index++] = 0x003;
     CopperList[Index++] = 0x0182;
     CopperList[Index++] = 0x0FFF;
 
-  	// Full-screen Copper sky in COLOR00 behind the vector balls.
-    UWORD* CopperPtr = &CopperList[Index];
-
-    for (UWORD y = 0; y < SCREENHEIGHT; ++y)
-    {
-        AddSkyLine(&CopperPtr, y);
-    }
-
-    Index = (ULONG)(CopperPtr - CopperList);
-
+    // Copper end
     CopperList[Index++] = 0xFFFF;
     CopperList[Index++] = 0xFFFE;
 
@@ -687,6 +555,9 @@ int main(void)
     lwmf_LoadGraphicsLib();
     lwmf_InitScreenBitmaps();
 
+    lwmf_ClearScreen((long*)ScreenBitmap[0]->Planes[0]);
+    lwmf_ClearScreen((long*)ScreenBitmap[1]->Planes[0]);
+
     lwmf_TakeOverOS();
 
     InitRotationSlotsAndTables();
@@ -694,9 +565,6 @@ int main(void)
     InitObjects();
 
     Init_CopperList();
-
-    lwmf_ClearScreen((long*)ScreenBitmap[0]->Planes[0]);
-    lwmf_ClearScreen((long*)ScreenBitmap[1]->Planes[0]);
 
     UBYTE CurrentBuffer = 1;
     UBYTE RockPhaseStep = 0;
@@ -713,13 +581,13 @@ int main(void)
 
         if (Morphing)
         {
-            if ((StateFrame + 1u) < MORPH_FRAMES)
+            if ((StateFrame + 1) < MORPH_FRAMES)
             {
                 FrameWordCount = BuildMorphWordMaskFrameAdvance(RotSlot);
             }
             else
             {
-                FrameWordCount = BuildStaticWordMaskFrame((UWORD)((CurrentObject + 1u) % OBJECT_COUNT), RotSlot);
+                FrameWordCount = BuildStaticWordMaskFrame((UWORD)((CurrentObject + 1) % OBJECT_COUNT), RotSlot);
             }
 
             ++StateFrame;
@@ -727,7 +595,7 @@ int main(void)
             {
                 StateFrame = 0;
                 Morphing = FALSE;
-                CurrentObject = (UBYTE)((CurrentObject + 1u) % OBJECT_COUNT);
+                CurrentObject ^= 1;
             }
         }
         else
@@ -747,8 +615,8 @@ int main(void)
 
         lwmf_WaitVertBlank();
         Update_BitplanePointers(CurrentBuffer);
-        CurrentBuffer ^= 1u;
-        RockPhaseStep = (UBYTE)((RockPhaseStep + 1u) & (PHASE_STEP_COUNT - 1u));
+        CurrentBuffer ^= 1;
+        RockPhaseStep = (UBYTE)((RockPhaseStep + 1) & (PHASE_STEP_COUNT - 1));
     }
 
     Cleanup_All();
