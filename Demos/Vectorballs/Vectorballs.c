@@ -2,8 +2,7 @@
 //* Vector balls effect                                                *
 //* Amiga 500 OCS                                                      *
 //*                                                                    *
-//* (C) 2020-2026 by Stefan Kubsch                                     *
-//* Refactored for tighter A500 performance                            *
+//* (C) 2026 by Stefan Kubsch                                          *
 //*                                                                    *
 //* Compile & link with:                                               *
 //* make_VectorBalls.cmd                                               *
@@ -103,7 +102,6 @@ static UBYTE XClass[VB_NUM_BALLS];
 // Specialized runtime Z-order for the current effect.
 static UBYTE ZOrderLUT[256][VB_NUM_BALLS];
 
-// CPU-side frame data. Keep these in default RAM, not CHIP.
 static UWORD DrawOffset[VB_NUM_BALLS];
 static UBYTE DrawShift[VB_NUM_BALLS];
 static UWORD RowOffset[256];
@@ -113,8 +111,8 @@ static UWORD SortedDrawOffset[VB_NUM_BALLS];
 static UWORD* SortedMaskPtr[VB_NUM_BALLS];
 static UWORD* SortedSourcePtr[VB_NUM_BALLS];
 
-/* Maps X in range [-9..+9] to XClass [0..14].
-   Unused entries are 0xFF. */
+// Maps X in range [-9..+9] to XClass [0..14].
+// Unused entries are 0xFF.
 static const UBYTE XClassLUT[19] =
 {
 	0,    /* -9 */
@@ -533,7 +531,7 @@ static UWORD BPLPTL_Idx[NUMBEROFBITPLANES];
 // END = 2
 #define COPPER_FIXED_WORDS      68
 
-BOOL Init_CopperList(void)
+void Init_CopperList(void)
 {
 	const ULONG CopperListLength = COPPER_FIXED_WORDS;
 	CopperListSize = CopperListLength * sizeof(UWORD);
@@ -595,7 +593,6 @@ BOOL Init_CopperList(void)
 	CopperList[Index++] = 0xFFFE;
 
 	*COP1LC = (ULONG)CopperList;
-	return TRUE;
 }
 
 void Update_BitplanePointers(UBYTE Buffer)

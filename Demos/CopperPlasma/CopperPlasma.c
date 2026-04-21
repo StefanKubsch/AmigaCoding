@@ -2,7 +2,7 @@
 //* Copper plasma effect                                               *
 //* Amiga 500 OCS                                                      *
 //*                                                                    *
-//* (C) 2020-2026 by Stefan Kubsch                                     *
+//* (C) 2026 by Stefan Kubsch                                          *
 //* Project for vbcc                                                   *
 //*                                                                    *
 //* Compile & link with:                                               *
@@ -185,8 +185,6 @@ void Update_Plasma(void)
 	// Interlaced row update: process only even or odd rows per frame.
 	// Each row is refreshed at 25 Hz instead of 50 Hz, halving the number of
 	// Chip RAM writes per frame.
-	// The Phase2 value computed for each processed row is identical to the
-	// non-interlaced version, so visual quality is preserved.
 	static UBYTE RowToggle = 0;
 
 	// Start p at the phase that corresponds to the first processed row

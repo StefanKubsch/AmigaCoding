@@ -3,7 +3,7 @@
 //* 4 Bitplanes, 16 colors, 48 columns                                 *
 //* Amiga 500 OCS                                                      *
 //*                                                                    *
-//* (C) 2020-2026 by Stefan Kubsch/Deep4                               *
+//* (C) 2026 by Stefan Kubsch/Deep4                                    *
 //* Project for vbcc                                                   *
 //*                                                                    *
 //* Compile & link with:                                               *

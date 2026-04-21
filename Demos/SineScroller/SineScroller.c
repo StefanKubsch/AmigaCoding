@@ -2,7 +2,7 @@
 //* Sine Scroller effect                                               *
 //* Amiga 500 OCS                                                      *
 //*                                                                    *
-//* (C) 2020-2026 by Stefan Kubsch                                     *
+//* (C) 2026 by Stefan Kubsch                                          *
 //* Project for vbcc                                                   *
 //*                                                                    *
 //* Compile & link with:                                               *
@@ -62,25 +62,25 @@ static const UBYTE SinTab256[256] =
 
 static struct Scrollfont
 {
-	UWORD  Length;
-	WORD   ScrollX;
+	UWORD Length;
+	WORD ScrollX;
 	ULONG *FontData;     // merged per column: hi-word = ColumnBits (pixel pattern), lo-word = ColumnDst (text X)
-	UWORD  ColumnCount;
-	UWORD  FirstVisibleColumn;
+	UWORD ColumnCount;
+	UWORD FirstVisibleColumn;
 } Font;
 
 // Precomputed per screen-X: byte offset of the BOTTOM row of the sine-displaced column.
 // = sine_row * INTERLEAVED_STRIDE  +  15 * INTERLEAVED_STRIDE  +  word-aligned byte offset
 // Collapses 3 runtime operations in Draw into a single table lookup.
 static UWORD *ScrollBottomWordOffset = NULL;
-static ULONG  ScrollBottomWordOffsetSize = 0;
-static ULONG  FontDataSize           = 0;
+static ULONG ScrollBottomWordOffsetSize = 0;
+static ULONG FontDataSize = 0;
 
 // Precomputed RGB4 rainbow color table, indexed by (line*3 + phase) & 0xFF.
 // RainbowTab[i] = ((SinTab256[i]>>2)<<8) | ((SinTab256[(i+85)&0xFF]>>2)<<4) | (SinTab256[(i+170)&0xFF]>>2)
 // Constant (phase-independent): only the starting index changes each frame.
-static UWORD *RainbowTab     = NULL;
-static ULONG  RainbowTabSize = 0;
+static UWORD *RainbowTab = NULL;
+static ULONG RainbowTabSize = 0;
 
 BOOL Init_SineScroller(void)
 {
@@ -117,17 +117,17 @@ BOOL Init_SineScroller(void)
 
 	FontBitmap = lwmf_LoadImage("gfx/font16x16.ilbm");
 
-	const char *Text           = "...HERE WE GO! THIS IS A SINE SCROLLER DEMO WITH RAINBOW COLORS, WRITTEN IN C AND ASM FOR THE AMIGA 500. ENJOY THE SHOW! (C) 2026 BY DEEP4...";
-	const char *CharMap        = "! #$%& ()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ ";
-	const WORD  CharWidth      = 15;
-	const UBYTE CharHeight     = SCROLLER_CHAR_HEIGHT;
-	const WORD  CharOverallWidth = CharWidth + 1;
+	const char *Text           	= "...HERE WE GO! THIS IS A SINE SCROLLER DEMO WITH RAINBOW COLORS, WRITTEN IN C AND ASM FOR THE AMIGA 500. ENJOY THE SHOW! (C) 2026 BY DEEP4...";
+	const char *CharMap         = "! #$%& ()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ ";
+	const WORD CharWidth      	= 15;
+	const UBYTE CharHeight      = SCROLLER_CHAR_HEIGHT;
+	const WORD CharOverallWidth	= CharWidth + 1;
 
-	Font.ScrollX         = SCREENWIDTH;
-	Font.Length          = 0;
-	Font.FontData        = NULL;
-	Font.ColumnCount     = 0;
-	Font.FirstVisibleColumn = 0;
+	Font.ScrollX         	= SCREENWIDTH;
+	Font.Length          	= 0;
+	Font.FontData        	= NULL;
+	Font.ColumnCount     	= 0;
+	Font.FirstVisibleColumn	= 0;
 
 	UWORD TextLength = 0;
 
@@ -155,7 +155,7 @@ BOOL Init_SineScroller(void)
 	Font.Length = TextLength * CharOverallWidth;
 
 	const UWORD ColsPerChar = (UWORD)((CharWidth + SCROLLER_FEED - 1) / SCROLLER_FEED);
-	const UWORD MaxColumns  = TextLength * ColsPerChar;
+	const UWORD MaxColumns = TextLength * ColsPerChar;
 
 	if (MaxColumns == 0)
 	{
@@ -168,17 +168,17 @@ BOOL Init_SineScroller(void)
 	Font.FontData = (ULONG*)lwmf_AllocCpuMem(FontDataSize, MEMF_CLEAR);
 
 	const UBYTE *srcPlane0 = (const UBYTE *)FontBitmap->Image.Planes[0];
-	const UWORD  srcBPR    = FontBitmap->Image.BytesPerRow;
+	const UWORD srcBPR = FontBitmap->Image.BytesPerRow;
 
 	for (UWORD i = 0; i < TextLength; ++i)
 	{
-		const UBYTE c      = (UBYTE)Text[i];
-		const WORD  MapVal = (c < 128) ? CharLookup[c] : -1;
+		const UBYTE c = (UBYTE)Text[i];
+		const WORD MapVal = (c < 128) ? CharLookup[c] : -1;
 
 		if (MapVal >= 0)
 		{
 			const WORD CharBaseX = i * CharOverallWidth;
-			WORD x1   = 0;
+			WORD x1 = 0;
 			WORD srcx = MapVal;
 
 			while (x1 < CharWidth)
@@ -197,6 +197,7 @@ BOOL Init_SineScroller(void)
 					{
 						colWord |= (UWORD)(1u << r);  // row r -> bit r
 					}
+
 					srcRow += srcBPR;
 				}
 
@@ -207,7 +208,8 @@ BOOL Init_SineScroller(void)
 					Font.FontData[Font.ColumnCount] = ((ULONG)colWord << 16) | (UWORD)(CharBaseX + x1);
 					++Font.ColumnCount;
 				}
-				x1   += SCROLLER_FEED;
+
+				x1 += SCROLLER_FEED;
 				srcx += SCROLLER_FEED;
 			}
 		}
@@ -221,15 +223,15 @@ BOOL Init_SineScroller(void)
 
 void Draw_SineScroller(UBYTE Buffer)
 {
-	const WORD ScrollX           = Font.ScrollX;
+	const WORD ScrollX = Font.ScrollX;
 	const WORD LeftVisibleTextX  = -ScrollX;
 	const WORD RightVisibleTextX = (SCREENWIDTH - SCROLLER_FEED) - ScrollX;
 
 	const UBYTE *DstPlane = (const UBYTE *)ScreenBitmap[Buffer]->Planes[0];
 
-	const ULONG *FontData  = Font.FontData;
-	const ULONG *DataEnd   = FontData + Font.ColumnCount;
-	const ULONG *dataPtr   = FontData + Font.FirstVisibleColumn;
+	const ULONG *FontData = Font.FontData;
+	const ULONG *DataEnd = FontData + Font.ColumnCount;
+	const ULONG *dataPtr = FontData + Font.FirstVisibleColumn;
 
 	// Skip columns that have already scrolled off the left edge.
 	// lo-word of each entry is ColumnDst; cast to WORD for signed comparison.
@@ -265,7 +267,7 @@ void Cleanup_SineScroller(void)
 // Copper
 // =====================================================================
 
-static UWORD* CopperList     = NULL;
+static UWORD* CopperList = NULL;
 static ULONG  CopperListSize = 0;
 
 static UWORD ScrollBPL1PTH_Idx = 0;

@@ -30,8 +30,8 @@ BLTADAT_VAL  equ  $8000                         ; line-mode start bit
 
 _InitScrollerBlitter::
 	move.l	a5,-(sp)
-	lea	CUSTOMREGS,a5
-	bsr	_lwmf_WaitBlitter
+	lea		CUSTOMREGS,a5
+	bsr		_lwmf_WaitBlitter
 	move.w	#$FFFF,(BLTAFWM-CUSTOMREGS,a5)        ; first-word mask: all bits
 	move.w	#$FFFF,(BLTALWM-CUSTOMREGS,a5)        ; last-word mask:  all bits
 	move.w	#BLTADAT_VAL,(BLTADAT-CUSTOMREGS,a5)  ; line-mode start bit
@@ -69,7 +69,7 @@ _InitScrollerBlitter::
 
 _DrawScrollerBlit::
 	movem.l	d2-d5/a2-a5,-(sp)
-	lea	CUSTOMREGS,a5
+	lea		CUSTOMREGS,a5
 
 	; Enable Blitter Nasty FIRST so the in-progress clear blit gets full bus priority
 	; and finishes faster, reducing the time we spend in wait_init.

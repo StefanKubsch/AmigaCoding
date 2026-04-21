@@ -3,7 +3,7 @@
 //* 5 Bitplanes, 32 colors, 48 columns                                 *
 //* Amiga 500 OCS                                                      *
 //*                                                                    *
-//* (C) 2020-2026 by Stefan Kubsch/Deep4                               *
+//* (C) 2026 by Stefan Kubsch/Deep4                                    *
 //* Project for vbcc                                                   *
 //*                                                                    *
 //* Compile & link with:                                               *
@@ -308,7 +308,6 @@ static void BuildDeltaTable(void)
 	}
 }
 
-
 void Init_RotoZoomer(void)
 {
 	struct lwmf_Image *RotoBitmap;
@@ -382,8 +381,8 @@ void Cleanup_RotoZoomer(void)
 // Copper list
 // =====================================================================
 
-static UWORD *CopperList     = NULL;
-static ULONG  CopperListSize = 0;
+static UWORD *CopperList = NULL;
+static ULONG CopperListSize = 0;
 
 static UWORD BPLPTH_Idx[NUMBEROFBITPLANES];
 static UWORD BPLPTL_Idx[NUMBEROFBITPLANES];
@@ -434,7 +433,7 @@ void Init_CopperList(void)
 	CopperList[Index++] = 0x10A;
 	CopperList[Index++] = ROTO_REPEAT_MOD;
 
-	// Bitplane pointers (filled later for each backbuffer)
+	// Bitplane pointers
 	for (UWORD p = 0; p < NUMBEROFBITPLANES; ++p)
 	{
 		CopperList[Index++] = (UWORD)(0x0E0u + (p * 4u));

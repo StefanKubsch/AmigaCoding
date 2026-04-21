@@ -2,7 +2,7 @@
 //* Amiga 1200 Intro                                                   *
 //* Will run on Amiga 500, but very slow                               *
 //*                                                                    *
-//* (C) 2020-2026 by Stefan Kubsch                                     *
+//* (C) 2026 by Stefan Kubsch                                          *
 //* Project for vbcc                                                   *
 //*                                                                    *
 //* Compile & link with:                                               *
@@ -137,6 +137,7 @@ BOOL Init_SineScroller(void)
 	struct lwmf_Image* FontBitmap;
 
 	ScrollRowOffsetSize = sizeof(UWORD) * SCREENWIDTH;
+
 	if (!(ScrollRowOffset = (UWORD*)lwmf_AllocCpuMem(ScrollRowOffsetSize, MEMF_CLEAR)))
 	{
 		return FALSE;
@@ -366,8 +367,8 @@ void Cleanup_SineScroller(void)
 // Copper
 // =====================================================================
 
-static UWORD* CopperList     = NULL;
-static ULONG  CopperListSize = 0;
+static UWORD* CopperList = NULL;
+static ULONG CopperListSize = 0;
 static UWORD PlasmaStart = 0;
 static ULONG PlasmaColorLUT[256];
 

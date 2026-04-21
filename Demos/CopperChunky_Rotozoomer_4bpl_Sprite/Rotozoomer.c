@@ -6,9 +6,8 @@
 //*                                                                    *
 //* Hybrid layout per logical row:                                     *
 //*   4 blocks playfield  |  4 blocks attached sprites  |  4 blocks PF *
-//*      64 pixels        |         64 pixels            |   64 pixels  *
+//*      64 pixels        |         64 pixels            |   64 pixels *
 //*                                                                    *
-//* Based on the original project by Stefan Kubsch / Deep4             *
 //**********************************************************************
 
 #include "lwmf/lwmf.h"

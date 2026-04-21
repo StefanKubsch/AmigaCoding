@@ -80,7 +80,6 @@ VB_BOB_DEST_MOD           equ BYTESPERROW-VB_BOB_BYTES
 ;   sortedMaskPtr[i]       = pointer to the pre-shifted mask data for bob i
 ;   sortedSourcePtr[i]     = pointer to the pre-shifted source data for bob i
 ;
-; There is no per-bob indirection through ZOrder anymore.
 ; No projection, no clipping and no generic bitmap handling happen here.
 ;
 ; Register map:

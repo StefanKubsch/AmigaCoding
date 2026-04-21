@@ -6,7 +6,7 @@
 ; (C) 2026 Stefan Kubsch / Deep4
 ; -----------------------------------------------------------------------------
 
-	machine 68000                          ; Assemble for plain Motorola 68000.
+	machine 68000                         ; Assemble for plain Motorola 68000.
 
 	include "lwmf/lwmf_hardware_regs.i"   ; Import Amiga hardware register definitions.
 
@@ -183,7 +183,7 @@ LOC_SIZE               equ 20             ; Total size of the local stack frame.
 	STORE_SPR_BLOCK                         ; Write the resulting words to the sprite buffers.
 	endm                                    ; End of EMIT_SPR_BLOCK.
 
-_DrawRotoHybridAsm::                      ; Entry point called from C.
+_DrawRotoHybridAsm::                        ; Entry point called from C.
 	movem.l d2-d7/a1-a6,-(sp)               ; Save all scratch/data registers used by the routine.
 	lea     -LOC_SIZE(sp),sp                ; Reserve stack space for local variables.
 
@@ -212,7 +212,7 @@ _DrawRotoHybridAsm::                      ; Entry point called from C.
 
 	move.w  #ROTO_ROWS-1,LOC_RowCnt(sp)     ; Initialise row counter for 48 logical rows.
 
-.row_loop:                                 ; Start of one logical display row.
+.row_loop:                                  ; Start of one logical display row.
 	tst.w   LOC_RowCnt(sp)                  ; Test whether the row counter is still non-negative.
 	bmi.w   .done                           ; Exit once all logical rows have been processed.
 
@@ -271,7 +271,7 @@ _DrawRotoHybridAsm::                      ; Entry point called from C.
 	subq.w  #1,LOC_RowCnt(sp)               ; Decrement remaining row counter.
 	bra.w   .row_loop                       ; Process the next logical row.
 
-.done:                                     ; All rows are complete.
+.done:                                      ; All rows are complete.
 	lea     LOC_SIZE(sp),sp                 ; Release the local stack frame.
 	movem.l (sp)+,d2-d7/a1-a6               ; Restore saved registers.
 	rts                                     ; Return to the C caller.
