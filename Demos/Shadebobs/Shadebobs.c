@@ -1,41 +1,30 @@
 //**********************************************************************
 //* Shadebobs effect                                                   *
 //* Amiga 500 OCS                                                      *
-//* 512 KB Chip + 512 KB Slow                                          *
-//* VBCC C99                                                           *
 //*                                                                    *
-//* Notes:                                                             *
-//* - Copper + interleaved 5 bitplanes                                 *
-//* - 32x32 shadebobs                                                  *
-//* - Carry-based shadebob increment (+1 mod 32 under bob mask)        *
-//* - No clear in main loop                                             *
-//* - Fixed 512-step LUT for a clean 2D projection of a                *
-//*   Lissajous knot                                                   *
+//* (C) 2026 by Stefan Kubsch                                          *
+//*                                                                    *
+//* Compile & link with:                                               *
+//* make_Shadebobs.cmd                                                 *
 //*                                                                    *
 //* Quit with mouse click                                              *
 //**********************************************************************
 
 #include "lwmf/lwmf.h"
 
-#define SCREEN_WIDTH            320
-#define SCREEN_HEIGHT           256
+// ---------------------------------------------------------------------
+// Shadebobs
+// ---------------------------------------------------------------------
+
 #define BOB_SIZE                32
 #define BOB_WORDS_PER_ROW       3
 #define BOB_SHIFT_COUNT         16
 #define PATH_STEPS              512
-#define FRAME_COPY_BYTES        (BYTESPERROW * SCREEN_HEIGHT * NUMBEROFBITPLANES)
+#define FRAME_COPY_BYTES        (BYTESPERROW * SCREENHEIGHT * NUMBEROFBITPLANES)
 #define SHADEBOB_RADIUS         11
 #define BOB_COUNT               2
 
-static UWORD* CopperList = NULL;
-static ULONG CopperListSize = 0;
-
-static UWORD BPLPTH_Idx[NUMBEROFBITPLANES];
-static UWORD BPLPTL_Idx[NUMBEROFBITPLANES];
 static UWORD Color_Idx[32];
-
-#define COPPER_FIXED_WORDS      138
-
 static const UWORD BasePalette[32] =
 {
     0x000, 0x001, 0x102, 0x103, 0x204, 0x305, 0x406, 0x507,
@@ -167,10 +156,7 @@ static void BuildBobMask(void)
 
 static void CopyBuffer(UBYTE dstBuffer, UBYTE srcBuffer)
 {
-    CopyMemQuick(
-        (CONST_APTR)ScreenBitmap[srcBuffer]->Planes[0],
-        (APTR)ScreenBitmap[dstBuffer]->Planes[0],
-        FRAME_COPY_BYTES);
+    CopyMemQuick((CONST_APTR)ScreenBitmap[srcBuffer]->Planes[0], (APTR)ScreenBitmap[dstBuffer]->Planes[0], FRAME_COPY_BYTES);
 }
 
 static void ShadebobCarryWord(UWORD* dst, UWORD mask)
@@ -211,8 +197,8 @@ static void DrawShadebob(UBYTE buffer, WORD x, WORD y)
     UWORD* dst;
 
     if (x < 0 || y < 0) return;
-    if (x > (SCREEN_WIDTH - BOB_SIZE)) return;
-    if (y > (SCREEN_HEIGHT - BOB_SIZE)) return;
+    if (x > (SCREENWIDTH - BOB_SIZE)) return;
+    if (y > (SCREENHEIGHT - BOB_SIZE)) return;
 
     shift = (UWORD)(x & 15);
     wordOffset = (UWORD)(x >> 4);
@@ -251,127 +237,143 @@ static void DrawShadebobs(UBYTE buffer, UWORD phase)
     }
 }
 
-BOOL Init(void)
+void Init_Shadebobs(void)
 {
-    if (NUMBEROFBITPLANES != 5)
-    {
-        return FALSE;
-    }
-
     BuildBobMask();
-    return TRUE;
 }
+
+// ---------------------------------------------------------------------
+// Copper / palette
+// ---------------------------------------------------------------------
+
+static UWORD* CopperList = NULL;
+static ULONG CopperListSize = 0;
+
+static UWORD BPLPTH_Idx[NUMBEROFBITPLANES];
+static UWORD BPLPTL_Idx[NUMBEROFBITPLANES];
+
+#define COPPER_FIXED_WORDS      138
 
 void Init_CopperList(void)
 {
-    const ULONG CopperListLength = COPPER_FIXED_WORDS;
-    UWORD Index = 0;
-    UWORD p;
-    UWORD c;
+	const ULONG CopperListLength = COPPER_FIXED_WORDS;
+	CopperListSize = CopperListLength * sizeof(UWORD);
 
-    CopperListSize = CopperListLength * sizeof(UWORD);
-    CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR);
-    if (!CopperList) return;
+	CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR);
 
-    CopperList[Index++] = 0x08E; CopperList[Index++] = 0x2C81;
-    CopperList[Index++] = 0x090; CopperList[Index++] = 0x2CC1;
-    CopperList[Index++] = 0x092; CopperList[Index++] = 0x0038;
-    CopperList[Index++] = 0x094; CopperList[Index++] = 0x00D0;
+	UWORD Index = 0;
 
-    CopperList[Index++] = 0x100;
-    CopperList[Index++] = (UWORD)((NUMBEROFBITPLANES << 12) | 0x0200);
-    CopperList[Index++] = 0x102; CopperList[Index++] = 0x0000;
-    CopperList[Index++] = 0x104; CopperList[Index++] = 0x0000;
+	// PAL display window
+	CopperList[Index++] = 0x08E;
+	CopperList[Index++] = 0x2C81; // DIWSTRT
+	CopperList[Index++] = 0x090;
+	CopperList[Index++] = 0x2CC1; // DIWSTOP
+	CopperList[Index++] = 0x092;
+	CopperList[Index++] = 0x0038; // DDFSTRT
+	CopperList[Index++] = 0x094;
+	CopperList[Index++] = 0x00D0; // DDFSTOP
 
-    CopperList[Index++] = 0x108;
-    CopperList[Index++] = BYTESPERROW * (NUMBEROFBITPLANES - 1);
-    CopperList[Index++] = 0x10A;
-    CopperList[Index++] = BYTESPERROW * (NUMBEROFBITPLANES - 1);
+	// 4 bitplanes
+	CopperList[Index++] = 0x100;
+	CopperList[Index++] = (UWORD)((NUMBEROFBITPLANES << 12) | 0x0200);
 
-    for (p = 0; p < NUMBEROFBITPLANES; ++p)
-    {
-        CopperList[Index++] = (UWORD)(0x0E0u + (p * 4u));
-        BPLPTH_Idx[p] = Index;
-        CopperList[Index++] = 0x0000;
+	CopperList[Index++] = 0x102;
+	CopperList[Index++] = 0x0000; // BPLCON1
+	CopperList[Index++] = 0x104;
+	CopperList[Index++] = 0x0000; // BPLCON2
 
-        CopperList[Index++] = (UWORD)(0x0E2u + (p * 4u));
-        BPLPTL_Idx[p] = Index;
-        CopperList[Index++] = 0x0000;
-    }
+	// Interleaved bitmaps
+	CopperList[Index++] = 0x108;
+	CopperList[Index++] = BYTESPERROW * (NUMBEROFBITPLANES - 1);
 
-    for (c = 0; c < 32; ++c)
+	CopperList[Index++] = 0x10A;
+	CopperList[Index++] = BYTESPERROW * (NUMBEROFBITPLANES - 1);
+
+	// Bitplane pointers
+	for (UWORD p = 0; p < NUMBEROFBITPLANES; ++p)
+	{
+		CopperList[Index++] = (UWORD)(0x0E0u + (p * 4u));
+		BPLPTH_Idx[p] = Index;
+		CopperList[Index++] = 0x0000;
+
+		CopperList[Index++] = (UWORD)(0x0E2u + (p * 4u));
+		BPLPTL_Idx[p] = Index;
+		CopperList[Index++] = 0x0000;
+	}
+
+	// Set background color to black
+	CopperList[Index++] = 0x0180;
+	CopperList[Index++] = 0x0000;
+
+    for (UBYTE c = 0; c < 32; ++c)
     {
         CopperList[Index++] = (UWORD)(0x0180u + (c * 2u));
         Color_Idx[c] = Index;
         CopperList[Index++] = BasePalette[c];
     }
 
-    CopperList[Index++] = 0xFFFF;
-    CopperList[Index++] = 0xFFFE;
+	CopperList[Index++] = 0xFFFF;
+	CopperList[Index++] = 0xFFFE;
 
-    *COP1LC = (ULONG)CopperList;
+	*COP1LC = (ULONG)CopperList;
 }
 
 void Update_BitplanePointers(UBYTE Buffer)
 {
-    ULONG Ptr = (ULONG)ScreenBitmap[Buffer]->Planes[0];
-    UWORD p;
+	ULONG Ptr = (ULONG)ScreenBitmap[Buffer]->Planes[0];
 
-    for (p = 0; p < NUMBEROFBITPLANES; ++p)
-    {
-        CopperList[BPLPTH_Idx[p]] = (UWORD)(Ptr >> 16);
-        CopperList[BPLPTL_Idx[p]] = (UWORD)(Ptr & 0xFFFFu);
-        Ptr += BYTESPERROW;
-    }
+	CopperList[BPLPTH_Idx[0]] = (UWORD)(Ptr >> 16);
+	CopperList[BPLPTL_Idx[0]] = (UWORD)(Ptr & 0xFFFFu);
+
+	Ptr += BYTESPERROW;
+	CopperList[BPLPTH_Idx[1]] = (UWORD)(Ptr >> 16);
+	CopperList[BPLPTL_Idx[1]] = (UWORD)(Ptr & 0xFFFFu);
+
+	Ptr += BYTESPERROW;
+	CopperList[BPLPTH_Idx[2]] = (UWORD)(Ptr >> 16);
+	CopperList[BPLPTL_Idx[2]] = (UWORD)(Ptr & 0xFFFFu);
+
+	Ptr += BYTESPERROW;
+	CopperList[BPLPTH_Idx[3]] = (UWORD)(Ptr >> 16);
+	CopperList[BPLPTL_Idx[3]] = (UWORD)(Ptr & 0xFFFFu);
+
+   	Ptr += BYTESPERROW;
+	CopperList[BPLPTH_Idx[4]] = (UWORD)(Ptr >> 16);
+	CopperList[BPLPTL_Idx[4]] = (UWORD)(Ptr & 0xFFFFu);
 }
+
+// ---------------------------------------------------------------------
+// Cleanup / main
+// ---------------------------------------------------------------------
 
 void Cleanup_All(void)
 {
     lwmf_WaitBlitter();
-
-    if (CopperList)
-    {
-        FreeMem(CopperList, CopperListSize);
-        CopperList = NULL;
-    }
-
+    FreeMem(CopperList, CopperListSize);
+    CopperList = NULL;
     lwmf_CleanupScreenBitmaps();
     lwmf_CleanupAll();
 }
 
 int main(void)
 {
-    UBYTE ViewBuffer = 0;
-    UBYTE DrawBuffer = 1;
-    UWORD Phase = 0;
-
     lwmf_LoadGraphicsLib();
     lwmf_InitScreenBitmaps();
 
-    if (!Init())
-    {
-        Cleanup_All();
-        return 0;
-    }
+    Init_Shadebobs();
 
     Init_CopperList();
-    if (!CopperList)
-    {
-        Cleanup_All();
-        return 0;
-    }
 
-    lwmf_ClearScreen((long*)ScreenBitmap[0]->Planes[0]);
-    lwmf_ClearScreen((long*)ScreenBitmap[1]->Planes[0]);
-
-    Update_BitplanePointers(ViewBuffer);
     lwmf_TakeOverOS();
+
+    UBYTE ViewBuffer = 0;
+    UBYTE DrawBuffer = 1;
+    UWORD Phase = 0;
 
     while (*CIAA_PRA & 0x40)
     {
         CopyBuffer(DrawBuffer, ViewBuffer);
         DrawShadebobs(DrawBuffer, Phase);
-
         lwmf_WaitVertBlank();
         Update_BitplanePointers(DrawBuffer);
 
