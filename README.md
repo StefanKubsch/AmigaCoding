@@ -14,6 +14,8 @@ Included examples, coded for speed and memory, so there are no guards etc:
 - Copper-Chunky Rotozoomer 4 bitplanes with sprite assist
 - Copper-Chunky Rotozoomer 5 bitplanes (Affine rotation)
 - Copper Plasma
+- Morphing dots
+- Shadebobs
 - Sinescroller
 - Vectorballs
 

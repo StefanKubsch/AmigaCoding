@@ -2,7 +2,7 @@
 //* Shadebobs effect                                                   *
 //* Amiga 500 OCS                                                      *
 //*                                                                    *
-//* (C) 2026 by Stefan Kubsch                                          *
+//* (C) 2026 by Stefan Kubsch / Deep4                                  *
 //*                                                                    *
 //* Compile & link with:                                               *
 //* make_Shadebobs.cmd                                                 *
@@ -20,11 +20,9 @@
 #define BOB_WORDS_PER_ROW       3
 #define BOB_SHIFT_COUNT         16
 #define PATH_STEPS              512
-#define FRAME_COPY_BYTES        (BYTESPERROW * SCREENHEIGHT * NUMBEROFBITPLANES)
 #define SHADEBOB_RADIUS         11
 #define BOB_COUNT               2
 
-static UWORD Color_Idx[32];
 static const UWORD BasePalette[32] =
 {
     0x000, 0x001, 0x102, 0x103, 0x204, 0x305, 0x406, 0x507,
@@ -109,33 +107,20 @@ static UWORD BobMaskShifted[BOB_SHIFT_COUNT][BOB_SIZE][BOB_WORDS_PER_ROW];
 
 static void BuildBobMask(void)
 {
-    WORD x;
-    WORD y;
-    UWORD shift;
-
-    for (shift = 0; shift < BOB_SHIFT_COUNT; ++shift)
+    for (UWORD y = 0; y < BOB_SIZE; ++y)
     {
-        for (y = 0; y < BOB_SIZE; ++y)
+        for (UWORD x = 0; x < BOB_SIZE; ++x)
         {
-            BobMaskShifted[shift][y][0] = 0;
-            BobMaskShifted[shift][y][1] = 0;
-            BobMaskShifted[shift][y][2] = 0;
-        }
-    }
-
-    for (y = 0; y < BOB_SIZE; ++y)
-    {
-        for (x = 0; x < BOB_SIZE; ++x)
-        {
-            WORD dx = x - (BOB_SIZE / 2);
-            WORD dy = y - (BOB_SIZE / 2);
-            WORD dist2 = (dx * dx) + (dy * dy);
+            const WORD dx = x - (BOB_SIZE / 2);
+            const WORD dy = y - (BOB_SIZE / 2);
+            const WORD dist2 = (dx * dx) + (dy * dy);
 
             if (dist2 <= (SHADEBOB_RADIUS * SHADEBOB_RADIUS))
             {
-                for (shift = 0; shift < BOB_SHIFT_COUNT; ++shift)
+                for (UWORD shift = 0; shift < BOB_SHIFT_COUNT; ++shift)
                 {
-                    UWORD bitPos = (UWORD)x + shift;
+                    const UWORD bitPos = (UWORD)x + shift;
+
                     if (bitPos < 16)
                     {
                         BobMaskShifted[shift][y][0] |= (UWORD)(0x8000u >> bitPos);
@@ -154,92 +139,62 @@ static void BuildBobMask(void)
     }
 }
 
-static void CopyBuffer(UBYTE dstBuffer, UBYTE srcBuffer)
+inline static void ShadebobCarryWord(UWORD* dst, UWORD mask)
 {
-    CopyMemQuick((CONST_APTR)ScreenBitmap[srcBuffer]->Planes[0], (APTR)ScreenBitmap[dstBuffer]->Planes[0], FRAME_COPY_BYTES);
+    register UWORD carry = mask;
+    register UWORD old = dst[0];
+
+    dst[0] = old ^ carry;
+    carry = old & carry;
+
+    old = dst[BYTESPERROW >> 1];
+    dst[BYTESPERROW >> 1] = old ^ carry;
+    carry = old & carry;
+
+    old = dst[BYTESPERROW];
+    dst[BYTESPERROW] = old ^ carry;
+    carry = old & carry;
+
+    old = dst[BYTESPERROW + (BYTESPERROW >> 1)];
+    dst[BYTESPERROW + (BYTESPERROW >> 1)] = old ^ carry;
+    carry = old & carry;
+
+    old = dst[BYTESPERROW << 1];
+    dst[BYTESPERROW << 1] = old ^ carry;
 }
 
-static void ShadebobCarryWord(UWORD* dst, UWORD mask)
+inline static void DrawShadebob(UBYTE buffer, WORD x, WORD y)
 {
-    UWORD* p0 = dst;
-    UWORD* p1 = dst + (BYTESPERROW >> 1);
-    UWORD* p2 = dst + (BYTESPERROW);
-    UWORD* p3 = dst + (BYTESPERROW + (BYTESPERROW >> 1));
-    UWORD* p4 = dst + (BYTESPERROW << 1);
+    const UWORD shift = (UWORD)(x & 15);
+    const UWORD wordOffset = (UWORD)(x >> 4);
 
-    UWORD old0 = *p0;
-    UWORD old1 = *p1;
-    UWORD old2 = *p2;
-    UWORD old3 = *p3;
-    UWORD old4 = *p4;
-    UWORD carry = mask;
-
-    *p0 = (UWORD)(old0 ^ carry);
-    carry = (UWORD)(old0 & carry);
-
-    *p1 = (UWORD)(old1 ^ carry);
-    carry = (UWORD)(old1 & carry);
-
-    *p2 = (UWORD)(old2 ^ carry);
-    carry = (UWORD)(old2 & carry);
-
-    *p3 = (UWORD)(old3 ^ carry);
-    carry = (UWORD)(old3 & carry);
-
-    *p4 = (UWORD)(old4 ^ carry);
-}
-
-static void DrawShadebob(UBYTE buffer, WORD x, WORD y)
-{
-    UWORD shift;
-    UWORD row;
-    UWORD wordOffset;
-    UWORD* dst;
-
-    if (x < 0 || y < 0) return;
-    if (x > (SCREENWIDTH - BOB_SIZE)) return;
-    if (y > (SCREENHEIGHT - BOB_SIZE)) return;
-
-    shift = (UWORD)(x & 15);
-    wordOffset = (UWORD)(x >> 4);
-
-    dst = (UWORD*)(ScreenBitmap[buffer]->Planes[0] + (y * BYTESPERROW * NUMBEROFBITPLANES));
+    UWORD* dst = (UWORD*)(ScreenBitmap[buffer]->Planes[0] + (y * SCREENWIDTHTOTAL));
     dst += wordOffset;
 
-    for (row = 0; row < BOB_SIZE; ++row)
+    const UWORD stride = (SCREENWIDTHTOTAL) / sizeof(UWORD);
+
+    for (UWORD row = 0; row < BOB_SIZE; ++row)
     {
         UWORD* rowDst = dst;
-        UWORD mask0 = BobMaskShifted[shift][row][0];
-        UWORD mask1 = BobMaskShifted[shift][row][1];
-        UWORD mask2 = BobMaskShifted[shift][row][2];
+        const UWORD mask0 = BobMaskShifted[shift][row][0];
+        const UWORD mask1 = BobMaskShifted[shift][row][1];
+        const UWORD mask2 = BobMaskShifted[shift][row][2];
 
         if (mask0) ShadebobCarryWord(rowDst, mask0);
         if (mask1) ShadebobCarryWord(rowDst + 1, mask1);
         if (mask2) ShadebobCarryWord(rowDst + 2, mask2);
 
-        dst = (UWORD*)((UBYTE*)dst + (BYTESPERROW * NUMBEROFBITPLANES));
+        dst += stride;
     }
 }
 
-static void DrawShadebobs(UBYTE buffer, UWORD phase)
+inline static void DrawShadebobs(UBYTE buffer, UWORD phase)
 {
-    WORD x;
-    WORD y;
-    UWORD idx;
-    UWORD i;
-
-    for (i = 0; i < BOB_COUNT; ++i)
+    for (UWORD i = 0; i < BOB_COUNT; ++i)
     {
-        idx = (UWORD)((phase + (i * (PATH_STEPS / BOB_COUNT))) & (PATH_STEPS - 1));
-        x = BobXPath[idx];
-        y = BobYPath[idx];
-        DrawShadebob(buffer, x, y);
+        const UWORD idx = (UWORD)((phase + (i * (PATH_STEPS / BOB_COUNT))) & (PATH_STEPS - 1));
+        DrawShadebob(buffer, BobXPath[idx], BobYPath[idx]);
     }
-}
-
-void Init_Shadebobs(void)
-{
-    BuildBobMask();
 }
 
 // ---------------------------------------------------------------------
@@ -252,9 +207,19 @@ static ULONG CopperListSize = 0;
 static UWORD BPLPTH_Idx[NUMBEROFBITPLANES];
 static UWORD BPLPTL_Idx[NUMBEROFBITPLANES];
 
-#define COPPER_FIXED_WORDS      138
+// Needed memory for copper:
+// 8 for display and DMA
+// 2 for bitplane setup
+// 4 for BPLCON1 and BPLCON2 and interleaved bitmaps
+// 2 for interleaved bitmaps
+// 4 per bitplane for bitplane pointers
+// per color: 2 (32 colors) = 64
+// 2 for copper end marker
+//
+// So: (8+2+4+2)+4*NUMBEROFBITPLANES+2*32+2
+#define COPPER_FIXED_WORDS      ((82+4*NUMBEROFBITPLANES)*2)
 
-void Init_CopperList(void)
+static void Init_CopperList(void)
 {
 	const ULONG CopperListLength = COPPER_FIXED_WORDS;
 	CopperListSize = CopperListLength * sizeof(UWORD);
@@ -273,7 +238,7 @@ void Init_CopperList(void)
 	CopperList[Index++] = 0x094;
 	CopperList[Index++] = 0x00D0; // DDFSTOP
 
-	// 4 bitplanes
+	// 5 bitplanes
 	CopperList[Index++] = 0x100;
 	CopperList[Index++] = (UWORD)((NUMBEROFBITPLANES << 12) | 0x0200);
 
@@ -301,14 +266,9 @@ void Init_CopperList(void)
 		CopperList[Index++] = 0x0000;
 	}
 
-	// Set background color to black
-	CopperList[Index++] = 0x0180;
-	CopperList[Index++] = 0x0000;
-
     for (UBYTE c = 0; c < 32; ++c)
     {
         CopperList[Index++] = (UWORD)(0x0180u + (c * 2u));
-        Color_Idx[c] = Index;
         CopperList[Index++] = BasePalette[c];
     }
 
@@ -318,7 +278,7 @@ void Init_CopperList(void)
 	*COP1LC = (ULONG)CopperList;
 }
 
-void Update_BitplanePointers(UBYTE Buffer)
+static void Update_BitplanePointers(UBYTE Buffer)
 {
 	ULONG Ptr = (ULONG)ScreenBitmap[Buffer]->Planes[0];
 
@@ -346,9 +306,8 @@ void Update_BitplanePointers(UBYTE Buffer)
 // Cleanup / main
 // ---------------------------------------------------------------------
 
-void Cleanup_All(void)
+static void Cleanup_All(void)
 {
-    lwmf_WaitBlitter();
     FreeMem(CopperList, CopperListSize);
     CopperList = NULL;
     lwmf_CleanupScreenBitmaps();
@@ -359,26 +318,19 @@ int main(void)
 {
     lwmf_LoadGraphicsLib();
     lwmf_InitScreenBitmaps();
-
-    Init_Shadebobs();
-
+    BuildBobMask();
     Init_CopperList();
-
     lwmf_TakeOverOS();
 
-    UBYTE ViewBuffer = 0;
     UBYTE DrawBuffer = 1;
     UWORD Phase = 0;
 
     while (*CIAA_PRA & 0x40)
     {
-        CopyBuffer(DrawBuffer, ViewBuffer);
         DrawShadebobs(DrawBuffer, Phase);
         lwmf_WaitVertBlank();
         Update_BitplanePointers(DrawBuffer);
 
-        ViewBuffer ^= 1;
-        DrawBuffer ^= 1;
         Phase = (UWORD)((Phase + 1) & (PATH_STEPS - 1));
     }
 
