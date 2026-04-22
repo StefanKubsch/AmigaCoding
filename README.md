@@ -19,7 +19,7 @@ Included examples, coded for speed and memory, so there are no guards etc:
 - Sinescroller
 - Vectorballs
 
-A demo with proper errorhandling etc. is also included:
+A demo with proper errorhandling and full use of the framework is also included:
 
 - Amiga 1200 intro
 
@@ -29,9 +29,61 @@ For better handling of reusable code, I am writing a framework called "lwmf" - l
 
 Performance-critical parts are done in assembly, like memory clearing, setting pixels etc.
 
----
+Currently implemented:
 
-For MOD Support I use the fantastic ptplayer (Protracker) library by Frank Wille (https://aminet.net/package/mus/play/ptplayer), that I included in my lwmf.
+OS / Hardware
+
+    long lwmf_GetVBR(void);
+    UWORD lwmf_LoadGraphicsLib(void);
+    void lwmf_CloseLibraries();
+    void lwmf_TakeOverOS(void);
+    void lwmf_ReleaseOS(void);
+    void lwmf_OwnBlitter(void);
+    void lwmf_DisownBlitter(void);
+    void lwmf_WaitVertBlank(void);
+    void lwmf_WaitBlitter(void);
+    void lwmf_ClearMemCPU(__reg("a1") long* StartAddress, __reg("d7") long NumberOfBytes);
+    void lwmf_ClearScreen(__reg("a0") long* StartAddress);
+    void lwmf_BlitClearLines(__reg("d0") UWORD StartLine, __reg("d1") UWORD NumberOfLines, __reg("a0") long* Target);
+    void lwmf_SetPixel(__reg("d0") WORD PosX, __reg("d1") WORD PosY,  __reg("d2") UBYTE Color,  __reg("a0") long* Target);
+    void lwmf_SetPixel1bpl(__reg("d0") WORD PosX, __reg("d1") WORD PosY, __reg("a0") long* Target);
+
+Bitmaps
+
+    static BOOL lwmf_InitScreenBitmaps(void);
+    static void lwmf_CleanupScreenBitmaps(void);
+
+Images
+
+    struct lwmf_Image* lwmf_LoadImage(const char* Filename);
+    void lwmf_DeleteImage(struct lwmf_Image* Image);
+
+Math
+
+    ULONG lwmf_Random(void);
+    static UWORD lwmf_RGBLerp(UWORD c0, UWORD c1, UWORD t, UWORD tmax);
+
+Memoryhandling
+
+    static APTR lwmf_AllocCpuMem(ULONG Size, ULONG Flags);
+
+Text
+
+    void lwmf_Text(const char* Text, UWORD PosX, const UWORD PosY, const UBYTE Color, long* Target);
+
+MOD Support / ptplayer
+
+    static APTR lwmf_LoadMODFile(const STRPTR Filename, LONG *Size_Out);
+    BOOL lwmf_InitModPlayer(struct MODFile *mod, const STRPTR Filename);
+    void lwmf_InstallModPlayer(struct MODFile *mod);
+    void lwmf_StartMODPlayer(struct MODFile *mod);
+    void lwmf_PauseMODPlayer(struct MODFile *mod);
+    void lwmf_StopMODPlayer(struct MODFile *mod);
+    void lwmf_CleanupModPlayer(struct MODFile *mod);
+
+    For MOD Support I use the fantastic ptplayer (Protracker) library by Frank Wille (https://aminet.net/package/mus/play/ptplayer).
+
+---
 
 Used compiler:
 
