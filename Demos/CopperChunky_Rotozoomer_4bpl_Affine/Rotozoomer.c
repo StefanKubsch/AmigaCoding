@@ -16,7 +16,7 @@
 
 // Enable (set to 1) for debugging
 // When enabled, timing/load will be displayed via COLOR00 changes.
-#define DEBUG 			0
+#define DEBUG                   0
 
 #if DEBUG
 	#define DBG_COLOR(c) (*COLOR00 = (c))
@@ -24,20 +24,18 @@
 	#define DBG_COLOR(c) ((void)0)
 #endif
 
-typedef struct RotoAsmParams
-{
-	const UBYTE *Texture;
-	UBYTE        *Dest;
-	const UBYTE *PairExpand;
-	WORD         RowU;
-	WORD         RowV;
-	WORD         DuDx;
-	WORD         DvDx;
-	WORD         DuDy;
-	WORD         DvDy;
-} RotoAsmParams;
+extern void Draw_RotoZoomerAsm(__reg("d0") UBYTE Buffer);
 
-extern void DrawRotoBodyAsm(__reg("a0") const struct RotoAsmParams *Params);
+#if DEBUG
+static void Draw_RotoZoomer(UBYTE Buffer)
+{
+	DBG_COLOR(0xF00);
+	Draw_RotoZoomerAsm(Buffer);
+	DBG_COLOR(0x000);
+}
+#else
+	#define Draw_RotoZoomer(Buffer) Draw_RotoZoomerAsm((Buffer))
+#endif
 
 // =====================================================================
 // Effect constants
@@ -64,7 +62,6 @@ extern void DrawRotoBodyAsm(__reg("a0") const struct RotoAsmParams *Params);
 #define CHUNKY_PIXEL_SIZE        4
 #define ROTO_COLUMNS             48
 #define ROTO_ROWS                48
-#define ROTO_PAIR_COUNT          (ROTO_COLUMNS / 2)
 #define ROTO_DISPLAY_WIDTH       (ROTO_COLUMNS * CHUNKY_PIXEL_SIZE)
 #define ROTO_DISPLAY_HEIGHT      (ROTO_ROWS * CHUNKY_PIXEL_SIZE)
 
@@ -95,28 +92,29 @@ extern void DrawRotoBodyAsm(__reg("a0") const struct RotoAsmParams *Params);
 #define ROTO_DDFSTRT             0x0058
 #define ROTO_DDFSTOP             0x00B0
 
-// Precalculated delta table stores only the independent matrix terms.
-// The animation advances AnglePhase by 2 every frame, so only the 128 even
-// angle phases are ever used. For a pure rotation matrix the vertical row step
-// can be reconstructed from the horizontal step:
-//   DuDy = -DvDx
-//   DvDy =  DuDx
-// Therefore the table only stores DuDx and DvDx.
-typedef struct
+#define ROTO_HALF_COLUMNS        (ROTO_COLUMNS / 2)
+#define ROTO_HALF_ROWS           (ROTO_ROWS / 2)
+#define ROTO_FRAME_COUNT         256u
+#define ROTO_ANGLE_PHASE_STEP    2u
+#define ROTO_MOVE_Y_PHASE_START  64u
+#define ROTO_MOVE_Y_PHASE_STEP   2u
+
+// Precalculated frame table. The whole animation repeats after 256 frames,
+// so every frame can be represented by a single prebuilt record.
+//
+// The 16-byte layout is intentional so the ASM renderer can address an entry
+// with "frame << 4".
+typedef struct RotoFrame
 {
+	WORD RowU;
+	WORD RowV;
 	WORD DuDx;
 	WORD DvDx;
-} RotoDelta;
-
-#define ROTO_HALF_COLUMNS      (ROTO_COLUMNS / 2)
-#define ROTO_HALF_ROWS         (ROTO_ROWS / 2)
-#define ROTO_ZOOM_STEPS        32
-#define ROTO_ANGLE_PHASE_STEP   2
-#define ROTO_ANGLE_STEPS        (256 / ROTO_ANGLE_PHASE_STEP)
-
-static WORD MoveTab[256];
-static RotoDelta *DeltaTab = NULL;
-static ULONG DeltaTabSize = 0;
+	WORD RowStepU;
+	WORD RowStepV;
+	WORD Pad0;
+	WORD Pad1;
+} RotoFrame;
 
 // =====================================================================
 // Values span 0..63, so signed values are obtained via (value - 32).
@@ -138,7 +136,7 @@ static const UBYTE SinTab256[256] =
 // Texture, tables and animation state
 // =====================================================================
 
-static UBYTE *TextureChunky = NULL;
+UBYTE *TextureChunky = NULL;
 static ULONG TextureChunkySize = 0;
 static UWORD TexturePalette[SCREEN_COLORS];
 static UBYTE TextureColorBase = 0;
@@ -155,13 +153,12 @@ typedef struct PairExpandSet
 	UWORD Plane23[PAIR_EXPAND_STRIDE];
 } PairExpandSet;
 
-static PairExpandSet PairExpand;
+PairExpandSet PairExpand;
+RotoFrame *FrameTab = NULL;
+UBYTE *DestBase[2] = { NULL, NULL };
+UBYTE FramePhase = 0;
 
-static UBYTE AnglePhase = 0;
-static UBYTE ZoomPhase = 0;
-static UBYTE MovePhaseX = 0;
-static UBYTE MovePhaseY = 64;
-
+static ULONG FrameTabSize = 0;
 
 // =====================================================================
 // Texture loading and precomputation
@@ -169,25 +166,6 @@ static UBYTE MovePhaseY = 64;
 
 static void BuildPairExpandTable(void)
 {
-	// Build a 2-read expansion layout for all possible packed 2-pixel
-	// combinations.
-	//
-	// Each packed value is:
-	//   packed = c0 | (c1 << 4)
-	// with c0/c1 being 4-bit chunky color indices.
-	//
-	// We store:
-	//   - Plane01[packed] as a UWORD holding plane 0 in the low byte and
-	//     plane 1 in the high byte
-	//   - Plane23[packed] as a UWORD holding plane 2 in the low byte and
-	//     plane 3 in the high byte
-	//
-	// Total size becomes 1024 bytes:
-	//   256 * 2 + 256 * 2 = 1024
-	//
-	// This lets the ASM hotloop fetch all four output bytes with only
-	// two table reads per packed pair.
-
 	for (UWORD packed = 0; packed < PAIR_EXPAND_STRIDE; ++packed)
 	{
 		const UBYTE c0 = (UBYTE)(packed & 15u);
@@ -217,9 +195,6 @@ static void BuildChunkyTextureFromBitmap(struct lwmf_Image *RotoBitmap)
 		TexturePalette[i] = 0x000u;
 	}
 
-	// If the texture uses fewer than 16 colors, reserve COLOR00 for a black background
-	// and shift the texture palette by +1. If it already uses all 16 colors, keep the
-	// palette unshifted; otherwise color index 16 would overflow the 4-bit pixel format.
 	TextureColorBase = (ColorCount < SCREEN_COLORS) ? TEXTURE_COLOR_BASE : 0u;
 
 	if (RotoBitmap->CRegs)
@@ -238,12 +213,6 @@ static void BuildChunkyTextureFromBitmap(struct lwmf_Image *RotoBitmap)
 		}
 	}
 
-	/*
-	 * Internal texture layout is 256x128 although the source image is 128x128.
-	 * Each source row is duplicated horizontally into the second 128-byte half.
-	 * This keeps the sampled image identical while allowing the ASM hotloop to
-	 * use (U >> 8) directly as a 0..255 texel X coordinate.
-	 */
 	for (UWORD y = 0; y < TEXTURE_SOURCE_HEIGHT; ++y)
 	{
 		UBYTE *Dst = TextureChunky + (ULONG)y * (ULONG)TEXTURE_WIDTH;
@@ -271,39 +240,38 @@ static void BuildChunkyTextureFromBitmap(struct lwmf_Image *RotoBitmap)
 	}
 }
 
-// =====================================================================
-// Rotozoomer
-// =====================================================================
-
-static void BuildMoveTable(void)
+static void BuildFrameTable(void)
 {
-	for (UWORD i = 0; i < 256; ++i)
+	for (UWORD Frame = 0; Frame < ROTO_FRAME_COUNT; ++Frame)
 	{
-		MoveTab[i] = (WORD)((64 << 8) + (((WORD)SinTab256[i] - 32) << 7));
+		const UBYTE AnglePhase = (UBYTE)(Frame * ROTO_ANGLE_PHASE_STEP);
+		const UBYTE ZoomPhase = (UBYTE)(Frame * ROTO_ZOOM_SPEED);
+		const UBYTE MovePhaseX = (UBYTE)Frame;
+		const UBYTE MovePhaseY = (UBYTE)(ROTO_MOVE_Y_PHASE_START + (Frame * ROTO_MOVE_Y_PHASE_STEP));
+
+		const UBYTE ZoomIndex = (UBYTE)(SinTab256[ZoomPhase] >> 1);
+		const WORD ZoomMod = (WORD)(((WORD)ZoomIndex << 1) - 32);
+		const WORD Zoom = (WORD)(ROTO_ZOOM_BASE + ((ZoomMod * ROTO_ZOOM_AMPLITUDE) >> 5));
+
+		const WORD SinV = (WORD)SinTab256[AnglePhase] - 32;
+		const WORD CosV = (WORD)SinTab256[(UBYTE)(AnglePhase + 64u)] - 32;
+
+		const WORD DuDx = (WORD)(((LONG)CosV * (LONG)Zoom) >> 5);
+		const WORD DvDx = (WORD)(((LONG)SinV * (LONG)Zoom) >> 5);
+
+		const WORD CenterU = (WORD)((64 << 8) + (((WORD)SinTab256[MovePhaseX] - 32) << 7));
+		const WORD CenterV = (WORD)((64 << 8) + (((WORD)SinTab256[MovePhaseY] - 32) << 7));
+
+		RotoFrame *F = &FrameTab[Frame];
+
+		F->RowU = (WORD)(CenterU - (ROTO_HALF_COLUMNS * DuDx) + (ROTO_HALF_ROWS * DvDx));
+		F->RowV = (WORD)(CenterV - (ROTO_HALF_COLUMNS * DvDx) - (ROTO_HALF_ROWS * DuDx));
+		F->DuDx = DuDx;
+		F->DvDx = DvDx;
+		F->RowStepU = (WORD)(-DvDx - (ROTO_COLUMNS * DuDx));
+		F->RowStepV = (WORD)( DuDx - (ROTO_COLUMNS * DvDx));
 	}
 }
-
-static void BuildDeltaTable(void)
-{
-	for (UWORD a = 0; a < ROTO_ANGLE_STEPS; ++a)
-	{
-		const UBYTE Angle = (UBYTE)(a * ROTO_ANGLE_PHASE_STEP);
-		const WORD SinV = (WORD)SinTab256[Angle] - 32;
-		const WORD CosV = (WORD)SinTab256[(UBYTE)(Angle + 64u)] - 32;
-
-		for (UWORD z = 0; z < ROTO_ZOOM_STEPS; ++z)
-		{
-			const WORD ZoomMod = (WORD)(((WORD)z << 1) - 32);
-			const WORD Zoom = (WORD)(ROTO_ZOOM_BASE + ((ZoomMod * ROTO_ZOOM_AMPLITUDE) >> 5));
-
-			RotoDelta *D = &DeltaTab[a * ROTO_ZOOM_STEPS + z];
-
-			D->DuDx = (WORD)(((LONG)CosV * (LONG)Zoom) >> 5);
-			D->DvDx = (WORD)(((LONG)SinV * (LONG)Zoom) >> 5);
-		}
-	}
-}
-
 
 static void Init_RotoZoomer(void)
 {
@@ -311,57 +279,19 @@ static void Init_RotoZoomer(void)
 
 	RotoBitmap = lwmf_LoadImage(TEXTURE_FILENAME);
 
-	DeltaTabSize = sizeof(RotoDelta) * ROTO_ANGLE_STEPS * ROTO_ZOOM_STEPS;
-	DeltaTab = (RotoDelta*)lwmf_AllocCpuMem(DeltaTabSize, MEMF_CLEAR);
+	FrameTabSize = sizeof(RotoFrame) * ROTO_FRAME_COUNT;
+	FrameTab = (RotoFrame*)lwmf_AllocCpuMem(FrameTabSize, MEMF_CLEAR);
 
 	BuildChunkyTextureFromBitmap(RotoBitmap);
 
 	lwmf_DeleteImage(RotoBitmap);
 
 	BuildPairExpandTable();
-	BuildMoveTable();
-	BuildDeltaTable();
+	BuildFrameTable();
 
-	AnglePhase = 0;
-	ZoomPhase  = 0;
-	MovePhaseX = 0;
-	MovePhaseY = 64;
-}
-
-static void Draw_RotoZoomer(UBYTE Buffer)
-{
-	RotoAsmParams Params;
-	const UBYTE ZoomIndex = (UBYTE)(SinTab256[ZoomPhase] >> 1);
-	const UBYTE AngleIndex = (UBYTE)(AnglePhase >> 1);
-	const RotoDelta *D = &DeltaTab[((UWORD)AngleIndex * ROTO_ZOOM_STEPS) + ZoomIndex];
-	const WORD DuDx = D->DuDx;
-	const WORD DvDx = D->DvDx;
-	const WORD DuDy = (WORD)(-DvDx);
-	const WORD DvDy = DuDx;
-
-	const WORD CenterU = MoveTab[MovePhaseX];
-	const WORD CenterV = MoveTab[MovePhaseY];
-
-	Params.Texture    = TextureChunky;
-	Params.Dest       = (UBYTE*)ScreenBitmap[Buffer]->Planes[0] + (ULONG)ROTO_START_BYTE;
-	Params.PairExpand = (const UBYTE*)&PairExpand;
-
-	Params.DuDx = DuDx;
-	Params.DvDx = DvDx;
-	Params.DuDy = DuDy;
-	Params.DvDy = DvDy;
-
-	Params.RowU = (WORD)(CenterU - (ROTO_HALF_COLUMNS * DuDx) - (ROTO_HALF_ROWS * DuDy));
-	Params.RowV = (WORD)(CenterV - (ROTO_HALF_COLUMNS * DvDx) - (ROTO_HALF_ROWS * DvDy));
-
-	DBG_COLOR(0xF00);          /* red = hotloop */
-	DrawRotoBodyAsm(&Params);
-	DBG_COLOR(0x000);          /* end of hotloop bar */
-
-	AnglePhase += 2;
-	ZoomPhase  += ROTO_ZOOM_SPEED;
-	++MovePhaseX;
-	MovePhaseY += 2;
+	DestBase[0] = (UBYTE*)ScreenBitmap[0]->Planes[0] + (ULONG)ROTO_START_BYTE;
+	DestBase[1] = (UBYTE*)ScreenBitmap[1]->Planes[0] + (ULONG)ROTO_START_BYTE;
+	FramePhase = 0;
 }
 
 static void Cleanup_RotoZoomer(void)
@@ -369,9 +299,10 @@ static void Cleanup_RotoZoomer(void)
 	FreeMem(TextureChunky, TextureChunkySize);
 	TextureChunky = NULL;
 	TextureChunkySize = 0;
-	FreeMem(DeltaTab, DeltaTabSize);
-	DeltaTab = NULL;
-	DeltaTabSize = 0;
+
+	FreeMem(FrameTab, FrameTabSize);
+	FrameTab = NULL;
+	FrameTabSize = 0;
 }
 
 // =====================================================================
@@ -384,13 +315,6 @@ static ULONG  CopperListSize = 0;
 static UWORD BPLPTH_Idx[ROTO_BITPLANES];
 static UWORD BPLPTL_Idx[ROTO_BITPLANES];
 
-// Fixed header:
-// DIWSTRT+DIWSTOP+DDFSTRT+DDFSTOP+BPLCON0+BPLCON1+BPL1MOD+BPL2MOD = 16 words
-// 4 bitplane pointers = 16 words
-// 16 colors = 32 words
-// 192 visible lines * (WAIT + BPL1MOD + BPL2MOD) = ROTO_DISPLAY_HEIGHT * 6 words
-// Moving the window lower crosses beam line 255 once, so one wrap WAIT pair is needed.
-// END = 2 words
 #define COPPER_EXTRA_WAIT_WORDS  (((ROTO_VPOS_START + ROTO_DISPLAY_HEIGHT) > 256) ? 2 : 0)
 #define COPPERWORDS (16 + (ROTO_BITPLANES * 4) + (SCREEN_COLORS * 2) + (ROTO_DISPLAY_HEIGHT * 6) + COPPER_EXTRA_WAIT_WORDS + 2)
 
@@ -401,36 +325,23 @@ static void Init_CopperList(void)
 
 	UWORD Index = 0;
 
-	// Centered 192-pixel lowres display window with 192 visible lines,
-	// shifted downward inside the standard PAL 256-line playfield area.
 	CopperList[Index++] = 0x8E;
 	CopperList[Index++] = ROTO_DIWSTRT;
-
 	CopperList[Index++] = 0x90;
 	CopperList[Index++] = ROTO_DIWSTOP;
-
-	// Narrow centered fetch window: 12 fetch words * 16 pixels = 192 pixels.
 	CopperList[Index++] = 0x92;
 	CopperList[Index++] = ROTO_DDFSTRT;
-
 	CopperList[Index++] = 0x94;
 	CopperList[Index++] = ROTO_DDFSTOP;
-
-	// 4 bitplanes, color mode, lowres
 	CopperList[Index++] = 0x100;
 	CopperList[Index++] = 0x4200;
-
-	// No horizontal bitplane shift
 	CopperList[Index++] = 0x102;
 	CopperList[Index++] = 0x0000;
-
-	// Start with the repeat modulo for the narrow fetch width.
 	CopperList[Index++] = 0x108;
 	CopperList[Index++] = ROTO_REPEAT_MOD;
 	CopperList[Index++] = 0x10A;
 	CopperList[Index++] = ROTO_REPEAT_MOD;
 
-	// Bitplane pointers (filled later for each backbuffer)
 	for (UWORD p = 0; p < ROTO_BITPLANES; ++p)
 	{
 		CopperList[Index++] = (UWORD)(0x0E0u + (p * 4u));
@@ -442,8 +353,6 @@ static void Init_CopperList(void)
 		CopperList[Index++] = 0x0000;
 	}
 
-	// Static palette copied from the texture. COLOR00 stays black only when the
-	// texture uses fewer than 16 colors and could be shifted by +1 safely.
 	for (UWORD i = 0; i < SCREEN_COLORS; ++i)
 	{
 		CopperList[Index++] = (UWORD)(0x180u + (i * 2u));
@@ -465,7 +374,6 @@ static void Init_CopperList(void)
 
 		*CopperPtr++ = (UWORD)(((VPos & 0xFFu) << 8) | 0x07u);
 		*CopperPtr++ = 0xFFFE;
-
 		*CopperPtr++ = 0x108;
 		*CopperPtr++ = Mod;
 		*CopperPtr++ = 0x10A;
@@ -473,16 +381,14 @@ static void Init_CopperList(void)
 	}
 
 	Index = (UWORD)(CopperPtr - CopperList);
-
 	CopperList[Index++] = 0xFFFF;
 	CopperList[Index++] = 0xFFFE;
-
 	*COP1LC = (ULONG)CopperList;
 }
 
 static void Update_BitplanePointers(UBYTE Buffer)
 {
-	ULONG Ptr = (ULONG)ScreenBitmap[Buffer]->Planes[0] + (ULONG)ROTO_START_BYTE;
+	ULONG Ptr = (ULONG)DestBase[Buffer];
 
 	for (UWORD p = 0; p < ROTO_BITPLANES; ++p)
 	{
@@ -492,17 +398,11 @@ static void Update_BitplanePointers(UBYTE Buffer)
 	}
 }
 
-// =====================================================================
-// Cleanup & Main
-// =====================================================================
-
 static void Cleanup_All(void)
 {
 	Cleanup_RotoZoomer();
-
 	FreeMem(CopperList, CopperListSize);
 	CopperList = NULL;
-
 	lwmf_CleanupScreenBitmaps();
 	lwmf_CleanupAll();
 }
@@ -513,7 +413,6 @@ int main(void)
 	lwmf_InitScreenBitmaps();
 	Init_RotoZoomer();
 	Init_CopperList();
-
 	lwmf_TakeOverOS();
 
 	UBYTE CurrentBuffer = 1;
@@ -522,11 +421,9 @@ int main(void)
 	while (*CIAA_PRA & 0x40)
 	{
 		Draw_RotoZoomer(CurrentBuffer);
-
 		DBG_COLOR(0x0F0);
 		lwmf_WaitVertBlank();
 		DBG_COLOR(0x000);
-
 		Update_BitplanePointers(CurrentBuffer);
 		CurrentBuffer ^= 1;
 	}

@@ -2,155 +2,124 @@
 ; Rotozoomer drawing routine
 ; Amiga 500 OCS / 68000 - vasm Motorola syntax
 ;
-; Key idea
-; --------
-; The inner loop advances U/V for every sampled texel.
-; One row emits 48 logical pixels, so after one full row:
-;   d0 = RowU + 48 * DuDx
-;   d1 = RowV + 48 * DvDx
-; To reach the next row start directly, add these precomputed corrections:
-;   RowStepU = DuDy - 48 * DuDx
-;   RowStepV = DvDy - 48 * DvDx
+; The whole animation repeats after 256 frames. C therefore prebuilds a compact
+; 16-byte frame table entry for every frame, and this routine only has to:
+;   - fetch FrameTab[FramePhase]
+;   - fetch DestBase[Buffer]
+;   - render the 48x48 logical chunky image
+;   - advance FramePhase with 8-bit wraparound
+;
+; Frame layout (must match the C struct exactly):
+;   WORD RowU
+;   WORD RowV
+;   WORD DuDx
+;   WORD DvDx
+;   WORD RowStepU
+;   WORD RowStepV
+;   WORD Pad0
+;   WORD Pad1
 ;
 ; (C) 2026 by Stefan Kubsch
 ; -----------------------------------------------------------------------------
 
-	machine 68000                        ; assemble for Motorola 68000
+	machine 68000                          ; Assemble for a plain Motorola 68000.
 
-	include "lwmf/lwmf_hardware_regs.i"  ; import bitmap layout constants such as BYTESPERROW
+	include "lwmf/lwmf_hardware_regs.i"    ; Import hardware-related constants used by the project.
 
-; -----------------------------------------------------------------------------
-; Effect dimensions
-; -----------------------------------------------------------------------------
-ROTO_ROWS        equ 48                 ; render 48 logical rows
-ROTO_LOOP_COUNT  equ 12                 ; 12 iterations * 2 pairs = 24 packed pairs = 48 pixels
-ROTO_ROW_ADVANCE equ (BYTESPERROW*4)-24 ; step from row end to next row start in 4-plane interleaved memory
+	xref _TextureChunky                    ; External pointer/base for the preconverted 256x128 texture.
+	xref _PairExpand                       ; External lookup table that expands two chunky texels into bitplane bytes.
+	xref _FrameTab                         ; External pointer/base to the 256-entry prebuilt frame table.
+	xref _DestBase                         ; External table with destination base pointers for the two screen buffers.
+	xref _FramePhase                       ; External 8-bit frame counter used to step through FrameTab.
 
-; -----------------------------------------------------------------------------
-; struct RotoAsmParams layout
-; Must match the C struct exactly.
-; -----------------------------------------------------------------------------
-RA_Texture       equ  0                 ; const UBYTE *Texture
-RA_Dest          equ  4                 ; UBYTE *Dest (plane 0 base + ROTO_START_BYTE)
-RA_Expand        equ  8                 ; const UBYTE *PairExpand
-RA_RowU          equ 12                 ; WORD RowU
-RA_RowV          equ 14                 ; WORD RowV
-RA_DuDx          equ 16                 ; WORD DuDx
-RA_DvDx          equ 18                 ; WORD DvDx
-RA_DuDy          equ 20                 ; WORD DuDy
-RA_DvDy          equ 22                 ; WORD DvDy
+ROTO_ROWS        equ 48                    ; Number of logical rows rendered by the CPU.
+ROTO_LOOP_COUNT  equ 12                    ; 12 loop iterations * 2 macro calls = 24 pairs = 48 logical pixels.
+ROTO_ROW_ADVANCE equ (BYTESPERROW*4)-24    ; Advance from end of one logical row to start of next row in interleaved output.
 
-; -----------------------------------------------------------------------------
-; Local stack layout after "lea -6(sp),sp"
-; -----------------------------------------------------------------------------
-LOC_RowCount     equ 0                  ; WORD remaining row counter
-LOC_RowStepU     equ 2                  ; WORD correction added to d0 after each row
-LOC_RowStepV     equ 4                  ; WORD correction added to d1 after each row
+RF_RowU          equ  0                    ; Offset of RowU inside one frame table entry.
+RF_RowV          equ  2                    ; Offset of RowV inside one frame table entry.
+RF_DuDx          equ  4                    ; Offset of DuDx inside one frame table entry.
+RF_DvDx          equ  6                    ; Offset of DvDx inside one frame table entry.
+RF_RowStepU      equ  8                    ; Offset of RowStepU inside one frame table entry.
+RF_RowStepV      equ 10                    ; Offset of RowStepV inside one frame table entry.
+RF_SIZE          equ 16                    ; Total size of one frame table entry in bytes.
 
-; -----------------------------------------------------------------------------
-; PROCESS_PAIR
-;
-; Builds one packed 2-pixel key from two texture samples and writes the
-; resulting bytes to all 4 bitplanes.
-;
-; Input:
-;   d0 = U in 8.8 fixed point
-;   d1 = V in 8.8 fixed point
-;   a1 = texture base
-;   a2 = plane 0/1 word table base
-;   a3 = plane 2/3 word table base
-;   a5 = current destination byte position
-;   d4 = DuDx
-;   d5 = DvDx
-;
-; Clobbers:
-;   d2, d3, d7
-; -----------------------------------------------------------------------------
-PROCESS_PAIR macro
-	move.w  d1,d7                          ; copy V so we can derive the texture row offset
-	andi.w  #$7F00,d7                      ; keep integer Y bits already aligned as texY*256
-	move.w  d0,d3                          ; copy U so we can derive integer X
-	lsr.w   #8,d3                          ; convert U from 8.8 fixed point to integer texX
-	add.w   d3,d7                          ; build texture index = texY*256 + texX
-	move.b  (a1,d7.w),d2                   ; read first texel c0 from the texture
-	andi.w  #$00FF,d2                      ; zero-extend unsigned texel c0 to word
-	add.w   d4,d0                          ; advance U to the next sample position
-	add.w   d5,d1                          ; advance V to the next sample position
+LOC_RowCount     equ 0                     ; One local word on the stack used as outer row counter.
 
-	move.w  d1,d7                          ; copy updated V for the second texel sample
-	andi.w  #$7F00,d7                      ; keep integer Y bits already aligned as texY*256
-	move.w  d0,d3                          ; copy updated U so we can derive integer X
-	lsr.w   #8,d3                          ; convert updated U to integer texX
-	add.w   d3,d7                          ; build texture index for the second sample
-	move.b  (a1,d7.w),d7                   ; read second texel c1 from the texture
-	andi.w  #$00FF,d7                      ; zero-extend unsigned texel c1 to word
-	lsl.w   #4,d7                          ; move c1 into bits 4..7 of the packed key
-	or.w    d2,d7                          ; combine c0 and c1 into one 8-bit packed pair key
-	add.w   d4,d0                          ; advance U to the next pair start
-	add.w   d5,d1                          ; advance V to the next pair start
+PROCESS_PAIR macro                         ; Render two logical texels and emit one byte per plane.
+	move.w  d1,d7                          ; Copy current V to D7 so we can derive the texture row index.
+	andi.w  #$7F00,d7                      ; Keep only bits 8..14 of V: texture Y modulo 128, already shifted by 8.
+	move.w  d0,d3                          ; Copy current U to D3 so we can derive the texture column index.
+	lsr.w   #8,d3                          ; Convert U from 8.8 fixed point to integer X (0..255 because texture is duplicated horizontally).
+	add.w   d3,d7                          ; Combine row base and column to get final texture offset.
+	move.b  (a1,d7.w),d2                   ; Read first 4-bit texel value from the chunky texture.
+	andi.w  #$00FF,d2                      ; Clear the upper byte so D2 safely holds an unsigned 8-bit value.
+	add.w   d4,d0                          ; Advance U by DuDx for the second sample.
+	add.w   d5,d1                          ; Advance V by DvDx for the second sample.
 
-	add.w   d7,d7                          ; scale packed key by 2 for the word lookup tables
-	move.w  (a2,d7.w),d2                   ; load packed output bytes for planes 0 and 1
-	move.w  (a3,d7.w),d3                   ; load packed output bytes for planes 2 and 3
-	move.b  d2,(a5)                        ; write plane 0 byte
-	lsr.w   #8,d2                          ; move plane 1 byte into the low byte position
-	move.b  d2,BYTESPERROW(a5)             ; write plane 1 byte
-	move.b  d3,(BYTESPERROW*2)(a5)         ; write plane 2 byte
-	lsr.w   #8,d3                          ; move plane 3 byte into the low byte position
-	move.b  d3,(BYTESPERROW*3)(a5)         ; write plane 3 byte
-	addq.l  #1,a5                          ; advance destination pointer to the next packed pair slot
-	endm                                   ; end PROCESS_PAIR
+	move.w  d1,d7                          ; Copy updated V to D7 for the second texel fetch.
+	andi.w  #$7F00,d7                      ; Keep only the wrapped texture Y part for the second sample.
+	move.w  d0,d3                          ; Copy updated U to D3 for the second texel fetch.
+	lsr.w   #8,d3                          ; Convert updated U from 8.8 fixed point to integer X.
+	add.w   d3,d7                          ; Combine Y and X into the second texture offset.
+	move.b  (a1,d7.w),d7                   ; Read second 4-bit texel value.
+	andi.w  #$00FF,d7                      ; Clear the upper byte so D7 is again a clean 8-bit value.
+	lsl.w   #4,d7                          ; Shift the second texel into the high nibble position.
+	or.w    d2,d7                          ; Pack second texel (high nibble) and first texel (low nibble) into one 8-bit pair key.
+	add.w   d4,d0                          ; Advance U again so D0/D1 are ready for the next pair.
+	add.w   d5,d1                          ; Advance V again so D0/D1 are ready for the next pair.
 
-; -----------------------------------------------------------------------------
-; void DrawRotoBodyAsm(__reg("a0") const struct RotoAsmParams *Params)
-; -----------------------------------------------------------------------------
-_DrawRotoBodyAsm::
-	movem.l d2-d7/a1-a3/a5,-(sp)           ; save all registers used by this routine
-	lea     -6(sp),sp                      ; reserve 6 bytes for local variables
+	add.w   d7,d7                          ; Multiply pair key by 2 because the lookup tables store words.
+	move.w  (a2,d7.w),d2                   ; Fetch preexpanded plane 0/1 bytes for this texel pair.
+	move.w  (a3,d7.w),d3                   ; Fetch preexpanded plane 2/3 bytes for this texel pair.
+	move.b  d2,(a5)                        ; Write plane 0 byte for the current output position.
+	lsr.w   #8,d2                          ; Move plane 1 byte into the low byte of D2.
+	move.b  d2,BYTESPERROW(a5)             ; Write plane 1 byte one row-stride below plane 0 in interleaved memory.
+	move.b  d3,(BYTESPERROW*2)(a5)         ; Write plane 2 byte two row-strides below plane 0.
+	lsr.w   #8,d3                          ; Move plane 3 byte into the low byte of D3.
+	move.b  d3,(BYTESPERROW*3)(a5)         ; Write plane 3 byte three row-strides below plane 0.
+	addq.l  #1,a5                          ; Advance destination pointer to the next byte column within the current logical row.
+	endm                                   ; End of the two-texel rendering macro.
 
-	movea.l RA_Texture(a0),a1              ; load texture base pointer
-	movea.l RA_Dest(a0),a5                 ; load destination pointer for the first row
-	movea.l RA_Expand(a0),a2               ; load base of the contiguous PairExpand block
-	lea     512(a2),a3                     ; split out plane 2/3 word table base
+_Draw_RotoZoomerAsm::                      ; Public entry point: render one frame into the selected destination buffer.
+	movem.l d2-d7/a1-a5,-(sp)              ; Save all scratch/data registers and address registers used by this routine.
+	lea     -2(sp),sp                      ; Reserve one local word on the stack for the outer row counter.
 
-	move.w  RA_DuDx(a0),d4                 ; load horizontal U step
-	move.w  RA_DvDx(a0),d5                 ; load horizontal V step
-	move.w  RA_RowU(a0),d0                 ; load initial row-start U once
-	move.w  RA_RowV(a0),d1                 ; load initial row-start V once
-	move.w  #ROTO_ROWS-1,LOC_RowCount(sp)  ; initialize outer row counter
+	moveq   #0,d7                          ; Clear D7 so the upcoming byte load yields a clean unsigned frame index.
+	move.b  _FramePhase,d7                 ; Load the current frame phase (0..255).
+	addq.b  #1,_FramePhase                 ; Advance frame phase with implicit 8-bit wraparound for the next call.
+	lsl.w   #4,d7                          ; Multiply frame index by 16 because each frame entry is 16 bytes.
 
-	move.w  d4,d7                          ; copy DuDx to build 48*DuDx
-	lsl.w   #5,d7                          ; d7 = 32 * DuDx
-	move.w  d4,d2                          ; copy DuDx again to build the remaining 16*DuDx
-	lsl.w   #4,d2                          ; d2 = 16 * DuDx
-	add.w   d2,d7                          ; d7 = 48 * DuDx
-	neg.w   d7                             ; d7 = -48 * DuDx
-	add.w   RA_DuDy(a0),d7                 ; d7 = DuDy - 48 * DuDx
-	move.w  d7,LOC_RowStepU(sp)            ; store end-of-row U correction
+	movea.l _FrameTab,a0                   ; Load the base pointer to the frame table into A0.
+	adda.w  d7,a0                          ; Advance A0 to the current frame entry.
 
-	move.w  d5,d7                          ; copy DvDx to build 48*DvDx
-	lsl.w   #5,d7                          ; d7 = 32 * DvDx
-	move.w  d5,d2                          ; copy DvDx again to build the remaining 16*DvDx
-	lsl.w   #4,d2                          ; d2 = 16 * DvDx
-	add.w   d2,d7                          ; d7 = 48 * DvDx
-	neg.w   d7                             ; d7 = -48 * DvDx
-	add.w   RA_DvDy(a0),d7                 ; d7 = DvDy - 48 * DvDx
-	move.w  d7,LOC_RowStepV(sp)            ; store end-of-row V correction
+	movea.l _TextureChunky,a1              ; Load the base pointer to the chunky texture.
+	lea     _PairExpand,a2                 ; A2 points to the first half of PairExpand (plane 0/1 words).
+	lea     512(a2),a3                     ; A3 points to the second half of PairExpand (plane 2/3 words), 256 words = 512 bytes later.
 
-.row_loop:
-	moveq   #ROTO_LOOP_COUNT-1,d6           ; initialize inner loop for 24 packed pairs
+	moveq   #0,d2                          ; Clear D2 so the buffer index becomes a clean unsigned value.
+	move.b  d0,d2                          ; Copy the incoming buffer number from D0 into D2.
+	lsl.w   #2,d2                          ; Multiply by 4 because DestBase contains longword pointers.
+	lea     _DestBase,a5                   ; Load the address of the destination pointer table.
+	movea.l 0(a5,d2.w),a5                  ; Load DestBase[buffer] into A5 as the current output pointer.
 
-.pair_loop:
-	PROCESS_PAIR                            ; process first packed pair of this iteration
-	PROCESS_PAIR                            ; process second packed pair of this iteration
-	dbra    d6,.pair_loop                   ; continue until 24 packed pairs are emitted
+	movem.w RF_RowU(a0),d0-d1/d4-d5        ; Load RowU, RowV, DuDx and DvDx from the current frame entry.
+	move.w  #ROTO_ROWS-1,LOC_RowCount(sp)  ; Initialize the outer loop counter for 48 logical rows.
 
-	add.w   LOC_RowStepU(sp),d0             ; convert end-of-row U into next row-start U
-	add.w   LOC_RowStepV(sp),d1             ; convert end-of-row V into next row-start V
-	adda.w  #ROTO_ROW_ADVANCE,a5            ; advance from row end to the next logical row start
-	subq.w  #1,LOC_RowCount(sp)             ; decrement remaining row counter
-	bpl.w   .row_loop                       ; continue while rows remain
+.row_loop:                                 ; Start of one logical output row.
+	moveq   #ROTO_LOOP_COUNT-1,d6          ; Initialize inner loop counter: 12 iterations per row.
 
-	lea     6(sp),sp                        ; release local stack storage
-	movem.l (sp)+,d2-d7/a1-a3/a5            ; restore saved registers
-	rts                                     ; return to the C caller
+.pair_loop:                                ; Inner loop that emits 4 logical pixels per iteration.
+	PROCESS_PAIR                           ; Render the first texel pair of this iteration.
+	PROCESS_PAIR                           ; Render the second texel pair of this iteration.
+	dbra    d6,.pair_loop                  ; Repeat until all 24 pairs (= 48 texels) of the row are done.
+
+	add.w   RF_RowStepU(a0),d0             ; Move U from the end of the current row to the start of the next row.
+	add.w   RF_RowStepV(a0),d1             ; Move V from the end of the current row to the start of the next row.
+	adda.w  #ROTO_ROW_ADVANCE,a5           ; Advance destination pointer to the next logical row start.
+	subq.w  #1,LOC_RowCount(sp)            ; Decrement outer row counter stored on the stack.
+	bpl.w   .row_loop                      ; Continue as long as the counter is still non-negative.
+
+	lea     2(sp),sp                       ; Release the local stack word used for the outer row counter.
+	movem.l (sp)+,d2-d7/a1-a5              ; Restore all registers saved on entry.
+	rts                                    ; Return to the caller.
