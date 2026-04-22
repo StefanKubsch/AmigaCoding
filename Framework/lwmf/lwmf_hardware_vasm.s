@@ -387,60 +387,50 @@ _lwmf_BlitClearLines::
     rts
 
 ;
-; void lwmf_SetPixel(__reg("d0") WORD PosX,
-;                    __reg("d1") WORD PosY,
-;                    __reg("d2") UBYTE Color,
-;                    __reg("a0") UBYTE* Target);
-;
-; Optimized for contiguous planar layout:
-; each scanline contains all bitplanes back-to-back
+; void lwmf_SetPixel(__reg("d0") WORD PosX, __reg("d1") WORD PosY,  __reg("d2") UBYTE Color,  __reg("a0") long* Target);
 ;
 
 _lwmf_SetPixel::
-    movem.l d2-d7/a1,-(sp)
+    movem.l d2-d4,-(sp)				; save registers
 
-    ; d7 = full scanline stride in bytes over all bitplanes
-    moveq   #BYTESPERROW,d7
-    moveq   #NUMBEROFBITPLANES,d6
-    mulu    d6,d7                          ; d7 = BYTESPERROW * NUMBEROFBITPLANES
+    muls.w  #SCREENWIDTHTOTAL,d1    ; PosY * stride
+    move.w  d0,d3
+    not.w   d3                      ; low 3 bits = 7-(x&7)
+    lsr.w   #3,d0                   ; byte offset instead of ASR
+    adda.l  d1,a0                   ; Move the destination address forward once
+    adda.w  d0,a0
 
-    ; a0 = start of scanline y
-    mulu    d7,d1
-    adda.l  d1,a0
+    moveq   #NUMBEROFBITPLANES-1,d4
+.loop
+    lsr.b   #1,d2                   ; Plane-Bit -> Carry
+    bcc.s   .skip
+    bset    d3,(a0)
+.skip
+    lea     BYTESPERROW(a0),a0      ; next Bitplane
+    dbra    d4,.loop
 
-    ; a0 = byte containing pixel x in plane 0 of this scanline
-    move.w  d0,d5
-    lsr.w   #3,d5                          ; x / 8
-    adda.w  d5,a0
-
-    ; d4 = bit mask = 1 << (7 - (x & 7))
-    move.w  d0,d4
-    and.w   #7,d4
-    moveq   #7,d5
-    sub.w   d4,d5                          ; d5 = 7 - (x & 7)
-    moveq   #1,d4
-    lsl.b   d5,d4                          ; d4.b = mask
-
-    move.b  d4,d5
-    not.b   d5                             ; d5.b = inverted mask
-
-    moveq   #NUMBEROFBITPLANES-1,d6
-.plane
-    move.b  (a0),d3                        ; current destination byte
-    lsr.b   #1,d2                          ; next color bit -> carry
-    bcc.s   .clear
-.set
-    or.b    d4,d3
-    bra.s   .store
-.clear
-    and.b   d5,d3
-.store
-    move.b  d3,(a0)
-    lea     BYTESPERROW(a0),a0             ; next plane, same scanline
-    dbra    d6,.plane
-
-    movem.l (sp)+,d2-d7/a1
+    movem.l (sp)+,d2-d4				; restore registers
     rts
+
+;
+; void lwmf_SetPixel1bpl(__reg("d0") WORD PosX, __reg("d1") WORD PosY,  __reg("a0") long* Target);
+;
+
+_lwmf_SetPixel1bpl::
+	mulu.w  #SCREENWIDTHTOTAL,d1 ; PosY * stride
+    adda.l  d1,a0                ; Destinationaddress = start of line
+
+    move.w  d0,d1                ; save x for Maskidex
+    lsr.w   #3,d0                ; byte offset instead of ASR
+    adda.w  d0,a0                ; Destinationbyte
+
+    and.w   #7,d1                ; x & 7
+    move.b  .bitmask(pc,d1.w),d0 ; get Bitmask
+    or.b    d0,(a0)              ; set Pixel
+    rts
+
+.bitmask:
+        dc.b    $80,$40,$20,$10,$08,$04,$02,$01
 
 ; ***************************************************************************************************
 ; * Variables                                                                                       *

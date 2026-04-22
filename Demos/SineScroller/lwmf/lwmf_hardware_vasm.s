@@ -412,6 +412,26 @@ _lwmf_SetPixel::
     movem.l (sp)+,d2-d4				; restore registers
     rts
 
+;
+; void lwmf_SetPixel1bpl(__reg("d0") WORD PosX, __reg("d1") WORD PosY,  __reg("a0") long* Target);
+;
+
+_lwmf_SetPixel1bpl::
+	mulu.w  #SCREENWIDTHTOTAL,d1 ; PosY * stride
+    adda.l  d1,a0                ; Destinationaddress = start of line
+
+    move.w  d0,d1                ; save x for Maskidex
+    lsr.w   #3,d0                ; byte offset instead of ASR
+    adda.w  d0,a0                ; Destinationbyte
+
+    and.w   #7,d1                ; x & 7
+    move.b  .bitmask(pc,d1.w),d0 ; get Bitmask
+    or.b    d0,(a0)              ; set Pixel
+    rts
+
+.bitmask:
+        dc.b    $80,$40,$20,$10,$08,$04,$02,$01
+
 ; ***************************************************************************************************
 ; * Variables                                                                                       *
 ; ***************************************************************************************************
