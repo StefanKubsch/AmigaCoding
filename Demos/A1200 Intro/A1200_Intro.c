@@ -62,7 +62,7 @@ static const UBYTE LogoSinTabY[64] =
 	21,25,28,31,33,35,36,37,37,36,34,32,30,26,23,19,16,12,9,6,4,2,1,1,1,2,4,7,9,13,16,20
 };
 
-BOOL Init_TextLogo(void)
+static BOOL Init_TextLogo(void)
 {
 	if (!(LogoBitmap = lwmf_LoadImage("gfx/Logo.iff")))
 	{
@@ -72,7 +72,7 @@ BOOL Init_TextLogo(void)
 	return TRUE;
 }
 
-void Draw_TextLogo(UBYTE Buffer)
+static void Draw_TextLogo(UBYTE Buffer)
 {
 	static UBYTE SinTabCount = 0;
 
@@ -84,7 +84,7 @@ void Draw_TextLogo(UBYTE Buffer)
 	}
 }
 
-void Cleanup_TextLogo(void)
+static void Cleanup_TextLogo(void)
 {
 	if (LogoBitmap)
 	{
@@ -132,7 +132,7 @@ static ULONG  FontColumnBitsSize     = 0;
 static UWORD *RainbowTab     = NULL;
 static ULONG  RainbowTabSize = 0;
 
-BOOL Init_SineScroller(void)
+static BOOL Init_SineScroller(void)
 {
 	struct lwmf_Image* FontBitmap;
 
@@ -281,7 +281,7 @@ BOOL Init_SineScroller(void)
 	return TRUE;
 }
 
-void Draw_SineScroller(UBYTE Buffer)
+static void Draw_SineScroller(UBYTE Buffer)
 {
 	const WORD  ScrollX           = Font.ScrollX;
 	const WORD  LeftVisibleTextX  = -ScrollX;
@@ -336,7 +336,7 @@ void Draw_SineScroller(UBYTE Buffer)
 	}
 }
 
-void Cleanup_SineScroller(void)
+static void Cleanup_SineScroller(void)
 {
 	if (RainbowTab)
 	{
@@ -496,7 +496,7 @@ static void AddSkyLine(UWORD **Copperlist, UWORD y)
 #define SCROLLER_LINES         (SCREENHEIGHT - WHITE_LINE_2 - 1) // 84
 #define RAINBOW_COPPER_WORDS   (SCROLLER_LINES * 4)              // 336
 
-BOOL Init_CopperList(void)
+static BOOL Init_CopperList(void)
 {
 	const ULONG CopperListLength = COPPERWORDS + (PLASMA_LINES * LINE_WORDS) + (SKY_LINES * 4 + 2) + SHADOW_COPPER_WORDS + MIRROR_COPPER_WORDS + RAINBOW_COPPER_WORDS;
 
@@ -737,7 +737,7 @@ BOOL Init_CopperList(void)
 	return TRUE;
 }
 
-void Update_BitplanePointers(UBYTE Buffer)
+static void Update_BitplanePointers(UBYTE Buffer)
 {
 	// Each pointer gets its own high word calculated independently.
 	// The buffer may straddle a 64K boundary (AllocMem gives no alignment guarantee),
@@ -769,7 +769,7 @@ void Update_BitplanePointers(UBYTE Buffer)
 // Update per-line COLOR01 and COLOR03 in the Copper list every frame.
 // Uses precomputed RainbowTab[256] and direct UWORD* pointers for minimal overhead.
 // Two separate loops avoid a per-iteration branch on the mirror threshold.
-void Update_ScrollerRainbow(void)
+static void Update_ScrollerRainbow(void)
 {
 	const UWORD MirrorStart = SCROLLER_MIRROR_LINE - SCROLLER_START_LINE;
 	UBYTE idx = RainbowPhase;
@@ -820,7 +820,7 @@ static void Init_Plasma(void)
 	}
 }
 
-void Update_Plasma(void)
+static void Update_Plasma(void)
 {
 	static UBYTE Phase1    = 0;
 	// Interlaced row update: process only even or odd rows per frame.
@@ -868,7 +868,7 @@ void Update_Plasma(void)
 // Cleanup & Main
 // =====================================================================
 
-void Cleanup_All(void)
+static void Cleanup_All(void)
 {
 	Cleanup_SineScroller();
 	Cleanup_TextLogo();

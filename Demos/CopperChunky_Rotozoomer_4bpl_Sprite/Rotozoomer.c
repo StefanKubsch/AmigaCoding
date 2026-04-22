@@ -528,7 +528,7 @@ static void DisableSpriteDMA(void)
 	*DMACON_REG = 0x0020u;
 }
 
-void Cleanup_RotoZoomer(void)
+static void Cleanup_RotoZoomer(void)
 {
 	for (UBYTE Buffer = 0; Buffer < 2u; ++Buffer)
 	{
@@ -551,7 +551,7 @@ void Cleanup_RotoZoomer(void)
 	DeltaTabSize = 0;
 }
 
-void Init_RotoZoomer(void)
+static void Init_RotoZoomer(void)
 {
 	struct lwmf_Image *RotoBitmap;
 
@@ -629,7 +629,7 @@ static void BuildSpriteSelfTest(UBYTE Buffer)
 	}
 }
 
-void Draw_RotoZoomer(UBYTE Buffer)
+static void Draw_RotoZoomer(UBYTE Buffer)
 {
 	RotoAsmParams Params;
 	const UBYTE ZoomIndex = (UBYTE)(SinTab256[ZoomPhase] >> 1);
@@ -672,7 +672,7 @@ static UWORD BPLPTL_Idx[NUMBEROFBITPLANES];
 
 #define MAYBE_INSERT_256_WAIT(ptr_, flag_, vpos_) do { if (!(flag_) && ((vpos_) >= 256u)) { *(ptr_)++ = 0xFFDFu; *(ptr_)++ = 0xFFFEu; (flag_) = TRUE; }	} while (0)
 
-void Init_CopperList(void)
+static void Init_CopperList(void)
 {
 	CopperListSize = COPPERWORDS * sizeof(UWORD);
 	CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR);
@@ -780,7 +780,7 @@ static void ActivateCopperList(void)
 	*COPJMP1_REG = 0u;
 }
 
-void Update_BitplanePointers(UBYTE Buffer)
+static void Update_BitplanePointers(UBYTE Buffer)
 {
 	ULONG Ptr = (ULONG)ScreenBitmap[Buffer]->Planes[0];
 
@@ -804,7 +804,7 @@ void Update_BitplanePointers(UBYTE Buffer)
 // Cleanup & Main
 // =====================================================================
 
-void Cleanup_All(void)
+static void Cleanup_All(void)
 {
 	DisableSpriteDMA();
 	lwmf_ReleaseOS();

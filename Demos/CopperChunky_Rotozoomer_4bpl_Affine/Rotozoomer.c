@@ -305,7 +305,7 @@ static void BuildDeltaTable(void)
 }
 
 
-void Init_RotoZoomer(void)
+static void Init_RotoZoomer(void)
 {
 	struct lwmf_Image *RotoBitmap;
 
@@ -328,7 +328,7 @@ void Init_RotoZoomer(void)
 	MovePhaseY = 64;
 }
 
-void Draw_RotoZoomer(UBYTE Buffer)
+static void Draw_RotoZoomer(UBYTE Buffer)
 {
 	RotoAsmParams Params;
 	const UBYTE ZoomIndex = (UBYTE)(SinTab256[ZoomPhase] >> 1);
@@ -364,7 +364,7 @@ void Draw_RotoZoomer(UBYTE Buffer)
 	MovePhaseY += 2;
 }
 
-void Cleanup_RotoZoomer(void)
+static void Cleanup_RotoZoomer(void)
 {
 	FreeMem(TextureChunky, TextureChunkySize);
 	TextureChunky = NULL;
@@ -394,7 +394,7 @@ static UWORD BPLPTL_Idx[ROTO_BITPLANES];
 #define COPPER_EXTRA_WAIT_WORDS  (((ROTO_VPOS_START + ROTO_DISPLAY_HEIGHT) > 256) ? 2 : 0)
 #define COPPERWORDS (16 + (ROTO_BITPLANES * 4) + (SCREEN_COLORS * 2) + (ROTO_DISPLAY_HEIGHT * 6) + COPPER_EXTRA_WAIT_WORDS + 2)
 
-void Init_CopperList(void)
+static void Init_CopperList(void)
 {
 	CopperListSize = COPPERWORDS * sizeof(UWORD);
 	CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR);
@@ -480,7 +480,7 @@ void Init_CopperList(void)
 	*COP1LC = (ULONG)CopperList;
 }
 
-void Update_BitplanePointers(UBYTE Buffer)
+static void Update_BitplanePointers(UBYTE Buffer)
 {
 	ULONG Ptr = (ULONG)ScreenBitmap[Buffer]->Planes[0] + (ULONG)ROTO_START_BYTE;
 
@@ -496,7 +496,7 @@ void Update_BitplanePointers(UBYTE Buffer)
 // Cleanup & Main
 // =====================================================================
 
-void Cleanup_All(void)
+static void Cleanup_All(void)
 {
 	Cleanup_RotoZoomer();
 

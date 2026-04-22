@@ -46,7 +46,7 @@ static ULONG PlasmaColorLUT[256];
 //              Plasma-start WAIT+COLOR=4, White2 WAIT+COLOR=4, footer VPOS-wrap+END=4 => 28 words
 #define COPPERWORDS            28
 
-void Init_CopperList(void)
+static void Init_CopperList(void)
 {
 	const ULONG CopperListLength = COPPERWORDS + (PLASMA_LINES * LINE_WORDS);
 
@@ -179,7 +179,7 @@ static void Init_Plasma(void)
 	}
 }
 
-void Update_Plasma(void)
+static void Update_Plasma(void)
 {
 	static UBYTE Phase1 = 0;
 	// Interlaced row update: process only even or odd rows per frame.
@@ -234,7 +234,7 @@ void Update_Plasma(void)
 // Cleanup & Main
 // =====================================================================
 
-void Cleanup_All(void)
+static void Cleanup_All(void)
 {
 	FreeMem(CopperList, CopperListSize);
 	lwmf_CleanupAll();

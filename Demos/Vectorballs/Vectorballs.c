@@ -245,7 +245,7 @@ static void CopyPaletteFromImage(const struct lwmf_Image* VectorBallImg)
 	}
 }
 
-static BOOL Build_BobData(void)
+static void Build_BobData(void)
 {
 	const UWORD SourceBytesPerRow = VectorBallImg->Image.BytesPerRow;
 	const ULONG TotalWords = (ULONG)16 * (ULONG)VB_BOB_DATA_WORDS;
@@ -289,8 +289,6 @@ static BOOL Build_BobData(void)
 			}
 		}
 	}
-
-	return TRUE;
 }
 
 static void Build_DrawCommandStream(const UBYTE* Order)
@@ -375,7 +373,7 @@ static void Build_ZOrderLUT(void)
 	}
 }
 
-BOOL Init_VectorBall(void)
+static void Init_VectorBall(void)
 {
 	VectorBallImg = lwmf_LoadImage(VECTORBALL_FILE);
 
@@ -398,11 +396,9 @@ BOOL Init_VectorBall(void)
 	AngleX = 0;
 	AngleY = 0;
 	AngleZ = 0;
-
-	return TRUE;
 }
 
-static inline void Prepare_DrawPosition(UWORD Index, WORD X4, WORD Y4, WORD Z4)
+inline static void Prepare_DrawPosition(UWORD Index, WORD X4, WORD Y4, WORD Z4)
 {
 	const WORD proj = ScalePerspective((WORD)(Z4 + (15 << FIX_SHIFT)));
 	const WORD proj2 = (WORD)(proj + proj);
@@ -413,7 +409,7 @@ static inline void Prepare_DrawPosition(UWORD Index, WORD X4, WORD Y4, WORD Z4)
 	DrawOffset[Index] = (UWORD)(RowOffset[(UBYTE)y] + (((UWORD)x >> 4) << 1));
 }
 
-void Update_VectorBalls(void)
+static void Update_VectorBalls(void)
 {
 	const UBYTE ax = (UBYTE)(AngleX >> 8);
 	const UBYTE ay = (UBYTE)(AngleY >> 8);
@@ -505,7 +501,7 @@ void Update_VectorBalls(void)
 	Build_DrawCommandStream(ZOrderLUT[ax]);
 }
 
-void Draw_VectorBalls(UBYTE Buffer)
+inline static void Draw_VectorBalls(UBYTE Buffer)
 {
 	DrawVectorBallsBlit((UBYTE*)ScreenBitmap[Buffer]->Planes[0], SortedDrawOffset, SortedMaskPtr, SortedSourcePtr);
 
@@ -531,7 +527,7 @@ static UWORD BPLPTL_Idx[NUMBEROFBITPLANES];
 // END = 2
 #define COPPER_FIXED_WORDS      68
 
-void Init_CopperList(void)
+static void Init_CopperList(void)
 {
 	const ULONG CopperListLength = COPPER_FIXED_WORDS;
 	CopperListSize = CopperListLength * sizeof(UWORD);
@@ -595,7 +591,7 @@ void Init_CopperList(void)
 	*COP1LC = (ULONG)CopperList;
 }
 
-void Update_BitplanePointers(UBYTE Buffer)
+static void Update_BitplanePointers(UBYTE Buffer)
 {
 	ULONG Ptr = (ULONG)ScreenBitmap[Buffer]->Planes[0];
 
@@ -619,7 +615,7 @@ void Update_BitplanePointers(UBYTE Buffer)
 // Cleanup / main
 // ---------------------------------------------------------------------
 
-void Cleanup_All(void)
+static void Cleanup_All(void)
 {
 	lwmf_WaitBlitter();
 

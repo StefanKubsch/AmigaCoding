@@ -82,7 +82,7 @@ static ULONG FontDataSize = 0;
 static UWORD *RainbowTab = NULL;
 static ULONG RainbowTabSize = 0;
 
-BOOL Init_SineScroller(void)
+static BOOL Init_SineScroller(void)
 {
 	struct lwmf_Image* FontBitmap;
 
@@ -221,7 +221,7 @@ BOOL Init_SineScroller(void)
 	return TRUE;
 }
 
-void Draw_SineScroller(UBYTE Buffer)
+static void Draw_SineScroller(UBYTE Buffer)
 {
 	const WORD ScrollX = Font.ScrollX;
 	const WORD LeftVisibleTextX  = -ScrollX;
@@ -253,7 +253,7 @@ void Draw_SineScroller(UBYTE Buffer)
 	}
 }
 
-void Cleanup_SineScroller(void)
+static void Cleanup_SineScroller(void)
 {
 	FreeMem(RainbowTab, RainbowTabSize);
 	RainbowTab = NULL;
@@ -308,7 +308,7 @@ static UBYTE RainbowPhase = 0;
 // Number of scanlines in the scroller region, used for per-line rainbow
 #define RAINBOW_COPPER_WORDS   (SCROLLER_LINES * 4)
 
-void Init_CopperList(void)
+static void Init_CopperList(void)
 {
 	const ULONG CopperListLength = COPPERWORDS + (SCROLLER_START_LINE * 4) + (SCROLLER_LINES * 4 + 2) + DOUBLE_COPPER_WORDS + RAINBOW_COPPER_WORDS;
 
@@ -434,7 +434,7 @@ void Init_CopperList(void)
 	*COP1LC = (ULONG)CopperList;
 }
 
-void Update_BitplanePointers(UBYTE Buffer)
+static void Update_BitplanePointers(UBYTE Buffer)
 {
 	const ULONG Base = (ULONG)ScreenBitmap[Buffer]->Planes[0];
 	const ULONG ScrollAddr = Base + SCROLLER_BPLPOINTER;
@@ -454,7 +454,7 @@ void Update_BitplanePointers(UBYTE Buffer)
 // Cleanup & Main
 // =====================================================================
 
-void Cleanup_All(void)
+static void Cleanup_All(void)
 {
 	lwmf_WaitBlitter();
 	Cleanup_SineScroller();

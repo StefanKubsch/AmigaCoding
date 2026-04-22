@@ -482,7 +482,7 @@ static UWORD BPL1PTL_Idx;
 
 #define COPPER_FIXED_WORDS      40
 
-void Init_CopperList(void)
+static void Init_CopperList(void)
 {
     const ULONG CopperListLength = (ULONG)COPPER_FIXED_WORDS;
 
@@ -530,7 +530,7 @@ void Init_CopperList(void)
     *COP1LC = (ULONG)CopperList;
 }
 
-void Update_BitplanePointers(UBYTE Buffer)
+static void Update_BitplanePointers(UBYTE Buffer)
 {
     const ULONG Ptr = (ULONG)ScreenBitmap[Buffer]->Planes[0];
     CopperList[BPL1PTH_Idx] = (UWORD)(Ptr >> 16);
@@ -541,7 +541,7 @@ void Update_BitplanePointers(UBYTE Buffer)
 // Cleanup / main
 // ---------------------------------------------------------------------
 
-void Cleanup_All(void)
+static void Cleanup_All(void)
 {
     FreeMem(CopperList, CopperListSize);
     CopperList = NULL;
@@ -554,9 +554,6 @@ int main(void)
 {
     lwmf_LoadGraphicsLib();
     lwmf_InitScreenBitmaps();
-
-    lwmf_ClearScreen((long*)ScreenBitmap[0]->Planes[0]);
-    lwmf_ClearScreen((long*)ScreenBitmap[1]->Planes[0]);
 
     lwmf_TakeOverOS();
 

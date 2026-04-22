@@ -48,7 +48,7 @@ OS / Hardware
     void lwmf_SetPixel(__reg("d0") WORD PosX, __reg("d1") WORD PosY,  __reg("d2") UBYTE Color,  __reg("a0") long* Target);
     void lwmf_SetPixel1bpl(__reg("d0") WORD PosX, __reg("d1") WORD PosY, __reg("a0") long* Target);
 
-Bitmaps
+Screen / Bitmaps / Doublebuffer
 
     static BOOL lwmf_InitScreenBitmaps(void);
     static void lwmf_CleanupScreenBitmaps(void);
