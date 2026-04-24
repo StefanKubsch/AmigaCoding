@@ -1,232 +1,158 @@
+;**********************************************************************
+;* 4x4 HAM7 Rotozoomer                                                *
+;*                                                                    *
+;* 4 DMA bitplanes, HAM control via BPL5DAT/BPL6DAT, 80 columns      *
+;* Amiga 500 OCS, 68000                                               *
+;*                                                                    *
+;* Assembler hotloop for the affine sampler and HAM planar emitter.   *
+;**********************************************************************
+
+    machine 68000
+
+    include "lwmf/lwmf_hardware_regs.i"
+
+ROTO_ROWS            equ 48
+ROTO_PAIR_COUNT      equ 40
+ROTO_LOOP_COUNT      equ (ROTO_PAIR_COUNT/2)
+ROTO_ROW_ADVANCE     equ ((BYTESPERROW*NUMBEROFBITPLANES)-ROTO_PAIR_COUNT)
+HAM_EXPAND_BLOCKSIZE equ 8192
+
 ; -----------------------------------------------------------------------------
-; HAM / 7-bitplane rotozoomer drawing routine
-; Amiga 500 OCS / 68000 - vasm Motorola syntax
-;
-; C prebuilds a compact 16-byte frame table for 256 frames. This routine only:
-;   - fetches FrameTab[FramePhase]
-;   - fetches DestBase[Buffer]
-;   - samples the 256x128 RGB444 texture
-;   - packs one 50x50 logical HAM image into 4 DMA bitplanes
-;   - advances FramePhase with 8-bit wraparound
-;
-; Frame layout (must match the C struct exactly):
-;   WORD RowU
-;   WORD RowV
-;   WORD DuDx
-;   WORD DvDx
-;   WORD RowStepU
-;   WORD RowStepV
-;   WORD Pad0
-;   WORD Pad1
-;
-; The visible image uses 50 texels per row, but the fetched line is 52 texels
-; wide: one black guard texel on the left and one on the right.
-;
-; (C) 2026 by Stefan Kubsch
+; RotoAsmParams structure offsets
 ; -----------------------------------------------------------------------------
 
-	machine 68000
+RA_Texture equ 0
+RA_Dest    equ 4
+RA_Expand  equ 8
+RA_RowU    equ 12
+RA_RowV    equ 14
+RA_DuDx    equ 16
+RA_DvDx    equ 18
+RA_DuDy    equ 20
+RA_DvDy    equ 22
 
-	include "lwmf/lwmf_hardware_regs.i"
+; -----------------------------------------------------------------------------
+; Local stack offsets
+; -----------------------------------------------------------------------------
 
-	xref    _FrameTab
-	xref    _FramePhase
-	xref    _DestBase
-	xref    _TextureRGB444
-	xref    _HamPackLUT
+LOC_RowStepU equ 0
+LOC_RowStepV equ 2
+LOC_RowCount equ 4
 
-	xdef    _Draw_RotoZoomerAsm
-	xdef    Draw_RotoZoomerAsm
+; -----------------------------------------------------------------------------
+; PROCESS_PAIR
+;
+; Input:
+; d0 = U in 8.8 fixed point
+; d1 = V in 8.8 fixed point
+; a1 = texture base (128x128, UWORD texels)
+; a2 = HAM expand hi01 table
+; a3 = HAM expand lo01 table
+; a4 = HAM expand hi23 table
+; a6 = HAM expand lo23 table
+; a5 = current destination byte position
+; d4 = DuDx
+; d5 = DvDx
+;
+; Clobbers:
+; d2, d3, d7
+; -----------------------------------------------------------------------------
 
-FRAME_ROWU          equ     0
-FRAME_ROWV          equ     2
-FRAME_DUDX          equ     4
-FRAME_DVDX          equ     6
-FRAME_ROWSTEPU      equ     8
-FRAME_ROWSTEPV      equ     10
+PROCESS_PAIR macro
+    move.w  d1,d7
+    andi.w  #$7F00,d7
+    move.w  d0,d2
+    lsr.w   #8,d2
+    andi.w  #$007F,d2
+    add.w   d2,d2
+    add.w   d2,d7
+    move.w  (a1,d7.w),d2
+    add.w   d4,d0
+    add.w   d5,d1
 
-ROTO_ROWS           equ     50
-ROTO_FETCH_BYTES    equ     26
-ROW_ADVANCE         equ     BYTESPERROW*NUMBEROFBITPLANES-ROTO_FETCH_BYTES
+    move.w  d1,d7
+    andi.w  #$7F00,d7
+    move.w  d0,d3
+    lsr.w   #8,d3
+    andi.w  #$007F,d3
+    add.w   d3,d3
+    add.w   d3,d7
+    move.w  (a1,d7.w),d7
+    add.w   d4,d0
+    add.w   d5,d1
 
-; Stack locals after SUBA.W #16,SP
-ROWSTEPU            equ     0
-ROWSTEPV            equ     2
-ROWCOUNT            equ     4
-ROWU                equ     6
-ROWV                equ     8
-DUDX                equ     10
-DVDX                equ     12
-MIDCOUNT            equ     14
+    add.w   d2,d2
+    add.w   d7,d7
 
-PUSH_BLACK  macro
-	lsl.w   #4,d0
-	lsl.w   #4,d1
-	lsl.w   #4,d2
-	lsl.w   #4,d3
-	endm
+    move.w  (a2,d2.w),d3
+    or.w    (a3,d7.w),d3
+    move.w  (a4,d2.w),d2
+    or.w    (a6,d7.w),d2
 
-SAMPLE_PACK macro
-	move.w  d7,d4                   ; V
-	lsr.w   #8,d4
-	andi.w  #$007F,d4              ; texture height = 128
-	lsl.w   #8,d4                  ; v * 256
+    move.b  d3,(a5)
+    lsr.w   #8,d3
+    move.b  d3,BYTESPERROW(a5)
+    move.b  d2,(BYTESPERROW*2)(a5)
+    lsr.w   #8,d2
+    move.b  d2,(BYTESPERROW*3)(a5)
+    addq.l  #1,a5
+endm
 
-	move.w  d6,d5                  ; U
-	lsr.w   #8,d5
-	andi.w  #$00FF,d5
-	add.w   d5,d4
-	add.w   d4,d4                  ; UWORD texture offset
-	move.w  0(a5,d4.w),d4          ; RGB444 texel (0..4095)
-	add.w   d4,d4                  ; *2
-	add.w   d4,d4                  ; *4 for ULONG LUT
-	move.l  0(a6,d4.w),d4          ; bytes: p0,p1,p2,p3 (68000-safe extraction)
+; -----------------------------------------------------------------------------
+; void DrawRotoBodyAsm(__reg("a0") const struct RotoAsmParams *Params)
+; -----------------------------------------------------------------------------
 
-	lsl.w   #4,d0
-	move.l  d4,d5
-	swap    d5
-	lsr.w   #8,d5                  ; p0 -> low byte
-	or.w    d5,d0
+_DrawRotoBodyAsm::
+    movem.l d2-d7/a1-a6,-(sp)
+    lea     -6(sp),sp
 
-	lsl.w   #4,d1
-	move.l  d4,d5
-	swap    d5
-	andi.w  #$00FF,d5              ; p1 -> low byte
-	or.w    d5,d1
+    movea.l RA_Texture(a0),a1
+    movea.l RA_Dest(a0),a5
+    movea.l RA_Expand(a0),a2
+    lea     HAM_EXPAND_BLOCKSIZE(a2),a3
+    lea     (HAM_EXPAND_BLOCKSIZE*2)(a2),a4
+    lea     (HAM_EXPAND_BLOCKSIZE*3)(a2),a6
 
-	lsl.w   #4,d2
-	move.w  d4,d5
-	lsr.w   #8,d5                  ; p2 -> low byte
-	or.w    d5,d2
+    move.w  RA_DuDx(a0),d4
+    move.w  RA_DvDx(a0),d5
+    move.w  RA_RowU(a0),d0
+    move.w  RA_RowV(a0),d1
 
-	lsl.w   #4,d3
-	move.w  d4,d5
-	andi.w  #$00FF,d5              ; p3 -> low byte
-	or.w    d5,d3
+    move.w  #ROTO_ROWS-1,LOC_RowCount(sp)
 
-	add.w   DUDX(sp),d6
-	add.w   DVDX(sp),d7
-	endm
+    move.w  d4,d7
+    lsl.w   #6,d7
+    move.w  d4,d2
+    lsl.w   #4,d2
+    add.w   d2,d7
+    neg.w   d7
+    add.w   RA_DuDy(a0),d7
+    move.w  d7,LOC_RowStepU(sp)
 
-	section .text,code
+    move.w  d5,d7
+    lsl.w   #6,d7
+    move.w  d5,d2
+    lsl.w   #4,d2
+    add.w   d2,d7
+    neg.w   d7
+    add.w   RA_DvDy(a0),d7
+    move.w  d7,LOC_RowStepV(sp)
 
-Draw_RotoZoomerAsm:
-_Draw_RotoZoomerAsm:
-	movem.l d2-d7/a2-a6,-(sp)
-	suba.w  #16,sp
+.row_loop:
+    moveq   #ROTO_LOOP_COUNT-1,d6
 
-	lea     _FramePhase(pc),a0
-	moveq   #0,d1
-	move.b  (a0),d1
-	addq.b  #1,(a0)
+.pair_loop:
+    PROCESS_PAIR
+    PROCESS_PAIR
+    dbra    d6,.pair_loop
 
-	lsl.w   #4,d1                  ; phase * sizeof(RotoFrame)
-	lea     _FrameTab(pc),a0
-	adda.w  d1,a0
+    add.w   LOC_RowStepU(sp),d0
+    add.w   LOC_RowStepV(sp),d1
+    adda.w  #ROTO_ROW_ADVANCE,a5
 
-	move.w  FRAME_ROWSTEPU(a0),d4
-	move.w  d4,ROWSTEPU(sp)
-	move.w  FRAME_ROWSTEPV(a0),d4
-	move.w  d4,ROWSTEPV(sp)
-	move.w  FRAME_ROWU(a0),d4
-	move.w  d4,ROWU(sp)
-	move.w  FRAME_ROWV(a0),d4
-	move.w  d4,ROWV(sp)
-	move.w  FRAME_DUDX(a0),d4
-	move.w  d4,DUDX(sp)
-	move.w  FRAME_DVDX(a0),d4
-	move.w  d4,DVDX(sp)
-	move.w  #ROTO_ROWS-1,ROWCOUNT(sp)
+    subq.w  #1,LOC_RowCount(sp)
+    bpl.w   .row_loop
 
-	lea     _DestBase(pc),a0
-	andi.w  #1,d0
-	lsl.w   #2,d0
-	movea.l 0(a0,d0.w),a1          ; plane 0
-	movea.l a1,a2
-	adda.w  #BYTESPERROW,a2        ; plane 1
-	movea.l a2,a3
-	adda.w  #BYTESPERROW,a3        ; plane 2
-	movea.l a3,a4
-	adda.w  #BYTESPERROW,a4        ; plane 3
-
-	movea.l _TextureRGB444(pc),a5
-	lea     _HamPackLUT(pc),a6
-
-.rowloop
-	move.w  ROWU(sp),d6            ; current U
-	move.w  ROWV(sp),d7            ; current V
-
-	; -------------------------------------------------------------
-	; First word: left guard texel (black) + first 3 visible texels
-	; -------------------------------------------------------------
-	moveq   #0,d0
-	moveq   #0,d1
-	moveq   #0,d2
-	moveq   #0,d3
-	PUSH_BLACK
-	SAMPLE_PACK
-	SAMPLE_PACK
-	SAMPLE_PACK
-
-	move.w  d0,(a1)+
-	move.w  d1,(a2)+
-	move.w  d2,(a3)+
-	move.w  d3,(a4)+
-
-	; -------------------------------------------------------------
-	; Middle 11 words: 44 visible texels
-	; -------------------------------------------------------------
-	move.w  #11,MIDCOUNT(sp)
-.midloop
-	moveq   #0,d0
-	moveq   #0,d1
-	moveq   #0,d2
-	moveq   #0,d3
-	SAMPLE_PACK
-	SAMPLE_PACK
-	SAMPLE_PACK
-	SAMPLE_PACK
-
-	move.w  d0,(a1)+
-	move.w  d1,(a2)+
-	move.w  d2,(a3)+
-	move.w  d3,(a4)+
-
-	subq.w  #1,MIDCOUNT(sp)
-	bne.w   .midloop
-
-	; -------------------------------------------------------------
-	; Last word: last 3 visible texels + right guard texel (black)
-	; -------------------------------------------------------------
-	moveq   #0,d0
-	moveq   #0,d1
-	moveq   #0,d2
-	moveq   #0,d3
-	SAMPLE_PACK
-	SAMPLE_PACK
-	SAMPLE_PACK
-	PUSH_BLACK
-
-	move.w  d0,(a1)+
-	move.w  d1,(a2)+
-	move.w  d2,(a3)+
-	move.w  d3,(a4)+
-
-	adda.w  #ROW_ADVANCE,a1
-	adda.w  #ROW_ADVANCE,a2
-	adda.w  #ROW_ADVANCE,a3
-	adda.w  #ROW_ADVANCE,a4
-
-	move.w  ROWU(sp),d4
-	add.w   ROWSTEPU(sp),d4
-	move.w  d4,ROWU(sp)
-	move.w  ROWV(sp),d4
-	add.w   ROWSTEPV(sp),d4
-	move.w  d4,ROWV(sp)
-
-	subq.w  #1,ROWCOUNT(sp)
-	bpl     .rowloop
-
-	adda.w  #16,sp
-	movem.l (sp)+,d2-d7/a2-a6
-	rts
+    lea     6(sp),sp
+    movem.l (sp)+,d2-d7/a1-a6
+    rts
