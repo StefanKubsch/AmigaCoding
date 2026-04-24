@@ -31,19 +31,7 @@
 // Assembler interface
 // ---------------------------------------------------------------------
 
-typedef struct RotoAsmParams
-{
-    const ULONG* Texture;
-    UBYTE*       Dest;
-    WORD         RowU;
-    WORD         RowV;
-    WORD         DuDx;
-    WORD         DvDx;
-    WORD         RowStepU;
-    WORD         RowStepV;
-} RotoAsmParams;
-
-extern void DrawRotoBodyAsm(__reg("a0") const struct RotoAsmParams* Params);
+extern void RenderFrameAsm(__reg("a0") UBYTE* Dest);
 
 // ---------------------------------------------------------------------
 // Effect constants
@@ -106,15 +94,15 @@ typedef struct
     WORD DvDx;
 } RotoDelta;
 
-static WORD MoveTab[256];
-static RotoDelta* DeltaTab = NULL;
+WORD MoveTab[256];
+RotoDelta* DeltaTab = NULL;
 static ULONG DeltaTabSize = 0;
 
 // ---------------------------------------------------------------------
 // Sine table
 // ---------------------------------------------------------------------
 
-static const UBYTE SinTab256[256] =
+const UBYTE SinTab256[256] =
 {
     32,32,33,34,35,35,36,37,38,38,39,40,41,41,42,43,44,44,45,46,46,47,48,48,49,50,50,51,51,52,53,53,
     54,54,55,55,56,56,57,57,58,58,59,59,59,60,60,60,61,61,61,61,62,62,62,62,62,63,63,63,63,63,63,63,
@@ -131,14 +119,14 @@ static const UBYTE SinTab256[256] =
 // ---------------------------------------------------------------------
 
 static UBYTE* TexturePacked = NULL;
-static ULONG* TexturePackedMid = NULL;
+ULONG* TexturePackedMid = NULL;
 static ULONG TexturePackedSize = 0;
 static UWORD DisplayPalette[SCREEN_COLORS];
 
-static UBYTE AnglePhase = 0;
-static UBYTE ZoomPhase  = 0;
-static UBYTE MovePhaseX = 0;
-static UBYTE MovePhaseY = 64;
+UBYTE AnglePhase = 0;
+UBYTE ZoomPhase  = 0;
+UBYTE MovePhaseX = 0;
+UBYTE MovePhaseY = 64;
 
 // ---------------------------------------------------------------------
 // Rotozoomer
@@ -148,7 +136,7 @@ static UBYTE GetPlanarPixel(const struct BitMap* BitMap, UWORD X, UWORD Y, UBYTE
 {
     const ULONG RowOffset = (ULONG)Y * (ULONG)BitMap->BytesPerRow;
     const ULONG ByteOffset = RowOffset + (ULONG)(X >> 3);
-    const UBYTE Mask = (UBYTE)(0x80u >> (X & 7));
+    const UBYTE Mask = (UBYTE)(0x80 >> (X & 7));
     UBYTE Pixel = 0;
 
     for (UBYTE Plane = 0; Plane < Depth; ++Plane)
@@ -179,7 +167,9 @@ static void BuildDeltaTable(void)
 
     for (UWORD ZoomIdx = 0; ZoomIdx < ROTO_ZOOM_STEPS; ++ZoomIdx)
     {
-        const LONG Zoom = (LONG)ROTO_ZOOM_BASE - (LONG)ROTO_ZOOM_AMPLITUDE + (((LONG)ZoomIdx * ((LONG)ROTO_ZOOM_AMPLITUDE * 2L)) / (LONG)(ROTO_ZOOM_STEPS - 1));
+        const LONG Zoom =
+            (LONG)ROTO_ZOOM_BASE - (LONG)ROTO_ZOOM_AMPLITUDE +
+            (((LONG)ZoomIdx * ((LONG)ROTO_ZOOM_AMPLITUDE * 2L)) / (LONG)(ROTO_ZOOM_STEPS - 1));
 
         for (UWORD AngleIdx = 0; AngleIdx < ROTO_ANGLE_STEPS; ++AngleIdx)
         {
@@ -317,49 +307,13 @@ static void InitTexture(void)
     lwmf_DeleteImage(Image);
 }
 
-inline static void AdvanceAnimation(void)
-{
-    AnglePhase += 2;
-    ++ZoomPhase;
-    ++MovePhaseX;
-    MovePhaseY += 2;
-}
-
-static void RenderFrame(UBYTE Buffer)
-{
-    const UWORD AngleIndex = (UWORD)(AnglePhase / ROTO_ANGLE_PHASE_STEP);
-    const UWORD ZoomIndex = (UWORD)(((UWORD)SinTab256[ZoomPhase] * (ROTO_ZOOM_STEPS - 1)) / 63);
-    const RotoDelta* Delta = &DeltaTab[(ULONG)ZoomIndex * ROTO_ANGLE_STEPS + AngleIndex];
-
-    const WORD DuDx = Delta->DuDx;
-    const WORD DvDx = Delta->DvDx;
-    const WORD DuDy = (WORD)(-DvDx);
-    const WORD DvDy = DuDx;
-
-    const LONG CenterU = (LONG)(TEXTURE_WIDTH  >> 1) << 8;
-    const LONG CenterV = (LONG)(TEXTURE_HEIGHT >> 1) << 8;
-
-    RotoAsmParams Params;
-
-    Params.Texture = TexturePackedMid;
-    Params.Dest    = (UBYTE*)ScreenBitmap[Buffer]->Planes[0] + ROTO_START_BYTE;
-    Params.RowU    = (WORD)(CenterU + MoveTab[MovePhaseX] - ((LONG)ROTO_HALF_COLUMNS * DuDx) - ((LONG)ROTO_HALF_ROWS * DuDy));
-    Params.RowV    = (WORD)(CenterV + MoveTab[MovePhaseY] - ((LONG)ROTO_HALF_COLUMNS * DvDx) - ((LONG)ROTO_HALF_ROWS * DvDy));
-    Params.DuDx    = DuDx;
-    Params.DvDx    = DvDx;
-    Params.RowStepU = (WORD)((LONG)DuDy - ((LONG)ROTO_COLUMNS * (LONG)DuDx));
-    Params.RowStepV = (WORD)((LONG)DvDy - ((LONG)ROTO_COLUMNS * (LONG)DvDx));
-
-    DrawRotoBodyAsm(&Params);
-}
-
 // ---------------------------------------------------------------------
 // Copper
 // ---------------------------------------------------------------------
 
 static UWORD CopperWaitWord(UWORD VPos)
 {
-    return (UWORD)(((VPos & 0xFF) << 8) | 0x0001);
+    return (UWORD)(((VPos & 0xFFu) << 8) | 0x0001u);
 }
 
 static UWORD* CopperList = NULL;
@@ -393,7 +347,7 @@ static void Init_CopperList(void)
     CopperList[Index++] = 0x0104;
     CopperList[Index++] = 0x0000;
 
-    CopperList[Index++] = 0x0108;
+    CopperList[Index++] = 0x0108u;
     CopperList[Index++] = ROTO_REPEAT_MOD;
     CopperList[Index++] = 0x010A;
     CopperList[Index++] = ROTO_REPEAT_MOD;
@@ -491,9 +445,13 @@ int main(void)
 
     while (*CIAA_PRA & 0x40)
     {
+        AnglePhase += 2;
+        ++ZoomPhase;
+        ++MovePhaseX;
+        MovePhaseY += 2;
+
         DBG_COLOR(0x00F);
-        AdvanceAnimation();
-        RenderFrame(DrawBuffer);
+        RenderFrameAsm((UBYTE*)ScreenBitmap[DrawBuffer]->Planes[0] + ROTO_START_BYTE);
         DBG_COLOR(0x000);
 
         lwmf_WaitVertBlank();
