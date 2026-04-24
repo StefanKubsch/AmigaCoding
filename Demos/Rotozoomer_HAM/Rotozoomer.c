@@ -179,9 +179,7 @@ static void BuildDeltaTable(void)
 
     for (UWORD ZoomIdx = 0; ZoomIdx < ROTO_ZOOM_STEPS; ++ZoomIdx)
     {
-        const LONG Zoom =
-            (LONG)ROTO_ZOOM_BASE - (LONG)ROTO_ZOOM_AMPLITUDE +
-            (((LONG)ZoomIdx * ((LONG)ROTO_ZOOM_AMPLITUDE * 2L)) / (LONG)(ROTO_ZOOM_STEPS - 1));
+        const LONG Zoom = (LONG)ROTO_ZOOM_BASE - (LONG)ROTO_ZOOM_AMPLITUDE + (((LONG)ZoomIdx * ((LONG)ROTO_ZOOM_AMPLITUDE * 2L)) / (LONG)(ROTO_ZOOM_STEPS - 1));
 
         for (UWORD AngleIdx = 0; AngleIdx < ROTO_ANGLE_STEPS; ++AngleIdx)
         {
@@ -242,16 +240,16 @@ static void BuildDisplayPalette(const struct lwmf_Image* Image)
 {
     for (UWORD i = 0; i < SCREEN_COLORS; ++i)
     {
-        DisplayPalette[i] = 0x000u;
+        DisplayPalette[i] = 0x000;
     }
 
     DisplayPalette[0] = HAM_BACKGROUND_RGB4;
 
-    const UWORD Limit = (Image->NumberOfColors < 16u) ? Image->NumberOfColors : 16;
+    const UWORD Limit = (Image->NumberOfColors < 16) ? Image->NumberOfColors : 16;
 
     for (UWORD i = 1; i < Limit; ++i)
     {
-        DisplayPalette[i] = (UWORD)(Image->CRegs[i] & 0x0FFFu);
+        DisplayPalette[i] = (UWORD)(Image->CRegs[i] & 0x0FFF);
     }
 }
 
@@ -261,14 +259,14 @@ static void BuildTextureFromHAM(const struct lwmf_Image* Image)
 
     for (UWORD i = 0; i < 16; ++i)
     {
-        BasePal[i] = 0x000u;
+        BasePal[i] = 0x000;
     }
 
-    const UWORD Limit = (Image->NumberOfColors < 16u) ? Image->NumberOfColors : 16;
+    const UWORD Limit = (Image->NumberOfColors < 16) ? Image->NumberOfColors : 16;
 
     for (UWORD i = 0; i < Limit; ++i)
     {
-        BasePal[i] = (UWORD)(Image->CRegs[i] & 0x0FFFu);
+        BasePal[i] = (UWORD)(Image->CRegs[i] & 0x0FFF);
     }
 
     for (UWORD Y = 0; Y < TEXTURE_SOURCE_HEIGHT; ++Y)
@@ -279,7 +277,7 @@ static void BuildTextureFromHAM(const struct lwmf_Image* Image)
         for (UWORD X = 0; X < TEXTURE_SOURCE_WIDTH; ++X)
         {
             const UBYTE Pixel = GetPlanarPixel(&Image->Image, X, Y, Image->Image.Depth);
-            const UBYTE Data  = (UBYTE)(Pixel & 0x0Fu);
+            const UBYTE Data  = (UBYTE)(Pixel & 0x0F);
             const UBYTE Ctrl  = (UBYTE)(Pixel >> 4);
             const UWORD TexOffset = (UWORD)(RowOffset + (UWORD)(X * TEXTURE_PACKED_STRIDE));
             UWORD OutRGB;
@@ -287,19 +285,19 @@ static void BuildTextureFromHAM(const struct lwmf_Image* Image)
             switch (Ctrl)
             {
                 case 0:
-                    OutRGB = BasePal[Data & 0x0Fu];
+                    OutRGB = BasePal[Data & 0x0F];
                     break;
 
                 case 1:
-                    OutRGB = (UWORD)((CurrentRGB & 0x0FF0u) | Data);
+                    OutRGB = (UWORD)((CurrentRGB & 0x0FF0) | Data);
                     break;
 
                 case 2:
-                    OutRGB = (UWORD)((CurrentRGB & 0x00FFu) | ((UWORD)Data << 8));
+                    OutRGB = (UWORD)((CurrentRGB & 0x00FF) | ((UWORD)Data << 8));
                     break;
 
                 default:
-                    OutRGB = (UWORD)((CurrentRGB & 0x0F0Fu) | ((UWORD)Data << 4));
+                    OutRGB = (UWORD)((CurrentRGB & 0x0F0F) | ((UWORD)Data << 4));
                     break;
             }
 
@@ -322,8 +320,8 @@ static void InitTexture(void)
 inline static void AdvanceAnimation(void)
 {
     AnglePhase += 2;
-    ZoomPhase  += 1;
-    MovePhaseX += 1;
+    ++ZoomPhase;
+    ++MovePhaseX;
     MovePhaseY += 2;
 }
 
@@ -361,7 +359,7 @@ static void RenderFrame(UBYTE Buffer)
 
 static UWORD CopperWaitWord(UWORD VPos)
 {
-    return (UWORD)(((VPos & 0xFFu) << 8) | 0x0001u);
+    return (UWORD)(((VPos & 0xFF) << 8) | 0x0001);
 }
 
 static UWORD* CopperList = NULL;
@@ -379,68 +377,68 @@ static void Init_CopperList(void)
 
     UWORD Index = 0;
 
-    CopperList[Index++] = 0x008Eu;
+    CopperList[Index++] = 0x008E;
     CopperList[Index++] = ROTO_DIWSTRT;
-    CopperList[Index++] = 0x0090u;
+    CopperList[Index++] = 0x0090;
     CopperList[Index++] = ROTO_DIWSTOP;
-    CopperList[Index++] = 0x0092u;
+    CopperList[Index++] = 0x0092;
     CopperList[Index++] = ROTO_DDFSTRT;
-    CopperList[Index++] = 0x0094u;
+    CopperList[Index++] = 0x0094;
     CopperList[Index++] = ROTO_DDFSTOP;
 
-    CopperList[Index++] = 0x0100u;
-    CopperList[Index++] = (UWORD)((HAM_DISPLAY_BPU << 12) | 0x0A00u);
-    CopperList[Index++] = 0x0102u;
-    CopperList[Index++] = 0x0000u;
-    CopperList[Index++] = 0x0104u;
-    CopperList[Index++] = 0x0000u;
+    CopperList[Index++] = 0x0100;
+    CopperList[Index++] = (UWORD)((HAM_DISPLAY_BPU << 12) | 0x0A00);
+    CopperList[Index++] = 0x0102;
+    CopperList[Index++] = 0x0000;
+    CopperList[Index++] = 0x0104;
+    CopperList[Index++] = 0x0000;
 
-    CopperList[Index++] = 0x0108u;
+    CopperList[Index++] = 0x0108;
     CopperList[Index++] = ROTO_REPEAT_MOD;
-    CopperList[Index++] = 0x010Au;
+    CopperList[Index++] = 0x010A;
     CopperList[Index++] = ROTO_REPEAT_MOD;
 
-    CopperList[Index++] = 0x0118u;
+    CopperList[Index++] = 0x0118;
     CopperList[Index++] = HAM_CONTROL_WORD_P5;
-    CopperList[Index++] = 0x011Au;
+    CopperList[Index++] = 0x011A;
     CopperList[Index++] = HAM_CONTROL_WORD_P6;
 
     for (UWORD Plane = 0; Plane < NUMBEROFBITPLANES; ++Plane)
     {
-        CopperList[Index++] = (UWORD)(0x00E0u + (Plane * 4));
+        CopperList[Index++] = (UWORD)(0x00E0 + (Plane * 4));
         BPLPTH_Idx[Plane] = Index;
-        CopperList[Index++] = 0x0000u;
+        CopperList[Index++] = 0x0000;
 
-        CopperList[Index++] = (UWORD)(0x00E2u + (Plane * 4));
+        CopperList[Index++] = (UWORD)(0x00E2 + (Plane * 4));
         BPLPTL_Idx[Plane] = Index;
-        CopperList[Index++] = 0x0000u;
+        CopperList[Index++] = 0x0000;
     }
 
     for (UWORD c = 0; c < SCREEN_COLORS; ++c)
     {
-        CopperList[Index++] = (UWORD)(0x0180u + (c * 2));
+        CopperList[Index++] = (UWORD)(0x0180 + (c * 2));
         CopperList[Index++] = DisplayPalette[c];
     }
 
-    for (UWORD Line = 3; (Line + 1u) < ROTO_DISPLAY_HEIGHT; Line += 4)
+    for (UWORD Line = 3; (Line + 1) < ROTO_DISPLAY_HEIGHT; Line += 4)
     {
         CopperList[Index++] = CopperWaitWord((UWORD)(ROTO_VPOS_START + Line));
-        CopperList[Index++] = 0xFFFEu;
-        CopperList[Index++] = 0x0108u;
+        CopperList[Index++] = 0xFFFE;
+        CopperList[Index++] = 0x0108;
         CopperList[Index++] = ROTO_ADVANCE_MOD;
-        CopperList[Index++] = 0x010Au;
+        CopperList[Index++] = 0x010A;
         CopperList[Index++] = ROTO_ADVANCE_MOD;
 
-        CopperList[Index++] = CopperWaitWord((UWORD)(ROTO_VPOS_START + Line + 1u));
-        CopperList[Index++] = 0xFFFEu;
-        CopperList[Index++] = 0x0108u;
+        CopperList[Index++] = CopperWaitWord((UWORD)(ROTO_VPOS_START + Line + 1));
+        CopperList[Index++] = 0xFFFE;
+        CopperList[Index++] = 0x0108;
         CopperList[Index++] = ROTO_REPEAT_MOD;
-        CopperList[Index++] = 0x010Au;
+        CopperList[Index++] = 0x010A;
         CopperList[Index++] = ROTO_REPEAT_MOD;
     }
 
-    CopperList[Index++] = 0xFFFFu;
-    CopperList[Index++] = 0xFFFEu;
+    CopperList[Index++] = 0xFFFF;
+    CopperList[Index++] = 0xFFFE;
 
     *COP1LC = (ULONG)CopperList;
 }
@@ -452,7 +450,7 @@ inline static void Update_BitplanePointers(UBYTE Buffer)
     for (UWORD Plane = 0; Plane < NUMBEROFBITPLANES; ++Plane)
     {
         CopperList[BPLPTH_Idx[Plane]] = (UWORD)(Ptr >> 16);
-        CopperList[BPLPTL_Idx[Plane]] = (UWORD)(Ptr & 0xFFFFu);
+        CopperList[BPLPTL_Idx[Plane]] = (UWORD)(Ptr & 0xFFFF);
         Ptr += BYTESPERROW;
     }
 }
@@ -489,23 +487,18 @@ int main(void)
 
     lwmf_TakeOverOS();
 
-    UBYTE ViewBuffer = 0;
     UBYTE DrawBuffer = 1;
-
-    RenderFrame(ViewBuffer);
-    Update_BitplanePointers(ViewBuffer);
 
     while (*CIAA_PRA & 0x40)
     {
-        DBG_COLOR(0x00Fu);
+        DBG_COLOR(0x00F);
         AdvanceAnimation();
         RenderFrame(DrawBuffer);
-        DBG_COLOR(0x000u);
+        DBG_COLOR(0x000);
 
         lwmf_WaitVertBlank();
         Update_BitplanePointers(DrawBuffer);
 
-        ViewBuffer ^= 1;
         DrawBuffer ^= 1;
     }
 
