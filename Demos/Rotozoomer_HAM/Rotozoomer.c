@@ -19,7 +19,7 @@
 // Debugging
 // ---------------------------------------------------------------------
 
-#define DEBUG 0
+#define DEBUG 1
 
 #if DEBUG
 #define DBG_COLOR(c) (*COLOR00 = (c))
@@ -78,10 +78,11 @@ extern void RenderFrameAsm(__reg("a0") UBYTE* Dest);
 #define ROTO_VPOS_STOP          (ROTO_VPOS_START + ROTO_DISPLAY_HEIGHT)
 #define ROTO_DIWSTRT            (UWORD)(((ROTO_VPOS_START & 0xFF) << 8) | 0x0081)
 #define ROTO_DIWSTOP            (UWORD)(((ROTO_VPOS_STOP  & 0xFF) << 8) | 0x00C1)
-
-// Center the 208-pixel playfield inside the normal 320-pixel lowres window
-// by shrinking the data fetch symmetrically on both sides. In lowres, one
-// byte (8 pixels) corresponds to a DDF delta of 0x04.
+/*
+ * Center the 208-pixel playfield inside the normal 320-pixel lowres window
+ * by shrinking the data fetch symmetrically on both sides. In lowres, one
+ * byte (8 pixels) corresponds to a DDF delta of 0x04.
+ */
 #define ROTO_DDFSTRT            (0x0038 + (ROTO_DDF_SHIFT_BYTES * 4))
 #define ROTO_DDFSTOP            (0x00D0 - (ROTO_DDF_SHIFT_BYTES * 4))
 
@@ -101,22 +102,16 @@ extern void RenderFrameAsm(__reg("a0") UBYTE* Dest);
 
 typedef struct
 {
-    WORD StartUcOffset;
-    WORD StartUlOffset;
-    WORD StartVTransOffset;
-    WORD RowStepUc;
-    WORD DuC;
-    WORD RowStepUl;
-    WORD DuL;
-    WORD RowStepVTrans;
-    WORD DvDxTrans;
+    ULONG PackedV;
+    ULONG PackedStart;
+    ULONG PackedU;
 } RotoDelta;
 
 WORD MoveTabUcBase[256];
 WORD MoveTabVTransBase[256];
-RotoDelta* ZoomDeltaBasePtrTab[256];
-UWORD AngleDeltaOffsetTab[256];
+WORD ZoomDeltaRowOffsetTab[256];
 RotoDelta* DeltaTab = NULL;
+RotoDelta* DeltaTabMid = NULL;
 static ULONG DeltaTabSize = 0;
 
 // ---------------------------------------------------------------------
@@ -139,10 +134,12 @@ const UBYTE SinTab256[256] =
 // Texture, palette and animation state
 // ---------------------------------------------------------------------
 
-// TexturePackedHi contains the high-nibble contribution for texel 0 in a pair.
-// TexturePackedLo contains the pre-shifted low-nibble contribution for texel 1.
-// Both tables live in one CPU-only allocation so the hotloop can drop a
-// 68000 long-word shift per PROCESS_PAIR.
+/*
+ * TexturePackedHi contains the high-nibble contribution for texel 0 in a pair.
+ * TexturePackedLo contains the pre-shifted low-nibble contribution for texel 1.
+ * Both tables live in one CPU-only allocation so the hotloop can drop a
+ * 68000 long-word shift per PROCESS_PAIR.
+ */
 static UBYTE* TexturePackedBlock = NULL;
 static UBYTE* TexturePackedHi = NULL;
 static UBYTE* TexturePackedLo = NULL;
@@ -215,25 +212,16 @@ static WORD Low6Quad(WORD Value)
     return (WORD)((((UWORD)Value) & 0x003F) << 2);
 }
 
-static void BuildAngleDeltaOffsetTable(void)
+static void BuildZoomDeltaRowOffsetTab(void)
 {
-    for (UWORD i = 0; i < 256; ++i)
-    {
-        AngleDeltaOffsetTab[i] = (UWORD)(((i >> 1) & (ROTO_ANGLE_STEPS - 1)) * sizeof(RotoDelta));
-    }
-}
-
-static void BuildZoomDeltaBasePtrTab(void)
-{
-    for (UWORD i = 0; i < 256; ++i)
-    {
-        ZoomDeltaBasePtrTab[i] = NULL;
-    }
+    const LONG MidOffset = (LONG)(DeltaTabSize / 2UL);
+    const LONG RowBytes = (LONG)ROTO_ANGLE_STEPS * (LONG)sizeof(RotoDelta);
 
     for (UWORD i = 0; i < 256; ++i)
     {
-        const ULONG ZoomIndex = (((ULONG)SinTab256[i] * 31UL) / 63UL);
-        ZoomDeltaBasePtrTab[i] = &DeltaTab[ZoomIndex * (ULONG)ROTO_ANGLE_STEPS];
+        const LONG ZoomIndex = (LONG)(((ULONG)SinTab256[i] * 31UL) / 63UL);
+
+        ZoomDeltaRowOffsetTab[i] = (WORD)((ZoomIndex * RowBytes) - MidOffset);
     }
 }
 
@@ -241,8 +229,9 @@ static void BuildDeltaTable(void)
 {
     DeltaTabSize = (ULONG)ROTO_ZOOM_STEPS * (ULONG)ROTO_ANGLE_STEPS * sizeof(RotoDelta);
     DeltaTab = (RotoDelta*)lwmf_AllocCpuMem(DeltaTabSize, MEMF_CLEAR);
+    DeltaTabMid = (RotoDelta*)((UBYTE*)DeltaTab + (DeltaTabSize / 2UL));
 
-    BuildZoomDeltaBasePtrTab();
+    BuildZoomDeltaRowOffsetTab();
 
     for (UWORD ZoomIdx = 0; ZoomIdx < ROTO_ZOOM_STEPS; ++ZoomIdx)
     {
@@ -258,26 +247,38 @@ static void BuildDeltaTable(void)
             const WORD StartUOffset = (WORD)(-((LONG)ROTO_HALF_COLUMNS * (LONG)DuDx) + ((LONG)ROTO_HALF_ROWS * (LONG)DvDx));
             const WORD StartVOffset = (WORD)(-((LONG)ROTO_HALF_COLUMNS * (LONG)DvDx) - ((LONG)ROTO_HALF_ROWS * (LONG)DuDx));
             const WORD RowStepU = (WORD)(-((LONG)DvDx + ((LONG)ROTO_COLUMNS * (LONG)DuDx)));
+            const WORD StartUcOffset = (WORD)(((UWORD)StartUOffset) >> 6);
+            const WORD StartVTransOffset = (WORD)(2L * (LONG)StartVOffset);
+            const WORD RowStepUc = Asr6Word(RowStepU);
+            const WORD StartUlOffset = Low6Quad(StartUOffset);
+            const WORD DuC = Asr6Word(DuDx);
+            const WORD RowStepUl = Low6Quad(RowStepU);
+            const WORD DuL = Low6Quad(DuDx);
             const LONG RowStepVTrans = 2L * ((LONG)DuDx - ((LONG)ROTO_COLUMNS * (LONG)DvDx));
-
-            // The field order keeps the per-frame renderer-friendly pairs
-            // contiguous so ASM can pull them with MOVE.L: [RowStepUc|DuC],
-            // [RowStepUl|DuL] and [RowStepVTrans|DvDxTrans].
+            const WORD DvDxTrans = (WORD)(2L * (LONG)DvDx);
             RotoDelta* Delta = &DeltaTab[(ULONG)ZoomIdx * ROTO_ANGLE_STEPS + AngleIdx];
 
-            Delta->StartUcOffset = (WORD)(((UWORD)StartUOffset) >> 6);
-            Delta->StartUlOffset = Low6Quad(StartUOffset);
-            Delta->StartVTransOffset = (WORD)(2L * (LONG)StartVOffset);
-            Delta->RowStepUc = Asr6Word(RowStepU);
-            Delta->DuC = Asr6Word(DuDx);
-            Delta->RowStepUl = Low6Quad(RowStepU);
-            Delta->DuL = Low6Quad(DuDx);
-            Delta->RowStepVTrans = (WORD)RowStepVTrans;
-            Delta->DvDxTrans = (WORD)(2L * (LONG)DvDx);
+            /*
+             * Compact 12-byte delta layout:
+             *   PackedV     = [RowStepVTrans:16 | DvDxTrans:16]
+             *   PackedStart = [StartVTransOffset:16 | StartUcOffset:16]
+             *   PackedU     = [RowStepUc+512:10 | StartUl>>2:6 |
+             *                  RowStepUl>>2:6 | DuL>>2:6 | DuC+8:4]
+             *
+             * The hotloop format stays unchanged. ASM only reconstructs the
+             * same split start/step state once per frame from this tighter
+             * representation.
+             */
+            Delta->PackedV = ((ULONG)(UWORD)RowStepVTrans << 16) | (UWORD)DvDxTrans;
+            Delta->PackedStart = ((ULONG)(UWORD)StartVTransOffset << 16) | (UWORD)StartUcOffset;
+            Delta->PackedU =
+                ((ULONG)(UWORD)(RowStepUc + 512) << 22) |
+                ((ULONG)(UWORD)(StartUlOffset >> 2) << 16) |
+                ((ULONG)(UWORD)(RowStepUl >> 2) << 10) |
+                ((ULONG)(UWORD)(DuL >> 2) << 4) |
+                (ULONG)(UWORD)(DuC + 8);
         }
     }
-
-    BuildZoomDeltaBasePtrTab();
 }
 
 static ULONG PackHamContributionHi(UWORD Color)
@@ -297,10 +298,12 @@ static ULONG PackHamContributionHi(UWORD Color)
         PlaneNibble[Plane] = (UBYTE)((BitR << 3) | (BitG << 2) | (BitB << 1) | BitB);
     }
 
-    // Packed result for the first texel in the pair:
-    // [P3|P2|P1|P0] with the nibble in the high half of each byte.
-    // The second table stores the matching low-nibble form so the
-    // assembler no longer needs to shift texel 1 at runtime.
+    /*
+     * Packed result for the first texel in the pair:
+     * [P3|P2|P1|P0] with the nibble in the high half of each byte.
+     * The second table stores the matching low-nibble form so the
+     * assembler no longer needs to shift texel 1 at runtime.
+     */
     return
         ((ULONG)PlaneNibble[3] << 28) |
         ((ULONG)PlaneNibble[2] << 20) |
@@ -312,7 +315,6 @@ static void AllocTexturePacked(void)
 {
     TexturePackedSize = TEXTURE_PACKED_TOTAL_BYTES * 2UL;
     TexturePackedBlock = (UBYTE*)lwmf_AllocCpuMem(TexturePackedSize, MEMF_CLEAR);
-
     TexturePackedHi = TexturePackedBlock;
     TexturePackedLo = TexturePackedBlock + TEXTURE_PACKED_TOTAL_BYTES;
     TexturePackedMidHi = (ULONG*)(TexturePackedHi + TEXTURE_PACKED_CENTER);
@@ -411,8 +413,16 @@ static void InitTexture(void)
 
 static void InitRotoBuffers(void)
 {
-    RotoBuffers[0] = (UBYTE*)AllocMem(ROTO_VISIBLE_BYTES, MEMF_CHIP | MEMF_CLEAR);
-    RotoBuffers[1] = (UBYTE*)AllocMem(ROTO_VISIBLE_BYTES, MEMF_CHIP | MEMF_CLEAR);
+    /*
+     * Store each rendered plane as one contiguous 26x48 block. That keeps the
+     * visible image identical, but the renderer no longer has to skip over the
+     * other three planes at the end of every row. The Copper now advances to
+     * the next source row with modulo 0 after each 4-line stretch.
+     */
+    for (UWORD i = 0; i < 2; ++i)
+    {
+        RotoBuffers[i] = (UBYTE*)AllocMem(ROTO_VISIBLE_BYTES, MEMF_CHIP | MEMF_CLEAR);
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -552,12 +562,8 @@ static void Cleanup_All(void)
 
     FreeMem(DeltaTab, DeltaTabSize);
     DeltaTab = NULL;
+    DeltaTabMid = NULL;
     DeltaTabSize = 0;
-
-    for (UWORD i = 0; i < 256; ++i)
-    {
-        ZoomDeltaBasePtrTab[i] = NULL;
-    }
 
     for (UWORD i = 0; i < 2; ++i)
     {
@@ -572,14 +578,13 @@ int main(void)
 {
     lwmf_LoadGraphicsLib();
 
-    BuildAngleDeltaOffsetTable();
     BuildMoveBaseTables();
     BuildDeltaTable();
     InitTexture();
     InitRotoBuffers();
-
     Init_CopperList();
 
+    Update_BitplanePointers(0);
     lwmf_TakeOverOS();
 
     UBYTE DrawBuffer = 1;
@@ -591,11 +596,12 @@ int main(void)
         ++MovePhaseX;
         MovePhaseY += 2;
 
-        DBG_COLOR(0x00F);
         RenderFrameAsm(RotoBuffers[DrawBuffer]);
-        DBG_COLOR(0x000);
+        DBG_COLOR(0x00F);
 
         lwmf_WaitVertBlank();
+                DBG_COLOR(0x000);
+
         Update_BitplanePointers(DrawBuffer);
 
         DrawBuffer ^= 1;
