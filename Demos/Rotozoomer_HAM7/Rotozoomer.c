@@ -1,42 +1,34 @@
 //**********************************************************************
 //* 4x4 HAM7 Rotozoomer                                                *
 //*                                                                    *
-//* Debug stage: phase-0 soft-C2P vs scrambled blitter C2P          *
+//* Working HAM7 baseline with assembler row-swap and blitter extract.             *
 //*                                                                    *
-//* This stage keeps the proven phase-0 HAM7 sampler/encoder path,     *
-//* but shows the same animated rotozoom twice:                        *
-//*   - top half: proven phase-0 encoded words -> CPU soft-C2P         *
-//*   - bottom half: same phase-0 decisions -> scrambled words ->      *
-//*                  blitter C2P                                       *
+//* Proven so far:                                                     *
+//*   - sampler / UV / rotation                                        *
+//*   - phase-0 HAM7 encoder (RGBB)                                    *
+//*   - direct CPU planar output                                       *
+//*   - scrambled-word layout                                          *
+//*   - blitter extract stage                                          *
 //*                                                                    *
-//* This isolates the remaining unresolved block to the scramble+blit  *
-//* side, while keeping sampler, UV path and phase-0 HAM encoder fixed.*
+//* Still intentionally bypassed for now:                              *
+//*   - blitter 8x2 swap stage                                         *
 //*                                                                    *
-//* Proven already:                                                    *
-//*   - plain 4bpl base display                                        *
-//*   - HAM enabled with direct palette pixels                         *
-//*   - fixed-control HAM path needs phase 0 (RGBB)                    *
-//*                                                                    *
-//* This build therefore does:                                         *
-//*   - real 128x128 HAM texture decode to RGB4                        *
-//*   - real rotozoom animation                                        *
-//*   - fixed RGBB phase 0 encoder                                     *
-//*   - top: proven nibble-packed soft-C2P                             *
-//*   - bottom: DESiRE-style scrambled words + blitter C2P             *
-//*                                                                    *
-//* Still intentionally disabled:                                      *
-//*   - assembler hotloop                                              *
+//* This build therefore uses:                                         *
+//*   - CPU sample + phase-0 HAM7 encode to scrambled words            *
+//*   - assembler row-swap into the proven ChunkyTmp layout                  *
+//*   - blitter extract into the 4 DMA bitplanes                       *
+//*   - 4x vertical repeat by row copy                                 *
 //*                                                                    *
 //* Target: Amiga 500 OCS, 68000, 512k Chip + 512k Slow                *
 //* Project style: C99 / vbcc + vasm, lwmf framework                   *
 //**********************************************************************
-
 #include "lwmf/lwmf.h"
 #include <stddef.h>
 
-extern void RunC2PBlitAsm(__reg("a0") const UWORD* Chunky,
-                          __reg("a1") UBYTE* Planar,
-                          __reg("a2") UBYTE* Temp);
+extern void RunC2PExtractAsm(__reg("a0") const UWORD* Temp,
+                            __reg("a1") UBYTE* Planar);
+extern void CpuSwapScrambledRowAsm(__reg("a0") const UWORD* ScrambledRow,
+                                   __reg("a1") UWORD* TempRow);
 
 #define DEBUG 1
 #if DEBUG
@@ -106,15 +98,10 @@ extern void RunC2PBlitAsm(__reg("a0") const UWORD* Chunky,
 #define HAM_PHASE0_R_INDEX              0
 #define HAM_PHASE0_G_INDEX              1
 #define HAM_PHASE0_B_INDEX              2
-#define COMPARE_ROW_REPEAT             2
-#define COMPARE_HALF_HEIGHT            (ROTO_ROWS * COMPARE_ROW_REPEAT)
-#define COMPARE_TOP_Y                  0
-#define COMPARE_BOTTOM_Y               COMPARE_HALF_HEIGHT
+
 #define BLIT_COMPARE_ROWS              ROTO_ROWS
-#define BLIT_COMPARE_PLANE_BYTES       ((UWORD)(ROTO_PLANE_STRIDE * BLIT_COMPARE_ROWS))
+#define BLIT_COMPARE_PLANE_BYTES       ((UWORD)(ROTO_FETCH_BYTES * BLIT_COMPARE_ROWS))
 #define BLIT_COMPARE_SCREEN_BYTES      ((ULONG)BLIT_COMPARE_PLANE_BYTES * (ULONG)ROTO_DMA_BITPLANES)
-#define BLIT_COMPARE_CHUNKY_WORDS      ((ULONG)ROTO_COLUMNS * (ULONG)BLIT_COMPARE_ROWS)
-#define BLIT_COMPARE_CHUNKY_BYTES      (BLIT_COMPARE_CHUNKY_WORDS * (ULONG)sizeof(UWORD))
 
 typedef struct RotoRowStateTag
 {
@@ -157,8 +144,6 @@ static UWORD* TextureRGB4 = NULL;
 static ULONG TextureRGB4Size = 0;
 static UWORD DisplayPalette[SCREEN_COLORS];
 static UBYTE* ScreenBuffers[BUFFER_COUNT] = { NULL, NULL };
-static UWORD* BlitChunkyBuffer = NULL;
-static ULONG BlitChunkyBufferSize = 0;
 static UBYTE* BlitPlanarBuffer = NULL;
 static ULONG BlitPlanarBufferSize = 0;
 static UBYTE* C2PTempBuffer = NULL;
@@ -171,24 +156,6 @@ static RotoFrameBlock* FrameBlocks = NULL;
 static ULONG FrameBlocksSize = 0;
 static RotoFrameBlock* CurrentFrameBlock = NULL;
 static RotoFrameBlock* FrameBlocksEnd = NULL;
-
-static const UWORD ScrambledRed[16] =
-{
-    0x0000,0x0008,0x0080,0x0088,0x0800,0x0808,0x0880,0x0888,
-    0x8000,0x8008,0x8080,0x8088,0x8800,0x8808,0x8880,0x8888
-};
-
-static const UWORD ScrambledGreen[16] =
-{
-    0x0000,0x0004,0x0040,0x0044,0x0400,0x0404,0x0440,0x0444,
-    0x4000,0x4004,0x4040,0x4044,0x4400,0x4404,0x4440,0x4444
-};
-
-static const UWORD ScrambledBlue[16] =
-{
-    0x0000,0x0003,0x0030,0x0033,0x0300,0x0303,0x0330,0x0333,
-    0x3000,0x3003,0x3030,0x3033,0x3300,0x3303,0x3330,0x3333
-};
 
 static UBYTE RGB4_R(UWORD RGB4) { return (UBYTE)((RGB4 >> 8) & 0x0FU); }
 static UBYTE RGB4_G(UWORD RGB4) { return (UBYTE)((RGB4 >> 4) & 0x0FU); }
@@ -281,27 +248,23 @@ static void WriteLogicalPixelPhase0(UBYTE* P0, UBYTE* P1, UBYTE* P2, UBYTE* P3,
     Prev->B = EncB;
 }
 
-static UWORD EncodeLogicalPixelPhase0(UWORD RGB4, RGBState* Prev)
+static const UWORD ScrambledRed[16] =
 {
-    const UBYTE TargetR = RGB4_R(RGB4);
-    const UBYTE TargetG = RGB4_G(RGB4);
-    const UBYTE TargetB = RGB4_B(RGB4);
-    const UBYTE EncR = EncodeChannel(Prev->R, TargetR, HAM_PHASE0_R_INDEX);
-    const UBYTE EncG = EncodeChannel(Prev->G, TargetG, HAM_PHASE0_G_INDEX);
-    const UBYTE EncB = EncodeChannel(Prev->B, TargetB, HAM_PHASE0_B_INDEX);
-    UWORD Word = 0;
+    0x0000,0x0008,0x0080,0x0088,0x0800,0x0808,0x0880,0x0888,
+    0x8000,0x8008,0x8080,0x8088,0x8800,0x8808,0x8880,0x8888
+};
 
-    Word |= (UWORD)EncR << 12;
-    Word |= (UWORD)EncG << 8;
-    Word |= (UWORD)EncB << 4;
-    Word |= (UWORD)EncB;
+static const UWORD ScrambledGreen[16] =
+{
+    0x0000,0x0004,0x0040,0x0044,0x0400,0x0404,0x0440,0x0444,
+    0x4000,0x4004,0x4040,0x4044,0x4400,0x4404,0x4440,0x4444
+};
 
-    Prev->R = EncR;
-    Prev->G = EncG;
-    Prev->B = EncB;
-
-    return Word;
-}
+static const UWORD ScrambledBlue[16] =
+{
+    0x0000,0x0003,0x0030,0x0033,0x0300,0x0303,0x0330,0x0333,
+    0x3000,0x3003,0x3030,0x3033,0x3300,0x3303,0x3330,0x3333
+};
 
 static UWORD EncodeLogicalPixelPhase0Scrambled(UWORD RGB4, RGBState* Prev)
 {
@@ -320,48 +283,9 @@ static UWORD EncodeLogicalPixelPhase0Scrambled(UWORD RGB4, RGBState* Prev)
     return Word;
 }
 
-static void SoftC2PEncodedRow(const UWORD* EncodedRow,
-                              UBYTE* P0, UBYTE* P1, UBYTE* P2, UBYTE* P3)
+static void CpuSwapScrambledRow(const UWORD* ScrambledRow, UWORD* TempRow)
 {
-    UWORD ByteIndex;
-
-    for (ByteIndex = 0; ByteIndex < ROTO_FETCH_BYTES; ++ByteIndex)
-    {
-        const UWORD WordA = EncodedRow[(UWORD)(ByteIndex * 2U) + 0U];
-        const UWORD WordB = EncodedRow[(UWORD)(ByteIndex * 2U) + 1U];
-        const UBYTE Nibbles[8] =
-        {
-            (UBYTE)((WordA >> 12) & 0x0FU),
-            (UBYTE)((WordA >>  8) & 0x0FU),
-            (UBYTE)((WordA >>  4) & 0x0FU),
-            (UBYTE)( WordA        & 0x0FU),
-            (UBYTE)((WordB >> 12) & 0x0FU),
-            (UBYTE)((WordB >>  8) & 0x0FU),
-            (UBYTE)((WordB >>  4) & 0x0FU),
-            (UBYTE)( WordB        & 0x0FU)
-        };
-        UBYTE Out0 = 0;
-        UBYTE Out1 = 0;
-        UBYTE Out2 = 0;
-        UBYTE Out3 = 0;
-        UBYTE Pixel;
-
-        for (Pixel = 0; Pixel < 8U; ++Pixel)
-        {
-            const UBYTE Mask = (UBYTE)(1U << (7U - Pixel));
-            const UBYTE N = Nibbles[Pixel];
-
-            if (N & 0x01U) Out0 |= Mask;
-            if (N & 0x02U) Out1 |= Mask;
-            if (N & 0x04U) Out2 |= Mask;
-            if (N & 0x08U) Out3 |= Mask;
-        }
-
-        P0[ByteIndex] = Out0;
-        P1[ByteIndex] = Out1;
-        P2[ByteIndex] = Out2;
-        P3[ByteIndex] = Out3;
-    }
+    CpuSwapScrambledRowAsm(ScrambledRow, TempRow);
 }
 
 static void CopyPlaneRowToScreen(UBYTE* Screen,
@@ -396,14 +320,17 @@ static void ClearByteBuffer(UBYTE* Buffer, ULONG Size)
     }
 }
 
-static void CopyBlitRowToScreen(UBYTE* Screen, UWORD DestY, UWORD SourceY)
+static void CopyPlanarBufferRowToScreen(UBYTE* Screen,
+                                        UWORD DestY,
+                                        const UBYTE* PlanarBuffer,
+                                        UWORD SourceY)
 {
-    const ULONG SrcOffset = (ULONG)SourceY * (ULONG)ROTO_PLANE_STRIDE;
+    const ULONG SrcOffset = (ULONG)SourceY * (ULONG)ROTO_FETCH_BYTES;
     const ULONG DstOffset = (ULONG)DestY * (ULONG)ROTO_PLANE_STRIDE;
-    const UBYTE* Src0 = BlitPlanarBuffer + ((ULONG)0 * (ULONG)BLIT_COMPARE_PLANE_BYTES) + SrcOffset;
-    const UBYTE* Src1 = BlitPlanarBuffer + ((ULONG)1 * (ULONG)BLIT_COMPARE_PLANE_BYTES) + SrcOffset;
-    const UBYTE* Src2 = BlitPlanarBuffer + ((ULONG)2 * (ULONG)BLIT_COMPARE_PLANE_BYTES) + SrcOffset;
-    const UBYTE* Src3 = BlitPlanarBuffer + ((ULONG)3 * (ULONG)BLIT_COMPARE_PLANE_BYTES) + SrcOffset;
+    const UBYTE* Src0 = PlanarBuffer + ((ULONG)0 * (ULONG)BLIT_COMPARE_PLANE_BYTES) + SrcOffset;
+    const UBYTE* Src1 = PlanarBuffer + ((ULONG)1 * (ULONG)BLIT_COMPARE_PLANE_BYTES) + SrcOffset;
+    const UBYTE* Src2 = PlanarBuffer + ((ULONG)2 * (ULONG)BLIT_COMPARE_PLANE_BYTES) + SrcOffset;
+    const UBYTE* Src3 = PlanarBuffer + ((ULONG)3 * (ULONG)BLIT_COMPARE_PLANE_BYTES) + SrcOffset;
     UBYTE* Dst0 = Screen + ((ULONG)0 * (ULONG)ROTO_PLANE_BYTES) + DstOffset;
     UBYTE* Dst1 = Screen + ((ULONG)1 * (ULONG)ROTO_PLANE_BYTES) + DstOffset;
     UBYTE* Dst2 = Screen + ((ULONG)2 * (ULONG)ROTO_PLANE_BYTES) + DstOffset;
@@ -604,9 +531,6 @@ static void InitScreenBuffers(void)
         ScreenBuffers[i] = (UBYTE*)AllocMem(ROTO_SCREEN_BYTES, MEMF_CHIP | MEMF_CLEAR);
     }
 
-    BlitChunkyBufferSize = BLIT_COMPARE_CHUNKY_BYTES;
-    BlitChunkyBuffer = (UWORD*)AllocMem(BlitChunkyBufferSize, MEMF_CHIP | MEMF_CLEAR);
-
     BlitPlanarBufferSize = BLIT_COMPARE_SCREEN_BYTES;
     BlitPlanarBuffer = (UBYTE*)AllocMem(BlitPlanarBufferSize, MEMF_CHIP | MEMF_CLEAR);
 
@@ -623,34 +547,25 @@ static void ClearWholeScreen(UBYTE* Screen)
     }
 }
 
-static void RenderCompareFrame(const RotoFrameBlock* Frame, UBYTE* Screen)
+static void RenderHam7Frame(const RotoFrameBlock* Frame, UBYTE* Screen)
 {
     UWORD LogicalRow;
-    UBYTE SoftP0[ROTO_FETCH_BYTES];
-    UBYTE SoftP1[ROTO_FETCH_BYTES];
-    UBYTE SoftP2[ROTO_FETCH_BYTES];
-    UBYTE SoftP3[ROTO_FETCH_BYTES];
-    UWORD EncodedRow[ROTO_COLUMNS];
+    UWORD Rep;
 
-    ClearWholeScreen(Screen);
-    ClearByteBuffer((UBYTE*)BlitChunkyBuffer, BlitChunkyBufferSize);
-    ClearByteBuffer(BlitPlanarBuffer, BlitPlanarBufferSize);
-    ClearByteBuffer(C2PTempBuffer, C2PTempBufferSize);
+    /* Screen, Temp and Planar buffers are fully overwritten each frame. */
 
     for (LogicalRow = 0; LogicalRow < ROTO_ROWS; ++LogicalRow)
     {
         WORD U = Frame->Rows[LogicalRow].StartU;
         WORD V = Frame->Rows[LogicalRow].StartV;
-        RGBState PrevSoft;
-        RGBState PrevBlit;
+        RGBState Prev;
         UWORD LogicalColumn;
-        UWORD Rep;
-        UWORD* BlitRow = BlitChunkyBuffer + ((ULONG)LogicalRow * (ULONG)ROTO_COLUMNS);
+        UWORD ScrambledRow[ROTO_COLUMNS];
+        UWORD* TempRow = (UWORD*)C2PTempBuffer + ((ULONG)LogicalRow * (ULONG)ROTO_COLUMNS);
 
-        PrevSoft.R = (UBYTE)((HAM_BACKGROUND_RGB4 >> 8) & 0x0FU);
-        PrevSoft.G = (UBYTE)((HAM_BACKGROUND_RGB4 >> 4) & 0x0FU);
-        PrevSoft.B = (UBYTE)(HAM_BACKGROUND_RGB4 & 0x0FU);
-        PrevBlit = PrevSoft;
+        Prev.R = (UBYTE)((HAM_BACKGROUND_RGB4 >> 8) & 0x0FU);
+        Prev.G = (UBYTE)((HAM_BACKGROUND_RGB4 >> 4) & 0x0FU);
+        Prev.B = (UBYTE)(HAM_BACKGROUND_RGB4 & 0x0FU);
 
         for (LogicalColumn = 0; LogicalColumn < ROTO_COLUMNS; ++LogicalColumn)
         {
@@ -658,33 +573,25 @@ static void RenderCompareFrame(const RotoFrameBlock* Frame, UBYTE* Screen)
             const UBYTE Vc = (UBYTE)(((UWORD)V) >> 8);
             const UWORD RGB4 = TextureRGB4[((UWORD)(Vc & 0x7FU) << 7) | (UWORD)(Uc & 0x7FU)];
 
-            EncodedRow[LogicalColumn] = EncodeLogicalPixelPhase0(RGB4, &PrevSoft);
-            BlitRow[LogicalColumn] = EncodeLogicalPixelPhase0Scrambled(RGB4, &PrevBlit);
+            ScrambledRow[LogicalColumn] = EncodeLogicalPixelPhase0Scrambled(RGB4, &Prev);
 
             U = (WORD)(U + Frame->DuDx);
             V = (WORD)(V + Frame->DvDx);
         }
 
-        SoftC2PEncodedRow(EncodedRow, SoftP0, SoftP1, SoftP2, SoftP3);
-
-        for (Rep = 0; Rep < COMPARE_ROW_REPEAT; ++Rep)
-        {
-            CopyPlaneRowToScreen(Screen,
-                                 (UWORD)(COMPARE_TOP_Y + (LogicalRow * COMPARE_ROW_REPEAT) + Rep),
-                                 SoftP0, SoftP1, SoftP2, SoftP3);
-        }
+        CpuSwapScrambledRow(ScrambledRow, TempRow);
     }
 
-    RunC2PBlitAsm(BlitChunkyBuffer, BlitPlanarBuffer, C2PTempBuffer);
+    RunC2PExtractAsm((const UWORD*)C2PTempBuffer, BlitPlanarBuffer);
 
     for (LogicalRow = 0; LogicalRow < ROTO_ROWS; ++LogicalRow)
     {
-        UWORD Rep;
-        for (Rep = 0; Rep < COMPARE_ROW_REPEAT; ++Rep)
+        for (Rep = 0; Rep < ROTO_PIXEL_SCALE; ++Rep)
         {
-            CopyBlitRowToScreen(Screen,
-                                (UWORD)(COMPARE_BOTTOM_Y + (LogicalRow * COMPARE_ROW_REPEAT) + Rep),
-                                LogicalRow);
+            CopyPlanarBufferRowToScreen(Screen,
+                                        (UWORD)(LogicalRow * ROTO_PIXEL_SCALE + Rep),
+                                        BlitPlanarBuffer,
+                                        LogicalRow);
         }
     }
 }
@@ -753,6 +660,20 @@ static void Cleanup_All(void)
 {
     UWORD i;
 
+    if (BlitPlanarBuffer != NULL)
+    {
+        FreeMem(BlitPlanarBuffer, BlitPlanarBufferSize);
+        BlitPlanarBuffer = NULL;
+        BlitPlanarBufferSize = 0;
+    }
+
+    if (C2PTempBuffer != NULL)
+    {
+        FreeMem(C2PTempBuffer, C2PTempBufferSize);
+        C2PTempBuffer = NULL;
+        C2PTempBufferSize = 0;
+    }
+
     if (CopperList != NULL)
     {
         FreeMem(CopperList, CopperListSize);
@@ -785,27 +706,6 @@ static void Cleanup_All(void)
         }
     }
 
-    if (BlitChunkyBuffer != NULL)
-    {
-        FreeMem(BlitChunkyBuffer, BlitChunkyBufferSize);
-        BlitChunkyBuffer = NULL;
-        BlitChunkyBufferSize = 0;
-    }
-
-    if (BlitPlanarBuffer != NULL)
-    {
-        FreeMem(BlitPlanarBuffer, BlitPlanarBufferSize);
-        BlitPlanarBuffer = NULL;
-        BlitPlanarBufferSize = 0;
-    }
-
-    if (C2PTempBuffer != NULL)
-    {
-        FreeMem(C2PTempBuffer, C2PTempBufferSize);
-        C2PTempBuffer = NULL;
-        C2PTempBufferSize = 0;
-    }
-
     lwmf_CleanupAll();
 }
 
@@ -821,7 +721,7 @@ int main(void)
     InitScreenBuffers();
     Init_CopperList();
 
-    RenderCompareFrame(CurrentFrameBlock, ScreenBuffers[0]);
+    RenderHam7Frame(CurrentFrameBlock, ScreenBuffers[0]);
     Update_BitplanePointers(0);
     lwmf_TakeOverOS();
     CUSTOM_UWORD(DMACON_ADDR) = (UWORD)(DMAF_SETCLR_WORD | DMAF_MASTER_WORD | DMAF_BLITTER_WORD);
@@ -835,7 +735,7 @@ int main(void)
         }
 
         DBG_COLOR(0x00F);
-        RenderCompareFrame(CurrentFrameBlock, ScreenBuffers[DrawBuffer]);
+        RenderHam7Frame(CurrentFrameBlock, ScreenBuffers[DrawBuffer]);
         DBG_COLOR(0x000);
 
         lwmf_WaitVertBlank();
