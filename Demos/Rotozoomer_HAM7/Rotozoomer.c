@@ -1,56 +1,36 @@
 //**********************************************************************
 //* 4x4 HAM7 Rotozoomer                                                *
 //*                                                                    *
-//* Working HAM7 baseline with direct-temp row renderer and blitter extract.  *
 //*                                                                    *
-//* Proven so far:                                                     *
-//*   - sampler / UV / rotation                                        *
-//*   - phase-0 HAM7 encoder (RGBB)                                    *
-//*   - direct CPU planar output                                       *
-//*   - scrambled-word layout                                          *
-//*   - blitter extract stage                                          *
+//* (C) 2026 by Stefan Kubsch/Deep4                                    *
+//* Project for vbcc                                                   *
 //*                                                                    *
-//* Still intentionally bypassed for now:                              *
-//*   - blitter 8x2 swap stage                                         *
+//* Compile & link with:                                               *
+//* make_Rotozoomer.cmd                                                *
 //*                                                                    *
-//* This build therefore uses:                                         *
-//*   - assembler row renderer directly into proven temp/C2P layout    *
-//*   - blitter extract into the 4 DMA bitplanes                       *
-//*   - 4x vertical repeat by copper modulo                                 *
-//*                                                                    *
-//* Target: Amiga 500 OCS, 68000, 512k Chip + 512k Slow                *
-//* Project style: C99 / vbcc + vasm, lwmf framework                   *
+//* Quit with mouse click                                              *
 //**********************************************************************
 #include "lwmf/lwmf.h"
-#include <stddef.h>
 
-struct RotoFrameBlockTag;
+struct RotoFrameChunkTag;
 
-extern void RunC2PExtractAsm(__reg("a0") const UWORD* Temp,
-                            __reg("a1") UBYTE* Planar);
-extern void CpuSwapScrambledRowAsm(__reg("a0") const UWORD* ScrambledRow,
-                                   __reg("a1") UWORD* TempRow);
-extern void CpuSwapScrambledFrameAsm(__reg("a0") const UWORD* ScrambledFrame,
-                                     __reg("a1") UWORD* TempFrame);
-extern void RenderScrambledRowPhase0Asm(__reg("a0") const UWORD* Texture,
-                                         __reg("a1") UWORD* ScrambledRow,
-                                         __reg("d0") WORD U,
-                                         __reg("d1") WORD V,
-                                         __reg("d2") WORD DuDx,
-                                         __reg("d3") WORD DvDx);
-extern void RenderPhase0ScrambledRowsAsm(__reg("a0") const struct RotoFrameBlockTag* Frame,
-                                          __reg("a1") const UWORD* Texture,
-                                          __reg("a2") UWORD* ScrambledFrame);
-extern void RenderPhase0TempRowsAsm(__reg("a0") const struct RotoFrameBlockTag* Frame,
-                                     __reg("a1") const UWORD* Texture,
-                                     __reg("a2") UWORD* TempFrame);
+extern void RunC2PExtractAsm(__reg("a0") const UWORD* Temp, __reg("a1") UBYTE* Planar);
+extern void StartC2PPlane3Asm(__reg("a0") const UWORD* Temp, __reg("a1") UBYTE* Planar);
+extern void StartC2PPlane1Asm(__reg("a0") const UWORD* Temp, __reg("a1") UBYTE* Planar);
+extern void StartC2PPlane2Asm(__reg("a0") const UWORD* Temp, __reg("a1") UBYTE* Planar);
+extern void StartC2PPlane0Asm(__reg("a0") const UWORD* Temp, __reg("a1") UBYTE* Planar);
+extern void RenderPhase0TempRowsChunkAsm(__reg("a0") const struct RotoFrameChunkTag* Frame, __reg("a1") const UWORD* TextureRGBase, __reg("a2") UWORD* TempFrame);
 
-#define DEBUG 1
+#define DEBUG 0
 #if DEBUG
 #define DBG_COLOR(c) (*COLOR00 = (c))
 #else
 #define DBG_COLOR(c) ((void)0)
 #endif
+
+#define DBG_COLOR_IDLE                 0x000
+#define DBG_COLOR_RENDER               0xF00
+#define DBG_COLOR_C2P                  0x0F0
 
 #define TEXTURE_FILENAME                "gfx/128x128_ham.iff"
 #define TEXTURE_SOURCE_WIDTH            128
@@ -61,6 +41,8 @@ extern void RenderPhase0TempRowsAsm(__reg("a0") const struct RotoFrameBlockTag* 
 
 #define ROTO_COLUMNS                    28
 #define ROTO_ROWS                       48
+#define ROTO_CHUNK_ROWS                 16
+#define ROTO_CHUNK_COUNT                (ROTO_ROWS / ROTO_CHUNK_ROWS)
 #define ROTO_PIXEL_SCALE                4
 #define ROTO_DISPLAY_WIDTH              (ROTO_COLUMNS * ROTO_PIXEL_SCALE)
 #define ROTO_DISPLAY_HEIGHT             (ROTO_ROWS * ROTO_PIXEL_SCALE)
@@ -68,7 +50,6 @@ extern void RenderPhase0TempRowsAsm(__reg("a0") const struct RotoFrameBlockTag* 
 #define ROTO_HALF_ROWS                  (ROTO_ROWS / 2)
 
 #define ROTO_SCREEN_WIDTH               320
-#define ROTO_SCREEN_HEIGHT              256
 #define ROTO_DMA_BITPLANES              4
 #define HAM_DISPLAY_BPU                 7
 #define HAM_BPLCON0                     ((HAM_DISPLAY_BPU << 12) | 0x0A00)
@@ -82,9 +63,9 @@ extern void RenderPhase0TempRowsAsm(__reg("a0") const struct RotoFrameBlockTag* 
 #define ROTO_PLANE_STRIDE               ROTO_FETCH_BYTES
 #define ROTO_PLANE_BYTES                ((UWORD)(ROTO_PLANE_STRIDE * ROTO_ROWS))
 #define ROTO_SCREEN_BYTES               ((ULONG)ROTO_PLANE_BYTES * (ULONG)ROTO_DMA_BITPLANES)
+#define ROTO_CHUNK_BYTES                ((ULONG)ROTO_FETCH_BYTES * (ULONG)ROTO_CHUNK_ROWS * (ULONG)ROTO_DMA_BITPLANES)
 #define ROTO_REPEAT_MODULO              ((UWORD)(0U - (UWORD)ROTO_FETCH_BYTES))
 
-#define ROTO_PAL_VPOS_TOP               0x2C
 /* Slight upward shift so all modulo-repeat copper waits stay within OCS 8-bit VPOS. */
 #define ROTO_VPOS_START                 63
 #define ROTO_VPOS_STOP                  (ROTO_VPOS_START + ROTO_DISPLAY_HEIGHT)
@@ -108,45 +89,25 @@ extern void RenderPhase0TempRowsAsm(__reg("a0") const struct RotoFrameBlockTag* 
 #define DMACON_ADDR                    0x0096
 #define DMAF_SETCLR_WORD               0x8000
 #define DMAF_MASTER_WORD               0x0200
+#define DMAF_BLITPRI_WORD              0x0400
 #define DMAF_BLITTER_WORD              0x0040
 #define CUSTOM_UWORD(addr)             (*(volatile UWORD*)((CUSTOM_BASE_ADDR) + (addr)))
 
-// Fixed HAM7 phase chosen from the previous phase-sweep test.
-#define HAM_PHASE0_R_INDEX              0
-#define HAM_PHASE0_G_INDEX              1
-#define HAM_PHASE0_B_INDEX              2
-
-#define BLIT_COMPARE_ROWS              ROTO_ROWS
-#define BLIT_COMPARE_PLANE_BYTES       ROTO_PLANE_BYTES
-#define BLIT_COMPARE_SCREEN_BYTES      ROTO_SCREEN_BYTES
-#define ROTO_SCRAMBLED_WORDS           ((ULONG)ROTO_COLUMNS * (ULONG)ROTO_ROWS)
-#define ROTO_SCRAMBLED_BYTES           (ROTO_SCRAMBLED_WORDS * (ULONG)sizeof(UWORD))
-
 typedef struct RotoRowStateTag
 {
-    ULONG PrefixHi;
-    ULONG PrefixLo;
     WORD StartU;
     WORD StartV;
-    UWORD PrevGB;
 } RotoRowState;
 
-typedef struct RotoFrameBlockTag
+typedef struct RotoFrameChunkTag
 {
     WORD DuDx;
     WORD DvDx;
-    RotoRowState Rows[ROTO_ROWS];
-} RotoFrameBlock;
+    RotoRowState Rows[ROTO_CHUNK_ROWS];
+} RotoFrameChunk;
 
-typedef struct RGBStateTag
-{
-    UBYTE R;
-    UBYTE G;
-    UBYTE B;
-} RGBState;
-
-typedef char RotoRowStateSizeMustBe14[(sizeof(RotoRowState) == 14) ? 1 : -1];
-typedef char RotoFrameBlockSizeMustBe676[(sizeof(RotoFrameBlock) == 676) ? 1 : -1];
+typedef char RotoRowStateSizeMustBe4[(sizeof(RotoRowState) == 4) ? 1 : -1];
+typedef char RotoFrameChunkSizeMustBe68[(sizeof(RotoFrameChunk) == 68) ? 1 : -1];
 
 static const UBYTE SinTab256[256] =
 {
@@ -162,20 +123,22 @@ static const UBYTE SinTab256[256] =
 
 static const UBYTE ZeroPlaneRow[TEXTURE_SOURCE_WIDTH / 8] = { 0 };
 
-static UWORD* TextureRGB4 = NULL;
-static ULONG TextureRGB4Size = 0;
+static UWORD* TextureRGBase = NULL;
+static ULONG TextureRGBaseSize = 0;
+UWORD* TextureBlueWord = NULL;
+static ULONG TextureBlueWordSize = 0;
 static UWORD DisplayPalette[SCREEN_COLORS];
 static UBYTE* ScreenBuffers[BUFFER_COUNT] = { NULL, NULL };
-static UBYTE* C2PTempBuffer = NULL;
+static UBYTE* C2PTempBuffers[BUFFER_COUNT] = { NULL, NULL };
 static ULONG C2PTempBufferSize = 0;
 static UWORD* CopperList = NULL;
 static ULONG CopperListSize = 0;
 static UWORD BPLPTH_Idx[ROTO_DMA_BITPLANES];
 static UWORD BPLPTL_Idx[ROTO_DMA_BITPLANES];
-static RotoFrameBlock* FrameBlocks = NULL;
-static ULONG FrameBlocksSize = 0;
-static RotoFrameBlock* CurrentFrameBlock = NULL;
-static RotoFrameBlock* FrameBlocksEnd = NULL;
+static RotoFrameChunk* FrameChunks = NULL;
+static ULONG FrameChunksSize = 0;
+static RotoFrameChunk* CurrentFrameChunks = NULL;
+static RotoFrameChunk* FrameChunksEnd = NULL;
 
 static const UWORD Ham7Phase0RedWord[16] =
 {
@@ -195,14 +158,10 @@ static const UWORD Ham7Phase0BlueWord[16] =
     0x3000,0x3003,0x3030,0x3033,0x3300,0x3303,0x3330,0x3333
 };
 
-ULONG Ham7Phase0GreenPacked[256];
-ULONG Ham7Phase0BluePacked[256];
-ULONG Ham7Phase0RGPack[4096];
-ULONG Ham7Phase0BluePack[256];
+#define HAM7_PHASE0_RG_PACK_ENTRIES    4096UL
 
-static UBYTE RGB4_R(UWORD RGB4) { return (UBYTE)((RGB4 >> 8) & 0x0FU); }
-static UBYTE RGB4_G(UWORD RGB4) { return (UBYTE)((RGB4 >> 4) & 0x0FU); }
-static UBYTE RGB4_B(UWORD RGB4) { return (UBYTE)(RGB4 & 0x0FU); }
+ULONG* Ham7Phase0RGPack = NULL;
+static ULONG Ham7Phase0RGPackSize = 0;
 
 static UBYTE ClampNibble(LONG Value)
 {
@@ -226,277 +185,55 @@ static UBYTE EncodeGreenPhase0Nibble(UBYTE PrevG, UBYTE TargetG)
 
 static UBYTE EncodeBluePhase0Nibble(UBYTE PrevB, UBYTE TargetB)
 {
-    const LONG Encoded = ((LONG)TargetB * 2L) - (LONG)PrevB;
-    return ClampNibble(Encoded);
+    (void)PrevB;
+    return TargetB;
 }
 
-static ULONG PackPhase0Transition(UBYTE Encoded, UWORD Word)
+static void AllocPhase0PackedTables(void)
 {
-    return (((ULONG)((UWORD)Encoded << 4)) << 16) | (ULONG)Word;
+    Ham7Phase0RGPackSize = HAM7_PHASE0_RG_PACK_ENTRIES * (ULONG)sizeof(ULONG);
+    Ham7Phase0RGPack = (ULONG*)lwmf_AllocCpuMem(Ham7Phase0RGPackSize, MEMF_CLEAR);
 }
 
 static void BuildPhase0PackedTables(void)
 {
-    UWORD Prev;
-
-    for (Prev = 0; Prev < 16U; ++Prev)
+    for (UWORD Prev = 0; Prev < 16U; ++Prev)
     {
-        UWORD Target;
-
-        for (Target = 0; Target < 16U; ++Target)
-        {
-            const UWORD Index = (UWORD)((Prev << 4) | Target);
-            const UBYTE EncodedGreen = EncodeGreenPhase0Nibble((UBYTE)Prev, (UBYTE)Target);
-            const UBYTE EncodedBlue = EncodeBluePhase0Nibble((UBYTE)Prev, (UBYTE)Target);
-
-            Ham7Phase0GreenPacked[Index] = PackPhase0Transition(EncodedGreen,
-                                                                Ham7Phase0GreenWord[EncodedGreen]);
-            Ham7Phase0BluePacked[Index] = PackPhase0Transition(EncodedBlue,
-                                                               Ham7Phase0BlueWord[EncodedBlue]);
-            Ham7Phase0BluePack[Index] = (((ULONG)Ham7Phase0BlueWord[EncodedBlue]) << 16) |
-                                        ((ULONG)EncodedBlue << 4);
-        }
-    }
-
-    for (Prev = 0; Prev < 16U; ++Prev)
-    {
-        UWORD RG;
-
-        for (RG = 0; RG < 256U; ++RG)
+        for (UWORD RG = 0; RG < 256U; ++RG)
         {
             const UBYTE TargetR = (UBYTE)(RG >> 4);
             const UBYTE TargetG = (UBYTE)(RG & 0x0FU);
             const UBYTE EncodedGreen = EncodeGreenPhase0Nibble((UBYTE)Prev, TargetG);
             const UWORD Word = (UWORD)(Ham7Phase0RedWord[TargetR] | Ham7Phase0GreenWord[EncodedGreen]);
 
-            Ham7Phase0RGPack[((UWORD)Prev << 8) | RG] = (((ULONG)Word) << 16) |
-                                                        ((ULONG)EncodedGreen << 8);
+            Ham7Phase0RGPack[((UWORD)Prev << 8) | RG] = (((ULONG)Word) << 16) | ((ULONG)EncodedGreen << 10);
         }
-    }
-}
-
-static UBYTE EncodeChannel(UBYTE Prev, UBYTE Target, UBYTE FirstIndex)
-{
-    const UBYTE AfterCount = (UBYTE)(4U - FirstIndex);
-    const LONG Numerator = ((LONG)Target * 4L) - ((LONG)Prev * (LONG)FirstIndex);
-    LONG Encoded;
-
-    switch (AfterCount)
-    {
-        default:
-        case 4:
-            Encoded = (LONG)Target;
-            break;
-
-        case 3:
-            Encoded = (Numerator >= 0) ? ((Numerator + 1L) / 3L) : (Numerator / 3L);
-            break;
-
-        case 2:
-            Encoded = Numerator / 2L;
-            break;
-
-        case 1:
-            Encoded = Numerator;
-            break;
-    }
-
-    return ClampNibble(Encoded);
-}
-
-static void ClearPlaneRowBytes(UBYTE* P0, UBYTE* P1, UBYTE* P2, UBYTE* P3)
-{
-    UWORD i;
-    for (i = 0; i < ROTO_FETCH_BYTES; ++i)
-    {
-        P0[i] = 0;
-        P1[i] = 0;
-        P2[i] = 0;
-        P3[i] = 0;
-    }
-}
-
-static void SetNibbleToPlaneBytes(UBYTE* P0, UBYTE* P1, UBYTE* P2, UBYTE* P3,
-                                  UWORD X, UBYTE DataNibble)
-{
-    const UWORD ByteIndex = (UWORD)(X >> 3);
-    const UBYTE Mask = (UBYTE)(1U << (7U - (X & 7U)));
-
-    if (DataNibble & 0x01U) P0[ByteIndex] |= Mask;
-    if (DataNibble & 0x02U) P1[ByteIndex] |= Mask;
-    if (DataNibble & 0x04U) P2[ByteIndex] |= Mask;
-    if (DataNibble & 0x08U) P3[ByteIndex] |= Mask;
-}
-
-static void WriteLogicalPixelPhase0(UBYTE* P0, UBYTE* P1, UBYTE* P2, UBYTE* P3,
-                                    UWORD LogicalColumn, UWORD RGB4, RGBState* Prev)
-{
-    const UBYTE TargetR = RGB4_R(RGB4);
-    const UBYTE TargetG = RGB4_G(RGB4);
-    const UBYTE TargetB = RGB4_B(RGB4);
-    const UBYTE EncR = EncodeChannel(Prev->R, TargetR, HAM_PHASE0_R_INDEX);
-    const UBYTE EncG = EncodeChannel(Prev->G, TargetG, HAM_PHASE0_G_INDEX);
-    const UBYTE EncB = EncodeChannel(Prev->B, TargetB, HAM_PHASE0_B_INDEX);
-    const UWORD X = (UWORD)(LogicalColumn * 4U);
-
-    SetNibbleToPlaneBytes(P0, P1, P2, P3, (UWORD)(X + 0U), EncR);
-    SetNibbleToPlaneBytes(P0, P1, P2, P3, (UWORD)(X + 1U), EncG);
-    SetNibbleToPlaneBytes(P0, P1, P2, P3, (UWORD)(X + 2U), EncB);
-    SetNibbleToPlaneBytes(P0, P1, P2, P3, (UWORD)(X + 3U), EncB);
-
-    Prev->R = EncR;
-    Prev->G = EncG;
-    Prev->B = EncB;
-}
-
-static const UWORD ScrambledRed[16] =
-{
-    0x0000,0x0008,0x0080,0x0088,0x0800,0x0808,0x0880,0x0888,
-    0x8000,0x8008,0x8080,0x8088,0x8800,0x8808,0x8880,0x8888
-};
-
-static const UWORD ScrambledGreen[16] =
-{
-    0x0000,0x0004,0x0040,0x0044,0x0400,0x0404,0x0440,0x0444,
-    0x4000,0x4004,0x4040,0x4044,0x4400,0x4404,0x4440,0x4444
-};
-
-static const UWORD ScrambledBlue[16] =
-{
-    0x0000,0x0003,0x0030,0x0033,0x0300,0x0303,0x0330,0x0333,
-    0x3000,0x3003,0x3030,0x3033,0x3300,0x3303,0x3330,0x3333
-};
-
-static UWORD EncodeLogicalPixelPhase0Scrambled(UWORD RGB4, RGBState* Prev)
-{
-    const UBYTE TargetR = RGB4_R(RGB4);
-    const UBYTE TargetG = RGB4_G(RGB4);
-    const UBYTE TargetB = RGB4_B(RGB4);
-    const UBYTE EncR = EncodeChannel(Prev->R, TargetR, HAM_PHASE0_R_INDEX);
-    const UBYTE EncG = EncodeChannel(Prev->G, TargetG, HAM_PHASE0_G_INDEX);
-    const UBYTE EncB = EncodeChannel(Prev->B, TargetB, HAM_PHASE0_B_INDEX);
-    const UWORD Word = (UWORD)(ScrambledRed[EncR] | ScrambledGreen[EncG] | ScrambledBlue[EncB]);
-
-    Prev->R = EncR;
-    Prev->G = EncG;
-    Prev->B = EncB;
-
-    return Word;
-}
-
-static UWORD SampleTextureWord(WORD U, WORD V)
-{
-    const UWORD Offset = (UWORD)((((UWORD)V) & 0x7F00U) |
-                                 ((((UWORD)U) >> 7) & 0x00FEU));
-    return TextureRGB4[(ULONG)(Offset >> 1)];
-}
-
-static ULONG PackTempGroupHi(const UWORD* Words)
-{
-    return (((ULONG)((Words[0] >> 8) & 0x00FFU)) << 24) |
-           (((ULONG)((Words[2] >> 8) & 0x00FFU)) << 16) |
-           (((ULONG)((Words[1] >> 8) & 0x00FFU)) << 8)  |
-            ((ULONG)((Words[3] >> 8) & 0x00FFU));
-}
-
-static ULONG PackTempGroupLo(const UWORD* Words)
-{
-    return (((ULONG)(Words[0] & 0x00FFU)) << 24) |
-           (((ULONG)(Words[2] & 0x00FFU)) << 16) |
-           (((ULONG)(Words[1] & 0x00FFU)) << 8)  |
-            ((ULONG)(Words[3] & 0x00FFU));
-}
-
-static void CpuSwapScrambledRow(const UWORD* ScrambledRow, UWORD* TempRow)
-{
-    CpuSwapScrambledRowAsm(ScrambledRow, TempRow);
-}
-
-static void CpuSwapScrambledFrame(const UWORD* ScrambledFrame, UWORD* TempFrame)
-{
-    CpuSwapScrambledFrameAsm(ScrambledFrame, TempFrame);
-}
-
-static void CopyPlaneRowToScreen(UBYTE* Screen,
-                                 UWORD Y,
-                                 const UBYTE* P0,
-                                 const UBYTE* P1,
-                                 const UBYTE* P2,
-                                 const UBYTE* P3)
-{
-    const ULONG RowOffset = (ULONG)Y * (ULONG)ROTO_PLANE_STRIDE;
-    UBYTE* Dst0 = Screen + ((ULONG)0 * (ULONG)ROTO_PLANE_BYTES) + RowOffset;
-    UBYTE* Dst1 = Screen + ((ULONG)1 * (ULONG)ROTO_PLANE_BYTES) + RowOffset;
-    UBYTE* Dst2 = Screen + ((ULONG)2 * (ULONG)ROTO_PLANE_BYTES) + RowOffset;
-    UBYTE* Dst3 = Screen + ((ULONG)3 * (ULONG)ROTO_PLANE_BYTES) + RowOffset;
-    UWORD i;
-
-    for (i = 0; i < ROTO_FETCH_BYTES; ++i)
-    {
-        Dst0[i] = P0[i];
-        Dst1[i] = P1[i];
-        Dst2[i] = P2[i];
-        Dst3[i] = P3[i];
-    }
-}
-
-static void ClearByteBuffer(UBYTE* Buffer, ULONG Size)
-{
-    ULONG i;
-    for (i = 0; i < Size; ++i)
-    {
-        Buffer[i] = 0;
-    }
-}
-
-static void CopyPlanarBufferRowToScreen(UBYTE* Screen,
-                                        UWORD DestY,
-                                        const UBYTE* PlanarBuffer,
-                                        UWORD SourceY)
-{
-    const ULONG SrcOffset = (ULONG)SourceY * (ULONG)ROTO_FETCH_BYTES;
-    const ULONG DstOffset = (ULONG)DestY * (ULONG)ROTO_PLANE_STRIDE;
-    const UBYTE* Src0 = PlanarBuffer + ((ULONG)0 * (ULONG)BLIT_COMPARE_PLANE_BYTES) + SrcOffset;
-    const UBYTE* Src1 = PlanarBuffer + ((ULONG)1 * (ULONG)BLIT_COMPARE_PLANE_BYTES) + SrcOffset;
-    const UBYTE* Src2 = PlanarBuffer + ((ULONG)2 * (ULONG)BLIT_COMPARE_PLANE_BYTES) + SrcOffset;
-    const UBYTE* Src3 = PlanarBuffer + ((ULONG)3 * (ULONG)BLIT_COMPARE_PLANE_BYTES) + SrcOffset;
-    UBYTE* Dst0 = Screen + ((ULONG)0 * (ULONG)ROTO_PLANE_BYTES) + DstOffset;
-    UBYTE* Dst1 = Screen + ((ULONG)1 * (ULONG)ROTO_PLANE_BYTES) + DstOffset;
-    UBYTE* Dst2 = Screen + ((ULONG)2 * (ULONG)ROTO_PLANE_BYTES) + DstOffset;
-    UBYTE* Dst3 = Screen + ((ULONG)3 * (ULONG)ROTO_PLANE_BYTES) + DstOffset;
-    UWORD i;
-
-    for (i = 0; i < ROTO_FETCH_BYTES; ++i)
-    {
-        Dst0[i] = Src0[i];
-        Dst1[i] = Src1[i];
-        Dst2[i] = Src2[i];
-        Dst3[i] = Src3[i];
     }
 }
 
 static void BuildDisplayPalette(const struct lwmf_Image* Image)
 {
-    UWORD i;
     const UWORD Limit = (Image->NumberOfColors < 16) ? Image->NumberOfColors : 16;
 
-    for (i = 0; i < SCREEN_COLORS; ++i)
+    for (UWORD i = 0; i < SCREEN_COLORS; ++i)
     {
         DisplayPalette[i] = 0x000;
     }
 
     DisplayPalette[0] = HAM_BACKGROUND_RGB4;
 
-    for (i = 1; i < Limit; ++i)
+    for (UWORD i = 1; i < Limit; ++i)
     {
         DisplayPalette[i] = (UWORD)(Image->CRegs[i] & 0x0FFF);
     }
 }
 
-static void AllocTextureRGB4(void)
+static void AllocTextureTables(void)
 {
-    TextureRGB4Size = TEXTURE_WORD_COUNT * (ULONG)sizeof(UWORD);
-    TextureRGB4 = (UWORD*)lwmf_AllocCpuMem(TextureRGB4Size, MEMF_CLEAR);
+    TextureRGBaseSize = TEXTURE_WORD_COUNT * (ULONG)sizeof(UWORD);
+    TextureBlueWordSize = TEXTURE_WORD_COUNT * (ULONG)sizeof(UWORD);
+    TextureRGBase = (UWORD*)lwmf_AllocCpuMem(TextureRGBaseSize, MEMF_CLEAR);
+    TextureBlueWord = (UWORD*)lwmf_AllocCpuMem(TextureBlueWordSize, MEMF_CLEAR);
 }
 
 static void BuildTextureFromHAM(const struct lwmf_Image* Image)
@@ -506,24 +243,20 @@ static void BuildTextureFromHAM(const struct lwmf_Image* Image)
     const UWORD ByteColumns = (TEXTURE_SOURCE_WIDTH / 8);
     const ULONG ImageRowBytes = (ULONG)Image->Image.BytesPerRow;
     const UWORD Limit = (Image->NumberOfColors < 16) ? Image->NumberOfColors : 16;
-    UWORD i;
-    UWORD Y;
 
-    for (i = 0; i < Limit; ++i)
+    for (UWORD i = 0; i < Limit; ++i)
     {
         BasePal[i] = (UWORD)(Image->CRegs[i] & 0x0FFF);
     }
 
-    for (Y = 0; Y < TEXTURE_SOURCE_HEIGHT; ++Y)
+    for (UWORD y = 0; y < TEXTURE_SOURCE_HEIGHT; ++y)
     {
-        const ULONG PlaneRowOffset = (ULONG)Y * ImageRowBytes;
+        const ULONG PlaneRowOffset = (ULONG)y * ImageRowBytes;
         const UBYTE* PlaneRows[8];
         UWORD CurrentRGB = BasePal[0];
-        ULONG TexIndex = (ULONG)Y * (ULONG)TEXTURE_WIDTH;
-        UWORD Plane;
-        UWORD ByteX;
+        ULONG TexIndex = (ULONG)y * (ULONG)TEXTURE_WIDTH;
 
-        for (Plane = 0; Plane < 8; ++Plane)
+        for (UWORD Plane = 0; Plane < 8; ++Plane)
         {
             if (Plane < Depth)
             {
@@ -535,7 +268,7 @@ static void BuildTextureFromHAM(const struct lwmf_Image* Image)
             }
         }
 
-        for (ByteX = 0; ByteX < ByteColumns; ++ByteX)
+        for (UWORD ByteX = 0; ByteX < ByteColumns; ++ByteX)
         {
             UBYTE P0 = PlaneRows[0][ByteX];
             UBYTE P1 = PlaneRows[1][ByteX];
@@ -545,9 +278,8 @@ static void BuildTextureFromHAM(const struct lwmf_Image* Image)
             UBYTE P5 = PlaneRows[5][ByteX];
             UBYTE P6 = PlaneRows[6][ByteX];
             UBYTE P7 = PlaneRows[7][ByteX];
-            UWORD Bit;
 
-            for (Bit = 0; Bit < 8; ++Bit)
+            for (UWORD Bit = 0; Bit < 8; ++Bit)
             {
                 const UBYTE Pixel =
                     (UBYTE)(((P0 >> 7) & 0x01U) |
@@ -591,7 +323,9 @@ static void BuildTextureFromHAM(const struct lwmf_Image* Image)
                 }
 
                 CurrentRGB = OutRGB;
-                TextureRGB4[TexIndex++] = OutRGB;
+                TextureRGBase[TexIndex] = (UWORD)(((OutRGB >> 4) & 0x00FFU) << 2);
+                TextureBlueWord[TexIndex] = Ham7Phase0BlueWord[EncodeBluePhase0Nibble(0U, (UBYTE)(OutRGB & 0x0FU))];
+                ++TexIndex;
             }
         }
     }
@@ -601,102 +335,106 @@ static void InitTexture(void)
 {
     struct lwmf_Image* Image = lwmf_LoadImage(TEXTURE_FILENAME);
     BuildDisplayPalette(Image);
-    AllocTextureRGB4();
+    AllocTextureTables();
     BuildTextureFromHAM(Image);
     lwmf_DeleteImage(Image);
 }
 
 static void BuildFrameStates(void)
 {
-    UWORD Frame;
+    FrameChunksSize = (256UL * (ULONG)ROTO_CHUNK_COUNT) * (ULONG)sizeof(RotoFrameChunk);
+    FrameChunks = (RotoFrameChunk*)lwmf_AllocCpuMem(FrameChunksSize, MEMF_CLEAR);
 
-    FrameBlocksSize = 256UL * (ULONG)sizeof(RotoFrameBlock);
-    FrameBlocks = (RotoFrameBlock*)lwmf_AllocCpuMem(FrameBlocksSize, MEMF_CLEAR);
-
-    for (Frame = 0; Frame < 256U; ++Frame)
+    for (UWORD Frame = 0; Frame < 256U; ++Frame)
     {
         const UBYTE AnglePhase = (UBYTE)(Frame * ROTO_ANGLE_PHASE_STEP);
         const UBYTE ZoomPhase = (UBYTE)Frame;
         const UBYTE MovePhaseX = (UBYTE)Frame;
         const UBYTE MovePhaseY = (UBYTE)(64U + (Frame * 2U));
         const LONG ZoomIndex = (LONG)(((ULONG)SinTab256[ZoomPhase] * 31UL) / 63UL);
-        const LONG Zoom =
-            (LONG)ROTO_ZOOM_BASE -
-            (LONG)ROTO_ZOOM_AMPLITUDE +
-            ((ZoomIndex * ((LONG)ROTO_ZOOM_AMPLITUDE * 2L)) / (LONG)(ROTO_ZOOM_STEPS - 1));
+        const LONG Zoom = (LONG)ROTO_ZOOM_BASE - (LONG)ROTO_ZOOM_AMPLITUDE + ((ZoomIndex * ((LONG)ROTO_ZOOM_AMPLITUDE * 2L)) / (LONG)(ROTO_ZOOM_STEPS - 1));
         const LONG SinV = (LONG)((WORD)SinTab256[AnglePhase] - 32);
         const LONG CosV = (LONG)((WORD)SinTab256[(UBYTE)(AnglePhase + 64U)] - 32);
         const WORD DuDx = (WORD)((CosV * ROTO_DELTA_SCALE) / Zoom);
         const WORD DvDx = (WORD)((SinV * ROTO_DELTA_SCALE) / Zoom);
-        const LONG StartUOffset =
-            -((LONG)ROTO_HALF_COLUMNS * (LONG)DuDx) +
-             ((LONG)ROTO_HALF_ROWS    * (LONG)DvDx);
-        const LONG StartVOffset =
-            -((LONG)ROTO_HALF_COLUMNS * (LONG)DvDx) -
-             ((LONG)ROTO_HALF_ROWS    * (LONG)DuDx);
+        const LONG StartUOffset = -((LONG)ROTO_HALF_COLUMNS * (LONG)DuDx) + ((LONG)ROTO_HALF_ROWS * (LONG)DvDx);
+        const LONG StartVOffset = -((LONG)ROTO_HALF_COLUMNS * (LONG)DvDx) - ((LONG)ROTO_HALF_ROWS * (LONG)DuDx);
         const WORD MoveX = (WORD)(((WORD)SinTab256[MovePhaseX] - 32) << 8);
         const WORD MoveY = (WORD)(((WORD)SinTab256[MovePhaseY] - 32) << 8);
         WORD RowU = (WORD)((WORD)ROTO_CENTER_U + MoveX + (WORD)StartUOffset);
         WORD RowV = (WORD)((WORD)ROTO_CENTER_V + MoveY + (WORD)StartVOffset);
-        UWORD Row;
-        RotoFrameBlock* Block = &FrameBlocks[Frame];
+        RotoFrameChunk* Chunks = &FrameChunks[(ULONG)Frame * (ULONG)ROTO_CHUNK_COUNT];
 
-        Block->DuDx = DuDx;
-        Block->DvDx = DvDx;
-
-        for (Row = 0; Row < ROTO_ROWS; ++Row)
+        for (UWORD Chunk = 0; Chunk < ROTO_CHUNK_COUNT; ++Chunk)
         {
-            UWORD PrefixWords[4];
-            RGBState Prev = { 0, 0, 0 };
-            WORD PrefixU = RowU;
-            WORD PrefixV = RowV;
-            UWORD i;
+            Chunks[Chunk].DuDx = DuDx;
+            Chunks[Chunk].DvDx = DvDx;
 
-            for (i = 0; i < 4U; ++i)
+            for (UWORD Row = 0; Row < ROTO_CHUNK_ROWS; ++Row)
             {
-                PrefixWords[i] = EncodeLogicalPixelPhase0Scrambled(SampleTextureWord(PrefixU, PrefixV), &Prev);
-                PrefixU = (WORD)(PrefixU + DuDx);
-                PrefixV = (WORD)(PrefixV + DvDx);
+                Chunks[Chunk].Rows[Row].StartU = RowU;
+                Chunks[Chunk].Rows[Row].StartV = RowV;
+                RowU = (WORD)(RowU + DvDx);
+                RowV = (WORD)(RowV - DuDx);
             }
-
-            Block->Rows[Row].PrefixHi = PackTempGroupHi(PrefixWords);
-            Block->Rows[Row].PrefixLo = PackTempGroupLo(PrefixWords);
-            Block->Rows[Row].StartU = PrefixU;
-            Block->Rows[Row].StartV = PrefixV;
-            Block->Rows[Row].PrevGB = (UWORD)(((UWORD)Prev.G << 8) | (UWORD)Prev.B);
-
-            RowU = (WORD)(RowU + DvDx);
-            RowV = (WORD)(RowV - DuDx);
         }
     }
 }
 
 static void InitScreenBuffers(void)
 {
-    UWORD i;
-    for (i = 0; i < BUFFER_COUNT; ++i)
+    for (UWORD i = 0; i < BUFFER_COUNT; ++i)
     {
         ScreenBuffers[i] = (UBYTE*)AllocMem(ROTO_SCREEN_BYTES, MEMF_CHIP | MEMF_CLEAR);
     }
+
     C2PTempBufferSize = ROTO_SCREEN_BYTES;
-    C2PTempBuffer = (UBYTE*)AllocMem(C2PTempBufferSize, MEMF_CHIP | MEMF_CLEAR);
 
-}
-
-static void ClearWholeScreen(UBYTE* Screen)
-{
-    ULONG i;
-    for (i = 0; i < ROTO_SCREEN_BYTES; ++i)
+    for (UWORD i = 0; i < BUFFER_COUNT; ++i)
     {
-        Screen[i] = 0;
+        C2PTempBuffers[i] = (UBYTE*)AllocMem(C2PTempBufferSize, MEMF_CHIP | MEMF_CLEAR);
     }
 }
 
-static void RenderHam7Frame(const RotoFrameBlock* Frame, UBYTE* Screen)
+static void AdvanceCurrentFrameChunks(void)
 {
-    RenderPhase0TempRowsAsm(Frame, TextureRGB4, (UWORD*)C2PTempBuffer);
-    RunC2PExtractAsm((const UWORD*)C2PTempBuffer, Screen);
+    CurrentFrameChunks += ROTO_CHUNK_COUNT;
+
+    if (CurrentFrameChunks == FrameChunksEnd)
+    {
+        CurrentFrameChunks = FrameChunks;
+    }
 }
+
+static void EnableBlitterPriority(void)
+{
+    CUSTOM_UWORD(DMACON_ADDR) = (UWORD)(DMAF_SETCLR_WORD | DMAF_BLITPRI_WORD);
+}
+
+static void DisableBlitterPriority(void)
+{
+    CUSTOM_UWORD(DMACON_ADDR) = DMAF_BLITPRI_WORD;
+}
+
+static void RenderTempChunk(const RotoFrameChunk* Chunk, UBYTE* TempBuffer)
+{
+    RenderPhase0TempRowsChunkAsm(Chunk, TextureRGBase, (UWORD*)TempBuffer);
+}
+
+static void RenderTempFrame(const RotoFrameChunk* Chunks, UBYTE* TempBuffer)
+{
+    RenderTempChunk(&Chunks[0], TempBuffer + (0UL * ROTO_CHUNK_BYTES));
+    RenderTempChunk(&Chunks[1], TempBuffer + (1UL * ROTO_CHUNK_BYTES));
+    RenderTempChunk(&Chunks[2], TempBuffer + (2UL * ROTO_CHUNK_BYTES));
+}
+
+static void BlitFrameSync(const UBYTE* TempBuffer, UBYTE* Screen)
+{
+    EnableBlitterPriority();
+    RunC2PExtractAsm((const UWORD*)TempBuffer, Screen);
+    DisableBlitterPriority();
+}
+
 
 static UWORD DisplayLineModulo(UWORD DisplayY)
 {
@@ -705,19 +443,12 @@ static UWORD DisplayLineModulo(UWORD DisplayY)
 
 static void Init_CopperList(void)
 {
-    const ULONG CopperWords =
-        24UL +
-        (ULONG)(4 * ROTO_DMA_BITPLANES) +
-        (ULONG)(SCREEN_COLORS * 2) +
-        ((ULONG)(ROTO_DISPLAY_HEIGHT - 1U) * 6UL) +
-        2UL;
-    UWORD Index = 0;
-    UWORD Plane;
-    UWORD c;
-    UWORD DisplayY;
+    const ULONG CopperWords = 24UL + (ULONG)(4 * ROTO_DMA_BITPLANES) + (ULONG)(SCREEN_COLORS * 2) + ((ULONG)(ROTO_DISPLAY_HEIGHT - 1U) * 6UL) + 2UL;
 
     CopperListSize = CopperWords * sizeof(UWORD);
     CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR);
+
+    UWORD Index = 0;
 
     CopperList[Index++] = 0x008E; CopperList[Index++] = ROTO_DIWSTRT;
     CopperList[Index++] = 0x0090; CopperList[Index++] = ROTO_DIWSTOP;
@@ -733,7 +464,7 @@ static void Init_CopperList(void)
     CopperList[Index++] = 0x0118; CopperList[Index++] = HAM_CONTROL_WORD_P5;
     CopperList[Index++] = 0x011A; CopperList[Index++] = HAM_CONTROL_WORD_P6;
 
-    for (Plane = 0; Plane < ROTO_DMA_BITPLANES; ++Plane)
+    for (UWORD Plane = 0; Plane < ROTO_DMA_BITPLANES; ++Plane)
     {
         CopperList[Index++] = (UWORD)(0x00E0 + (Plane * 4));
         BPLPTH_Idx[Plane] = Index;
@@ -744,13 +475,13 @@ static void Init_CopperList(void)
         CopperList[Index++] = 0x0000;
     }
 
-    for (c = 0; c < SCREEN_COLORS; ++c)
+    for (UWORD c = 0; c < SCREEN_COLORS; ++c)
     {
         CopperList[Index++] = (UWORD)(0x0180 + (c * 2));
         CopperList[Index++] = DisplayPalette[c];
     }
 
-    for (DisplayY = 1; DisplayY < ROTO_DISPLAY_HEIGHT; ++DisplayY)
+    for (UWORD DisplayY = 1; DisplayY < ROTO_DISPLAY_HEIGHT; ++DisplayY)
     {
         const UWORD WaitVPos = (UWORD)(ROTO_VPOS_START + DisplayY);
         CopperList[Index++] = (UWORD)(((WaitVPos & 0x00FFU) << 8) | 0x0007U);
@@ -768,9 +499,8 @@ static void Init_CopperList(void)
 static void Update_BitplanePointers(UWORD BufferIndex)
 {
     ULONG Ptr = (ULONG)ScreenBuffers[BufferIndex];
-    UWORD Plane;
 
-    for (Plane = 0; Plane < ROTO_DMA_BITPLANES; ++Plane)
+    for (UWORD Plane = 0; Plane < ROTO_DMA_BITPLANES; ++Plane)
     {
         CopperList[BPLPTH_Idx[Plane]] = (UWORD)(Ptr >> 16);
         CopperList[BPLPTL_Idx[Plane]] = (UWORD)(Ptr & 0xFFFF);
@@ -780,46 +510,35 @@ static void Update_BitplanePointers(UWORD BufferIndex)
 
 static void Cleanup_All(void)
 {
-    UWORD i;
-
-    if (C2PTempBuffer != NULL)
+    for (UWORD i = 0; i < BUFFER_COUNT; ++i)
     {
-        FreeMem(C2PTempBuffer, C2PTempBufferSize);
-        C2PTempBuffer = NULL;
-        C2PTempBufferSize = 0;
+        FreeMem(C2PTempBuffers[i], C2PTempBufferSize);
+        C2PTempBuffers[i] = NULL;
     }
 
+    C2PTempBufferSize = 0;
+    FreeMem(CopperList, CopperListSize);
+    CopperList = NULL;
+    CopperListSize = 0;
+    FreeMem(TextureRGBase, TextureRGBaseSize);
+    TextureRGBase = NULL;
+    TextureRGBaseSize = 0;
+    FreeMem(TextureBlueWord, TextureBlueWordSize);
+    TextureBlueWord = NULL;
+    TextureBlueWordSize = 0;
+    FreeMem(Ham7Phase0RGPack, Ham7Phase0RGPackSize);
+    Ham7Phase0RGPack = NULL;
+    Ham7Phase0RGPackSize = 0;
+    FreeMem(FrameChunks, FrameChunksSize);
+    FrameChunks = NULL;
+    FrameChunksSize = 0;
+    CurrentFrameChunks = NULL;
+    FrameChunksEnd = NULL;
 
-    if (CopperList != NULL)
+    for (UWORD i = 0; i < BUFFER_COUNT; ++i)
     {
-        FreeMem(CopperList, CopperListSize);
-        CopperList = NULL;
-        CopperListSize = 0;
-    }
-
-    if (TextureRGB4 != NULL)
-    {
-        FreeMem(TextureRGB4, TextureRGB4Size);
-        TextureRGB4 = NULL;
-        TextureRGB4Size = 0;
-    }
-
-    if (FrameBlocks != NULL)
-    {
-        FreeMem(FrameBlocks, FrameBlocksSize);
-        FrameBlocks = NULL;
-        FrameBlocksSize = 0;
-        CurrentFrameBlock = NULL;
-        FrameBlocksEnd = NULL;
-    }
-
-    for (i = 0; i < BUFFER_COUNT; ++i)
-    {
-        if (ScreenBuffers[i] != NULL)
-        {
-            FreeMem(ScreenBuffers[i], ROTO_SCREEN_BYTES);
-            ScreenBuffers[i] = NULL;
-        }
+        FreeMem(ScreenBuffers[i], ROTO_SCREEN_BYTES);
+        ScreenBuffers[i] = NULL;
     }
 
     lwmf_CleanupAll();
@@ -827,37 +546,78 @@ static void Cleanup_All(void)
 
 int main(void)
 {
-    UWORD DrawBuffer = 1;
-
     lwmf_LoadGraphicsLib();
+
     InitTexture();
+    AllocPhase0PackedTables();
     BuildPhase0PackedTables();
     BuildFrameStates();
-    FrameBlocksEnd = FrameBlocks + 256;
-    CurrentFrameBlock = &FrameBlocks[0];
+    FrameChunksEnd = FrameChunks + (256 * ROTO_CHUNK_COUNT);
+    CurrentFrameChunks = &FrameChunks[0];
+
     InitScreenBuffers();
     Init_CopperList();
 
-    RenderHam7Frame(CurrentFrameBlock, ScreenBuffers[0]);
+    DBG_COLOR(DBG_COLOR_RENDER);
+    RenderTempFrame(CurrentFrameChunks, C2PTempBuffers[0]);
+    DBG_COLOR(DBG_COLOR_C2P);
+    BlitFrameSync(C2PTempBuffers[0], ScreenBuffers[0]);
+    DBG_COLOR(DBG_COLOR_IDLE);
     Update_BitplanePointers(0);
+    AdvanceCurrentFrameChunks();
+
+    DBG_COLOR(DBG_COLOR_RENDER);
+    RenderTempFrame(CurrentFrameChunks, C2PTempBuffers[1]);
+    DBG_COLOR(DBG_COLOR_IDLE);
+    AdvanceCurrentFrameChunks();
+
     lwmf_TakeOverOS();
     CUSTOM_UWORD(DMACON_ADDR) = (UWORD)(DMAF_SETCLR_WORD | DMAF_MASTER_WORD | DMAF_BLITTER_WORD);
 
+    UWORD DrawBuffer = 1;
+    UWORD ReadyTemp = 1;
+    UWORD RenderTemp = 0;
+
     while (*CIAA_PRA & 0x40)
     {
-        ++CurrentFrameBlock;
-        if (CurrentFrameBlock == FrameBlocksEnd)
-        {
-            CurrentFrameBlock = FrameBlocks;
-        }
+        DBG_COLOR(DBG_COLOR_C2P);
+        StartC2PPlane3Asm((const UWORD*)C2PTempBuffers[ReadyTemp], ScreenBuffers[DrawBuffer]);
 
-        DBG_COLOR(0x00F);
-        RenderHam7Frame(CurrentFrameBlock, ScreenBuffers[DrawBuffer]);
-        DBG_COLOR(0x000);
+        DBG_COLOR(DBG_COLOR_RENDER);
+        RenderTempChunk(&CurrentFrameChunks[0], C2PTempBuffers[RenderTemp] + (0UL * ROTO_CHUNK_BYTES));
 
+        DBG_COLOR(DBG_COLOR_C2P);
+        lwmf_WaitBlitter();
+        StartC2PPlane1Asm((const UWORD*)C2PTempBuffers[ReadyTemp], ScreenBuffers[DrawBuffer]);
+
+        DBG_COLOR(DBG_COLOR_RENDER);
+        RenderTempChunk(&CurrentFrameChunks[1], C2PTempBuffers[RenderTemp] + (1UL * ROTO_CHUNK_BYTES));
+
+        DBG_COLOR(DBG_COLOR_C2P);
+        lwmf_WaitBlitter();
+        StartC2PPlane2Asm((const UWORD*)C2PTempBuffers[ReadyTemp], ScreenBuffers[DrawBuffer]);
+
+        DBG_COLOR(DBG_COLOR_RENDER);
+        RenderTempChunk(&CurrentFrameChunks[2], C2PTempBuffers[RenderTemp] + (2UL * ROTO_CHUNK_BYTES));
+        AdvanceCurrentFrameChunks();
+
+        DBG_COLOR(DBG_COLOR_C2P);
+        lwmf_WaitBlitter();
+        EnableBlitterPriority();
+        StartC2PPlane0Asm((const UWORD*)C2PTempBuffers[ReadyTemp], ScreenBuffers[DrawBuffer]);
         lwmf_WaitVertBlank();
+        lwmf_WaitBlitter();
+        DisableBlitterPriority();
+        DBG_COLOR(DBG_COLOR_IDLE);
+
         Update_BitplanePointers(DrawBuffer);
         DrawBuffer ^= 1;
+
+        {
+            const UWORD TempSwap = ReadyTemp;
+            ReadyTemp = RenderTemp;
+            RenderTemp = TempSwap;
+        }
     }
 
     Cleanup_All();
