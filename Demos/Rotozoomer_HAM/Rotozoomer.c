@@ -63,7 +63,7 @@ extern void RenderFastB0U0V0Entry(void);
 #define HAM_BACKGROUND_RGB4     0x000
 
 #define CHUNKY_PIXEL_SIZE       4
-#define ROTO_COLUMNS            48
+#define ROTO_COLUMNS            52
 #define ROTO_ROWS               48
 #define ROTO_PAIR_COUNT         (ROTO_COLUMNS / 2)
 #define ROTO_DISPLAY_WIDTH      (ROTO_COLUMNS * CHUNKY_PIXEL_SIZE)
@@ -123,6 +123,8 @@ typedef struct
     // Pairs 09-13: one byte per plane each (5 pairs x 4 planes = 20 bytes).
     // [pair_index 0..4][plane_index 0..3].
     UBYTE PrefixPair9to13[5][4];
+    // Pairs 14-15: one byte per plane each (2 pairs x 4 planes = 8 bytes).
+    UBYTE PrefixPair14to15[2][4];
 } RotoRowState;
 
 typedef struct RotoFrameBlock
@@ -147,12 +149,12 @@ typedef struct RotoFrameBlock
     RotoRowState Rows[ROTO_ROWS];
 } RotoFrameBlock;
 
-typedef char RotoRowStateSizeMustBe52[(sizeof(RotoRowState) == 52) ? 1 : -1];
-typedef char RotoFrameBlockHeaderAndBaseRowsMustBe2520[(sizeof(RotoFrameBlock) == 2520) ? 1 : -1];
+typedef char RotoRowStateSizeMustBe60[(sizeof(RotoRowState) == 60) ? 1 : -1];
+typedef char RotoFrameBlockHeaderAndBaseRowsMustBe2904[(sizeof(RotoFrameBlock) == 2904) ? 1 : -1];
 
 #define ROTO_FRAME_HEADER_BYTES 24UL
-#define ROTO_ROW_BYTES          52UL  // uniform P13 row: 16+8+8+20 bytes
-#define ROTO_PREFIX_PAIRS       13UL  // all frames precompute pairs 01-13
+#define ROTO_ROW_BYTES          60UL  // uniform P15 row: 16+8+8+20+8 bytes
+#define ROTO_PREFIX_PAIRS       15UL  // all frames precompute pairs 01-15
 
 enum
 {
@@ -452,12 +454,13 @@ static void BuildFrameStates(void)
             ULONG PrefixPlane2 = 0;
             ULONG PrefixPlane3 = 0;
             UWORD PrefixPair56Words[4] = { 0, 0, 0, 0 };
-            // Pairs 07-08 and 09-13 are stored as individual bytes per plane.
+            // Pairs 07-08 and 09-15 are stored as individual bytes per plane.
             UBYTE PrefixPair7Bytes[4]    = { 0, 0, 0, 0 };
             UBYTE PrefixPair8Bytes[4]    = { 0, 0, 0, 0 };
             UBYTE PrefixPair9to13[5][4]  = {{ 0 }};
+            UBYTE PrefixPair14to15[2][4] = {{ 0 }};
 
-            for (UWORD Pair = 0; Pair < 13; ++Pair)
+            for (UWORD Pair = 0; Pair < 15; ++Pair)
             {
                 const UWORD StartUc0 = (UWORD)(((UWORD)(PrefixUState >> 8)) & 0x01FFU);
                 const UWORD StartRow0 = (UWORD)((PrefixWState << 1) & 0xFE00U);
@@ -504,7 +507,7 @@ static void BuildFrameStates(void)
                     PrefixPair8Bytes[2] = (UBYTE)(Packed >> 16);
                     PrefixPair8Bytes[3] = (UBYTE)(Packed >> 24);
                 }
-                else
+                else if (Pair < 13)
                 {
                     // Pairs 09-13 (Pair index 8-12 → array index 0-4)
                     const UWORD Idx = Pair - 8U;
@@ -512,6 +515,15 @@ static void BuildFrameStates(void)
                     PrefixPair9to13[Idx][1] = (UBYTE)(Packed >> 8);
                     PrefixPair9to13[Idx][2] = (UBYTE)(Packed >> 16);
                     PrefixPair9to13[Idx][3] = (UBYTE)(Packed >> 24);
+                }
+                else
+                {
+                    // Pairs 14-15 (Pair index 13-14 → array index 0-1)
+                    const UWORD Idx = Pair - 13U;
+                    PrefixPair14to15[Idx][0] = (UBYTE)Packed;
+                    PrefixPair14to15[Idx][1] = (UBYTE)(Packed >> 8);
+                    PrefixPair14to15[Idx][2] = (UBYTE)(Packed >> 16);
+                    PrefixPair14to15[Idx][3] = (UBYTE)(Packed >> 24);
                 }
 
                 PrefixUState = (PrefixUState + USampleAdvance) & 0x00FFFFFFUL;
@@ -551,6 +563,15 @@ static void BuildFrameStates(void)
                 RowSeed->PrefixPair9to13[Pi][2] = PrefixPair9to13[Pi][2];
                 RowSeed->PrefixPair9to13[Pi][3] = PrefixPair9to13[Pi][3];
             }
+            // Pairs 14-15 as individual plane bytes.
+            RowSeed->PrefixPair14to15[0][0] = PrefixPair14to15[0][0];
+            RowSeed->PrefixPair14to15[0][1] = PrefixPair14to15[0][1];
+            RowSeed->PrefixPair14to15[0][2] = PrefixPair14to15[0][2];
+            RowSeed->PrefixPair14to15[0][3] = PrefixPair14to15[0][3];
+            RowSeed->PrefixPair14to15[1][0] = PrefixPair14to15[1][0];
+            RowSeed->PrefixPair14to15[1][1] = PrefixPair14to15[1][1];
+            RowSeed->PrefixPair14to15[1][2] = PrefixPair14to15[1][2];
+            RowSeed->PrefixPair14to15[1][3] = PrefixPair14to15[1][3];
 
             RowWrite += RowStride;
 
