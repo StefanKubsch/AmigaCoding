@@ -1,7 +1,7 @@
 //**********************************************************************
 //* 4x4 HAM7 Rotozoomer                                                *
 //*                                                                    *
-//* 4 DMA bitplanes, HAM control via BPL5DAT/BPL6DAT, 48 columns       *
+//* 4 DMA bitplanes, HAM control via BPL5DAT/BPL6DAT, 52 columns       *
 //* Amiga 500 OCS, 68000                                               *
 //*                                                                    *
 //* (C) 2026 by Stefan Kubsch/Deep4                                    *
@@ -120,11 +120,12 @@ typedef struct
     // Seventh and eighth premerged pairs stored as plane-wise words.
     // High byte of each word = pair 07 byte, low byte = pair 08 byte.
     UWORD PrefixPair78Words[4];
-    // Pairs 09-13: one byte per plane each (5 pairs x 4 planes = 20 bytes).
-    // [pair_index 0..4][plane_index 0..3].
-    UBYTE PrefixPair9to13[5][4];
-    // Pairs 14-15: one byte per plane each (2 pairs x 4 planes = 8 bytes).
-    UBYTE PrefixPair14to15[2][4];
+    // Pairs 09-14 packed as words (high byte = first pair, low byte = second pair):
+    // 3 word-arrays x 4 planes = 24 bytes. Pair 15 stored as individual bytes.
+    UWORD PrefixPair09_10Words[4]; // high byte = pair 09, low byte = pair 10
+    UWORD PrefixPair11_12Words[4]; // high byte = pair 11, low byte = pair 12
+    UWORD PrefixPair13_14Words[4]; // high byte = pair 13, low byte = pair 14
+    UBYTE PrefixPair15Bytes[4];    // pair 15: one byte per plane
 } RotoRowState;
 
 typedef struct RotoFrameBlock
@@ -457,8 +458,8 @@ static void BuildFrameStates(void)
             // Pairs 07-08 and 09-15 are stored as individual bytes per plane.
             UBYTE PrefixPair7Bytes[4]    = { 0, 0, 0, 0 };
             UBYTE PrefixPair8Bytes[4]    = { 0, 0, 0, 0 };
-            UBYTE PrefixPair9to13[5][4]  = {{ 0 }};
-            UBYTE PrefixPair14to15[2][4] = {{ 0 }};
+            // Pairs 09-15 as individual bytes before word-packing.
+            UBYTE PairBytes09to15[7][4] = {{ 0 }};
 
             for (UWORD Pair = 0; Pair < 15; ++Pair)
             {
@@ -511,19 +512,19 @@ static void BuildFrameStates(void)
                 {
                     // Pairs 09-13 (Pair index 8-12 → array index 0-4)
                     const UWORD Idx = Pair - 8U;
-                    PrefixPair9to13[Idx][0] = (UBYTE)Packed;
-                    PrefixPair9to13[Idx][1] = (UBYTE)(Packed >> 8);
-                    PrefixPair9to13[Idx][2] = (UBYTE)(Packed >> 16);
-                    PrefixPair9to13[Idx][3] = (UBYTE)(Packed >> 24);
+                    PairBytes09to15[Idx][0] = (UBYTE)Packed;
+                    PairBytes09to15[Idx][1] = (UBYTE)(Packed >> 8);
+                    PairBytes09to15[Idx][2] = (UBYTE)(Packed >> 16);
+                    PairBytes09to15[Idx][3] = (UBYTE)(Packed >> 24);
                 }
                 else
                 {
-                    // Pairs 14-15 (Pair index 13-14 → array index 0-1)
-                    const UWORD Idx = Pair - 13U;
-                    PrefixPair14to15[Idx][0] = (UBYTE)Packed;
-                    PrefixPair14to15[Idx][1] = (UBYTE)(Packed >> 8);
-                    PrefixPair14to15[Idx][2] = (UBYTE)(Packed >> 16);
-                    PrefixPair14to15[Idx][3] = (UBYTE)(Packed >> 24);
+                    // Pairs 14-15 (Pair index 13-14 → array index 5-6)
+                    const UWORD Idx = Pair - 8U;
+                    PairBytes09to15[Idx][0] = (UBYTE)Packed;
+                    PairBytes09to15[Idx][1] = (UBYTE)(Packed >> 8);
+                    PairBytes09to15[Idx][2] = (UBYTE)(Packed >> 16);
+                    PairBytes09to15[Idx][3] = (UBYTE)(Packed >> 24);
                 }
 
                 PrefixUState = (PrefixUState + USampleAdvance) & 0x00FFFFFFUL;
@@ -555,23 +556,15 @@ static void BuildFrameStates(void)
             RowSeed->PrefixPair78Words[1] = (UWORD)(((UWORD)PrefixPair7Bytes[1] << 8) | (UWORD)PrefixPair8Bytes[1]);
             RowSeed->PrefixPair78Words[2] = (UWORD)(((UWORD)PrefixPair7Bytes[2] << 8) | (UWORD)PrefixPair8Bytes[2]);
             RowSeed->PrefixPair78Words[3] = (UWORD)(((UWORD)PrefixPair7Bytes[3] << 8) | (UWORD)PrefixPair8Bytes[3]);
-            // Pairs 09-13 as individual plane bytes.
-            for (UWORD Pi = 0; Pi < 5U; ++Pi)
+            // Pairs 09-14 packed as words (high byte = first pair, low byte = second pair).
+            // Same endian convention as PrefixPair78Words.
+            for (UWORD Pl = 0; Pl < 4U; ++Pl)
             {
-                RowSeed->PrefixPair9to13[Pi][0] = PrefixPair9to13[Pi][0];
-                RowSeed->PrefixPair9to13[Pi][1] = PrefixPair9to13[Pi][1];
-                RowSeed->PrefixPair9to13[Pi][2] = PrefixPair9to13[Pi][2];
-                RowSeed->PrefixPair9to13[Pi][3] = PrefixPair9to13[Pi][3];
+                RowSeed->PrefixPair09_10Words[Pl] = (UWORD)(((UWORD)PairBytes09to15[0][Pl] << 8) | (UWORD)PairBytes09to15[1][Pl]);
+                RowSeed->PrefixPair11_12Words[Pl] = (UWORD)(((UWORD)PairBytes09to15[2][Pl] << 8) | (UWORD)PairBytes09to15[3][Pl]);
+                RowSeed->PrefixPair13_14Words[Pl] = (UWORD)(((UWORD)PairBytes09to15[4][Pl] << 8) | (UWORD)PairBytes09to15[5][Pl]);
+                RowSeed->PrefixPair15Bytes[Pl]    = PairBytes09to15[6][Pl];
             }
-            // Pairs 14-15 as individual plane bytes.
-            RowSeed->PrefixPair14to15[0][0] = PrefixPair14to15[0][0];
-            RowSeed->PrefixPair14to15[0][1] = PrefixPair14to15[0][1];
-            RowSeed->PrefixPair14to15[0][2] = PrefixPair14to15[0][2];
-            RowSeed->PrefixPair14to15[0][3] = PrefixPair14to15[0][3];
-            RowSeed->PrefixPair14to15[1][0] = PrefixPair14to15[1][0];
-            RowSeed->PrefixPair14to15[1][1] = PrefixPair14to15[1][1];
-            RowSeed->PrefixPair14to15[1][2] = PrefixPair14to15[1][2];
-            RowSeed->PrefixPair14to15[1][3] = PrefixPair14to15[1][3];
 
             RowWrite += RowStride;
 
