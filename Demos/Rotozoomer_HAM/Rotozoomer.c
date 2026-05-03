@@ -1,7 +1,7 @@
 //**********************************************************************
 //* 4x4 HAM7 Rotozoomer                                                *
 //*                                                                    *
-//* 4 DMA bitplanes, HAM control via BPL5DAT/BPL6DAT, 28 columns      *
+//* 4 DMA bitplanes, HAM control via BPL5DAT/BPL6DAT, 48 columns       *
 //* Amiga 500 OCS, 68000                                               *
 //*                                                                    *
 //* (C) 2026 by Stefan Kubsch/Deep4                                    *
@@ -19,7 +19,7 @@
 // Debugging
 // ---------------------------------------------------------------------
 
-#define DEBUG 1
+#define DEBUG 0
 
 #if DEBUG
 #define DBG_COLOR(c) (*COLOR00 = (c))
@@ -32,10 +32,16 @@
 // ---------------------------------------------------------------------
 
 extern void RenderFrameAsm(__reg("a0") UBYTE* Dest, __reg("a1") const void* FrameState);
-extern void RenderFastB0Entry(void);
-extern void RenderFastBp1Entry(void);
-extern void RenderFastBm1Entry(void);
-extern void RenderFastBm2Entry(void);
+extern void RenderFastB0P8Entry(void);
+extern void RenderFastBm1P8Entry(void);
+extern void RenderFastB0U0P8Entry(void);
+extern void RenderFastBm1U0P8Entry(void);
+extern void RenderFastBp1P8Entry(void);
+extern void RenderFastBm2P8Entry(void);
+extern void RenderFastBp1U0P8Entry(void);
+extern void RenderFastBm2U0P8Entry(void);
+extern void RenderFastB0V0Entry(void);
+extern void RenderFastB0U0V0Entry(void);
 
 // ---------------------------------------------------------------------
 // Effect constants
@@ -57,7 +63,7 @@ extern void RenderFastBm2Entry(void);
 #define HAM_BACKGROUND_RGB4     0x000
 
 #define CHUNKY_PIXEL_SIZE       4
-#define ROTO_COLUMNS            28
+#define ROTO_COLUMNS            48
 #define ROTO_ROWS               48
 #define ROTO_PAIR_COUNT         (ROTO_COLUMNS / 2)
 #define ROTO_DISPLAY_WIDTH      (ROTO_COLUMNS * CHUNKY_PIXEL_SIZE)
@@ -93,8 +99,8 @@ extern void RenderFastBm2Entry(void);
 #define ROTO_ZOOM_BASE          384
 #define ROTO_ZOOM_AMPLITUDE     128
 #define ROTO_ZOOM_STEPS         32
+#define ROTO_FRAME_COUNT        128
 #define ROTO_ANGLE_PHASE_STEP   2
-#define ROTO_ANGLE_STEPS        (256 / ROTO_ANGLE_PHASE_STEP)
 #define ROTO_DELTA_SCALE        3072
 #define ROTO_CENTER_U           0x4000
 #define ROTO_CENTER_V           0x4000
@@ -105,23 +111,48 @@ extern void RenderFastBm2Entry(void);
 
 typedef struct
 {
-    UWORD NextUc;
-    UWORD NextRow;
-    UWORD PackedBytes;
-    ULONG PackedPairs[3];
+    // First four premerged logical texel-pairs, stored plane-wise.
+    // Each long is copied directly to one destination plane.
+    ULONG PrefixPlaneLongs[4];
+    // Fifth and sixth premerged logical texel-pairs, stored as two bytes
+    // per plane. Each word is copied directly to one destination plane.
+    UWORD PrefixPair56Words[4];
+    // Seventh and eighth premerged pairs stored as plane-wise words.
+    // High byte of each word = pair 07 byte, low byte = pair 08 byte.
+    UWORD PrefixPair78Words[4];
+    // Pairs 09-13: one byte per plane each (5 pairs x 4 planes = 20 bytes).
+    // [pair_index 0..4][plane_index 0..3].
+    UBYTE PrefixPair9to13[5][4];
 } RotoRowState;
 
-typedef struct
+typedef struct RotoFrameBlock
 {
     WORD         DuC;
     UBYTE        DuL;
     UBYTE        DvRem;
     void       (*Entry)(void);
+    // Initial rolling runtime seed for row 0 after the frame-specific prefix.
+    // B0 frames start after pair 07; BM1/BP1/BM2 frames start after pair 08.
+    UWORD        InitialPackedSeed;
+    // High byte: V fraction. Low byte: U fraction.
+    UWORD        InitialPackedBytes;
+    // Compact delta applied before rendering each row after the first one.
+    WORD         PostRowDuC;
+    UBYTE        PostRowDuL;
+    UBYTE        DvRemPad;  // padding to keep PostRowVBase word-aligned
+    WORD         PostRowVBase;
+    UWORD        PostRowVRemShift;
+    // Next frame address (all frames have uniform 52-byte row size).
+    struct RotoFrameBlock* NextFrame;
     RotoRowState Rows[ROTO_ROWS];
 } RotoFrameBlock;
 
-typedef char RotoRowStateSizeMustBe18[(sizeof(RotoRowState) == 18) ? 1 : -1];
-typedef char RotoFrameBlockSizeMustBe872[(sizeof(RotoFrameBlock) == 872) ? 1 : -1];
+typedef char RotoRowStateSizeMustBe52[(sizeof(RotoRowState) == 52) ? 1 : -1];
+typedef char RotoFrameBlockHeaderAndBaseRowsMustBe2520[(sizeof(RotoFrameBlock) == 2520) ? 1 : -1];
+
+#define ROTO_FRAME_HEADER_BYTES 24UL
+#define ROTO_ROW_BYTES          52UL  // uniform P13 row: 16+8+8+20 bytes
+#define ROTO_PREFIX_PAIRS       13UL  // all frames precompute pairs 01-13
 
 enum
 {
@@ -134,7 +165,6 @@ enum
 RotoFrameBlock* FrameBlocks = NULL;
 static ULONG FrameBlocksSize = 0;
 RotoFrameBlock* CurrentFrameBlock = NULL;
-static RotoFrameBlock* FrameBlocksEnd = NULL;
 
 // ---------------------------------------------------------------------
 // Sine table
@@ -166,12 +196,16 @@ ULONG* TexturePackedMidHi = NULL;
 ULONG* TexturePackedMidLo = NULL;
 static ULONG TexturePackedSize = 0;
 static UWORD DisplayPalette[SCREEN_COLORS];
-static UBYTE* RotoBuffers[2] = { NULL, NULL };
+// RotoBuffers: Chip-RAM display buffers used by Bitplane DMA.
+// Double-buffered: CPU renders into RotoBuffers[DrawBuffer] while the
+// Copper displays RotoBuffers[DrawBuffer^1].  No intermediate copy needed.
+static UBYTE* RotoBuffers[2]  = { NULL, NULL };
 
 // CurrentFrameBlock is seeded after BuildFrameStates() so the
 // first rendered image still matches the former phase-updated-before-render
-// sequence. BuildFrameStates now also folds the exact first three pairs of every row
-// into the row seed, so InitTexture() must have run first.
+// sequence. BuildFrameStates folds pair 07 into every row state and places
+// pair 08 directly after that row state for every non-B0 vertical family and B0 DvDx>=112 frames.
+// InitTexture() must have run first.
 
 // ---------------------------------------------------------------------
 // Rotozoomer
@@ -235,6 +269,22 @@ static WORD Asr1Word(WORD Value)
     return (WORD)Temp;
 }
 
+static WORD Asr8Word(WORD Value)
+{
+    LONG Temp = (LONG)Value;
+
+    if (Temp < 0)
+    {
+        Temp = -(((-Temp) + 255L) >> 8);
+    }
+    else
+    {
+        Temp >>= 8;
+    }
+
+    return (WORD)Temp;
+}
+
 static WORD Low6Quad(WORD Value)
 {
     return (WORD)((((UWORD)Value) & 0x003F) << 2);
@@ -242,28 +292,25 @@ static WORD Low6Quad(WORD Value)
 
 static void BuildFrameStates(void)
 {
-    // The shipped effect only ever walks one fixed 256-frame cycle. Build the
-    // exact hotloop seed for each frame and each rendered row once so the
-    // assembler can skip both frame setup and the once-per-row state rebuild.
-    //
-    // The earlier version replayed all 48 horizontal samples for every row in
-    // C. That was exact, but very slow on 68000. The split-U and cached-V
-    // states can be merged into linear combined states:
-    //
-    //   UState = [Uc:16 | Ul:8]
-    //   WState = [(Row>>1)&$FF00 | WLow]
-    //
-    // Both evolve modulo 24 / 16 bits, so one exact row advance replaces the
-    // whole inner pair simulation during init.
-    FrameBlocksSize = 256UL * (ULONG)sizeof(RotoFrameBlock);
+    // The shipped effect only ever walks one fixed ROTO_FRAME_COUNT-frame cycle. Build the
+    // exact prefix bytes for each frame and each rendered row once so the
+    // assembler can skip most row setup: all 13 prefix pairs are precomputed,
+    // leaving only 9 runtime pairs (14-22) per row.
+    UBYTE* FrameWrite;
+    RotoFrameBlock* PreviousState = NULL;
+
+    // All frames use the same uniform 52-byte row layout (P13).
+    FrameBlocksSize = (ULONG)ROTO_FRAME_COUNT *
+        (ROTO_FRAME_HEADER_BYTES + (ULONG)ROTO_ROWS * ROTO_ROW_BYTES);
 
     FrameBlocks = (RotoFrameBlock*)lwmf_AllocCpuMem(FrameBlocksSize, MEMF_CLEAR);
+    FrameWrite = (UBYTE*)FrameBlocks;
 
-    for (UWORD Frame = 0; Frame < 256; ++Frame)
+    for (UWORD Frame = 0; Frame < ROTO_FRAME_COUNT; ++Frame)
     {
         const UBYTE AnglePhase = (UBYTE)(Frame * ROTO_ANGLE_PHASE_STEP);
-        const UBYTE ZoomPhase = (UBYTE)Frame;
-        const UBYTE MovePhaseX = (UBYTE)Frame;
+        const UBYTE ZoomPhase = (UBYTE)(Frame * 2);
+        const UBYTE MovePhaseX = (UBYTE)(Frame * 2);
         const UBYTE MovePhaseY = (UBYTE)(64 + (Frame * 2));
         const LONG ZoomIndex = (LONG)(((ULONG)SinTab256[ZoomPhase] * 31UL) / 63UL);
         const LONG Zoom =
@@ -307,11 +354,16 @@ static void BuildFrameStates(void)
         ULONG UState = (((ULONG)(UWORD)StartUc) << 8) | (ULONG)(UBYTE)StartUl;
         UWORD WState = (UWORD)(((UWORD)StartVTrans >> 1) & 0xFFFFU);
         ULONG URowAdvance;
+        ULONG UPostRowAdvance;
         UWORD VSampleStep = 0;
         UWORD WRowAdvance;
+        UWORD WPostRowAdvance;
         UWORD Family = ROTO_FAMILY_B0;
-        RotoFrameBlock* State = &FrameBlocks[Frame];
-        RotoRowState* FrameRows = State->Rows;
+        RotoFrameBlock* State;
+        UBYTE* RowWrite;
+        // All frames use the uniform P13 row layout (52 bytes, pairs 01-13 precomputed).
+        const ULONG RowStride = ROTO_ROW_BYTES;
+        const UWORD PrefixPairs = (UWORD)ROTO_PREFIX_PAIRS;
 
         if (DvDx < 0)
         {
@@ -320,28 +372,52 @@ static void BuildFrameStates(void)
         else if (DvDx > 255)
         {
             Family = ROTO_FAMILY_BP1;
-        }        State->DuC = DuC;
+        }
+
+        State = (RotoFrameBlock*)FrameWrite;
+        RowWrite = FrameWrite + ROTO_FRAME_HEADER_BYTES;
+        FrameWrite += ROTO_FRAME_HEADER_BYTES + ((ULONG)ROTO_ROWS * RowStride);
+
+        if (PreviousState)
+        {
+            PreviousState->NextFrame = State;
+        }
+        PreviousState = State;
+
+        State->NextFrame = (RotoFrameBlock*)FrameWrite;
+
+        State->DuC = DuC;
         State->DuL = DuLByte;
         State->DvRem = DvRem;
 
+        // All frames use the P13 row layout. V0 frames still use dedicated
+        // entry points that skip the V-carry checks in the 9 runtime pairs.
         if (Family == ROTO_FAMILY_B0)
         {
-            State->Entry = RenderFastB0Entry;
+            if (DvRem == 0)
+            {
+                State->Entry = (DuLByte == 0) ? RenderFastB0U0V0Entry : RenderFastB0V0Entry;
+            }
+            else
+            {
+                State->Entry = (DuLByte == 0) ? RenderFastB0U0P8Entry : RenderFastB0P8Entry;
+            }
+
             VSampleStep = (UWORD)DvRem;
         }
         else if (Family == ROTO_FAMILY_BM1)
         {
-            State->Entry = RenderFastBm1Entry;
+            State->Entry = (DuLByte == 0) ? RenderFastBm1U0P8Entry : RenderFastBm1P8Entry;
             VSampleStep = (UWORD)(0xFF00U | (UWORD)DvRem);
         }
         else if (Family == ROTO_FAMILY_BM2)
         {
-            State->Entry = RenderFastBm2Entry;
+            State->Entry = (DuLByte == 0) ? RenderFastBm2U0P8Entry : RenderFastBm2P8Entry;
             VSampleStep = (UWORD)(0xFE00U | (UWORD)DvRem);
         }
         else
         {
-            State->Entry = RenderFastBp1Entry;
+            State->Entry = (DuLByte == 0) ? RenderFastBp1U0P8Entry : RenderFastBp1P8Entry;
             VSampleStep = (UWORD)(0x0100U | (UWORD)DvRem);
         }
 
@@ -351,73 +427,141 @@ static void BuildFrameStates(void)
         WRowAdvance =
             (UWORD)(((ULONG)ROTO_COLUMNS * (ULONG)VSampleStep + (ULONG)RowStepVWord) & 0xFFFFUL);
 
+        // Runtime intentionally skips the accumulator update after the final
+        // rendered sample of the row. Fold that one skipped sample advance into
+        // the post-row delta together with the next row's folded prefix samples.
+        UPostRowAdvance =
+            ((((ULONG)((PrefixPairs * 2U) + 1U) * ((((ULONG)DuCWord) << 8) | (ULONG)DuLByte)) +
+              ((((ULONG)RowStepUcWord) << 8) | (ULONG)RowStepUlByte)) & 0x00FFFFFFUL);
+        WPostRowAdvance =
+            (UWORD)((((ULONG)((PrefixPairs * 2U) + 1U) * (ULONG)VSampleStep) + (ULONG)RowStepVWord) & 0xFFFFUL);
+
+        State->PostRowDuC = (WORD)(UPostRowAdvance >> 8);
+        State->PostRowDuL = (UBYTE)UPostRowAdvance;
+        State->DvRemPad   = 0;
+        State->PostRowVBase = (WORD)((LONG)Asr8Word((WORD)WPostRowAdvance) * 0x0200L);
+        State->PostRowVRemShift = (UWORD)(((UWORD)(UBYTE)WPostRowAdvance) << 8);
+
         for (UWORD Row = 0; Row < ROTO_ROWS; ++Row)
         {
-            RotoRowState* RowSeed = &FrameRows[Row];
-            const ULONG UState0 = UState;
-            const UWORD WState0 = WState;
-            const UWORD StartUc0 = (UWORD)(((UWORD)(UState0 >> 8)) & 0x01FFU);
-            const UWORD StartRow0 = (UWORD)((WState0 << 1) & 0xFE00U);
-            const UWORD StartOffset0 =
-                (UWORD)((StartRow0 + (UWORD)(StartUc0 & 0x01FCU)) & 0xFFFFU);
+            RotoRowState* RowSeed = (RotoRowState*)RowWrite;
+            ULONG PrefixUState = UState;
+            UWORD PrefixWState = WState;
+            ULONG PrefixPlane0 = 0;
+            ULONG PrefixPlane1 = 0;
+            ULONG PrefixPlane2 = 0;
+            ULONG PrefixPlane3 = 0;
+            UWORD PrefixPair56Words[4] = { 0, 0, 0, 0 };
+            // Pairs 07-08 and 09-13 are stored as individual bytes per plane.
+            UBYTE PrefixPair7Bytes[4]    = { 0, 0, 0, 0 };
+            UBYTE PrefixPair8Bytes[4]    = { 0, 0, 0, 0 };
+            UBYTE PrefixPair9to13[5][4]  = {{ 0 }};
 
-            const ULONG UState1 = (UState0 + USampleAdvance) & 0x00FFFFFFUL;
-            const UWORD WState1 = (UWORD)((WState0 + VSampleStep) & 0xFFFFU);
-            const UWORD StartUc1 = (UWORD)(((UWORD)(UState1 >> 8)) & 0x01FFU);
-            const UWORD StartRow1 = (UWORD)((WState1 << 1) & 0xFE00U);
-            const UWORD StartOffset1 =
-                (UWORD)((StartRow1 + (UWORD)(StartUc1 & 0x01FCU)) & 0xFFFFU);
+            for (UWORD Pair = 0; Pair < 13; ++Pair)
+            {
+                const UWORD StartUc0 = (UWORD)(((UWORD)(PrefixUState >> 8)) & 0x01FFU);
+                const UWORD StartRow0 = (UWORD)((PrefixWState << 1) & 0xFE00U);
+                const UWORD StartOffset0 =
+                    (UWORD)((StartRow0 + (UWORD)(StartUc0 & 0x01FCU)) & 0xFFFFU);
 
-            const ULONG UState2 = (UState1 + USampleAdvance) & 0x00FFFFFFUL;
-            const UWORD WState2 = (UWORD)((WState1 + VSampleStep) & 0xFFFFU);
-            const UWORD StartUc2 = (UWORD)(((UWORD)(UState2 >> 8)) & 0x01FFU);
-            const UWORD StartRow2 = (UWORD)((WState2 << 1) & 0xFE00U);
-            const UWORD StartOffset2 =
-                (UWORD)((StartRow2 + (UWORD)(StartUc2 & 0x01FCU)) & 0xFFFFU);
+                PrefixUState = (PrefixUState + USampleAdvance) & 0x00FFFFFFUL;
+                PrefixWState = (UWORD)((PrefixWState + VSampleStep) & 0xFFFFU);
 
-            const ULONG UState3 = (UState2 + USampleAdvance) & 0x00FFFFFFUL;
-            const UWORD WState3 = (UWORD)((WState2 + VSampleStep) & 0xFFFFU);
-            const UWORD StartUc3 = (UWORD)(((UWORD)(UState3 >> 8)) & 0x01FFU);
-            const UWORD StartRow3 = (UWORD)((WState3 << 1) & 0xFE00U);
-            const UWORD StartOffset3 =
-                (UWORD)((StartRow3 + (UWORD)(StartUc3 & 0x01FCU)) & 0xFFFFU);
+                const UWORD StartUc1 = (UWORD)(((UWORD)(PrefixUState >> 8)) & 0x01FFU);
+                const UWORD StartRow1 = (UWORD)((PrefixWState << 1) & 0xFE00U);
+                const UWORD StartOffset1 =
+                    (UWORD)((StartRow1 + (UWORD)(StartUc1 & 0x01FCU)) & 0xFFFFU);
 
-            const ULONG UState4 = (UState3 + USampleAdvance) & 0x00FFFFFFUL;
-            const UWORD WState4 = (UWORD)((WState3 + VSampleStep) & 0xFFFFU);
-            const UWORD StartUc4 = (UWORD)(((UWORD)(UState4 >> 8)) & 0x01FFU);
-            const UWORD StartRow4 = (UWORD)((WState4 << 1) & 0xFE00U);
-            const UWORD StartOffset4 =
-                (UWORD)((StartRow4 + (UWORD)(StartUc4 & 0x01FCU)) & 0xFFFFU);
+                const ULONG Packed =
+                    (*(const ULONG*)((const UBYTE*)TexturePackedMidHi + (WORD)StartOffset0)) |
+                    (*(const ULONG*)((const UBYTE*)TexturePackedMidLo + (WORD)StartOffset1));
 
-            const ULONG UState5 = (UState4 + USampleAdvance) & 0x00FFFFFFUL;
-            const UWORD WState5 = (UWORD)((WState4 + VSampleStep) & 0xFFFFU);
-            const UWORD StartUc5 = (UWORD)(((UWORD)(UState5 >> 8)) & 0x01FFU);
-            const UWORD StartRow5 = (UWORD)((WState5 << 1) & 0xFE00U);
-            const UWORD StartOffset5 =
-                (UWORD)((StartRow5 + (UWORD)(StartUc5 & 0x01FCU)) & 0xFFFFU);
+                if (Pair < 4)
+                {
+                    PrefixPlane0 = (PrefixPlane0 << 8) | (ULONG)(UBYTE)(Packed);
+                    PrefixPlane1 = (PrefixPlane1 << 8) | (ULONG)(UBYTE)(Packed >> 8);
+                    PrefixPlane2 = (PrefixPlane2 << 8) | (ULONG)(UBYTE)(Packed >> 16);
+                    PrefixPlane3 = (PrefixPlane3 << 8) | (ULONG)(UBYTE)(Packed >> 24);
+                }
+                else if (Pair < 6)
+                {
+                    PrefixPair56Words[0] = (UWORD)((PrefixPair56Words[0] << 8) | (UWORD)(UBYTE)(Packed));
+                    PrefixPair56Words[1] = (UWORD)((PrefixPair56Words[1] << 8) | (UWORD)(UBYTE)(Packed >> 8));
+                    PrefixPair56Words[2] = (UWORD)((PrefixPair56Words[2] << 8) | (UWORD)(UBYTE)(Packed >> 16));
+                    PrefixPair56Words[3] = (UWORD)((PrefixPair56Words[3] << 8) | (UWORD)(UBYTE)(Packed >> 24));
+                }
+                else if (Pair == 6)
+                {
+                    PrefixPair7Bytes[0] = (UBYTE)Packed;
+                    PrefixPair7Bytes[1] = (UBYTE)(Packed >> 8);
+                    PrefixPair7Bytes[2] = (UBYTE)(Packed >> 16);
+                    PrefixPair7Bytes[3] = (UBYTE)(Packed >> 24);
+                }
+                else if (Pair == 7)
+                {
+                    PrefixPair8Bytes[0] = (UBYTE)Packed;
+                    PrefixPair8Bytes[1] = (UBYTE)(Packed >> 8);
+                    PrefixPair8Bytes[2] = (UBYTE)(Packed >> 16);
+                    PrefixPair8Bytes[3] = (UBYTE)(Packed >> 24);
+                }
+                else
+                {
+                    // Pairs 09-13 (Pair index 8-12 → array index 0-4)
+                    const UWORD Idx = Pair - 8U;
+                    PrefixPair9to13[Idx][0] = (UBYTE)Packed;
+                    PrefixPair9to13[Idx][1] = (UBYTE)(Packed >> 8);
+                    PrefixPair9to13[Idx][2] = (UBYTE)(Packed >> 16);
+                    PrefixPair9to13[Idx][3] = (UBYTE)(Packed >> 24);
+                }
 
-            const ULONG UState6 = (UState5 + USampleAdvance) & 0x00FFFFFFUL;
-            const UWORD WState6 = (UWORD)((WState5 + VSampleStep) & 0xFFFFU);
+                PrefixUState = (PrefixUState + USampleAdvance) & 0x00FFFFFFUL;
+                PrefixWState = (UWORD)((PrefixWState + VSampleStep) & 0xFFFFU);
+            }
 
-            RowSeed->NextUc =
-                (UWORD)(((UWORD)(UState6 >> 8)) & 0x01FFU);
-            RowSeed->NextRow =
-                (UWORD)((WState6 << 1) & 0xFE00U);
-            RowSeed->PackedBytes =
-                (UWORD)((((UWORD)WState6 & 0x00FFU) << 8) | (UWORD)(UState6 & 0x00FFUL));
-            RowSeed->PackedPairs[0] =
-                (*(const ULONG*)((const UBYTE*)TexturePackedMidHi + (WORD)StartOffset0)) |
-                (*(const ULONG*)((const UBYTE*)TexturePackedMidLo + (WORD)StartOffset1));
-            RowSeed->PackedPairs[1] =
-                (*(const ULONG*)((const UBYTE*)TexturePackedMidHi + (WORD)StartOffset2)) |
-                (*(const ULONG*)((const UBYTE*)TexturePackedMidLo + (WORD)StartOffset3));
-            RowSeed->PackedPairs[2] =
-                (*(const ULONG*)((const UBYTE*)TexturePackedMidHi + (WORD)StartOffset4)) |
-                (*(const ULONG*)((const UBYTE*)TexturePackedMidLo + (WORD)StartOffset5));
+            if (Row == 0)
+            {
+                const UWORD NextUc =
+                    (UWORD)(((UWORD)(PrefixUState >> 8)) & 0x01FFU);
+                const UWORD NextRow =
+                    (UWORD)((PrefixWState << 1) & 0xFE00U);
+
+                State->InitialPackedSeed = (UWORD)(NextRow | NextUc);
+                State->InitialPackedBytes =
+                    (UWORD)((((UWORD)PrefixWState & 0x00FFU) << 8) | (UWORD)(PrefixUState & 0x00FFUL));
+            }
+
+            RowSeed->PrefixPlaneLongs[0] = PrefixPlane0;
+            RowSeed->PrefixPlaneLongs[1] = PrefixPlane1;
+            RowSeed->PrefixPlaneLongs[2] = PrefixPlane2;
+            RowSeed->PrefixPlaneLongs[3] = PrefixPlane3;
+            RowSeed->PrefixPair56Words[0] = PrefixPair56Words[0];
+            RowSeed->PrefixPair56Words[1] = PrefixPair56Words[1];
+            RowSeed->PrefixPair56Words[2] = PrefixPair56Words[2];
+            RowSeed->PrefixPair56Words[3] = PrefixPair56Words[3];
+            // Pairs 07-08 packed as words (high byte = pair07, low byte = pair08).
+            RowSeed->PrefixPair78Words[0] = (UWORD)(((UWORD)PrefixPair7Bytes[0] << 8) | (UWORD)PrefixPair8Bytes[0]);
+            RowSeed->PrefixPair78Words[1] = (UWORD)(((UWORD)PrefixPair7Bytes[1] << 8) | (UWORD)PrefixPair8Bytes[1]);
+            RowSeed->PrefixPair78Words[2] = (UWORD)(((UWORD)PrefixPair7Bytes[2] << 8) | (UWORD)PrefixPair8Bytes[2]);
+            RowSeed->PrefixPair78Words[3] = (UWORD)(((UWORD)PrefixPair7Bytes[3] << 8) | (UWORD)PrefixPair8Bytes[3]);
+            // Pairs 09-13 as individual plane bytes.
+            for (UWORD Pi = 0; Pi < 5U; ++Pi)
+            {
+                RowSeed->PrefixPair9to13[Pi][0] = PrefixPair9to13[Pi][0];
+                RowSeed->PrefixPair9to13[Pi][1] = PrefixPair9to13[Pi][1];
+                RowSeed->PrefixPair9to13[Pi][2] = PrefixPair9to13[Pi][2];
+                RowSeed->PrefixPair9to13[Pi][3] = PrefixPair9to13[Pi][3];
+            }
+
+            RowWrite += RowStride;
 
             UState = (UState + URowAdvance) & 0x00FFFFFFUL;
             WState = (UWORD)((WState + WRowAdvance) & 0xFFFFU);
         }
+    }
+
+    if (PreviousState)
+    {
+        PreviousState->NextFrame = FrameBlocks;
     }
 }
 
@@ -567,10 +711,6 @@ static void InitTexture(void)
 
 static void InitRotoBuffers(void)
 {
-    // Store each rendered plane as one contiguous 24x48 block. That keeps the
-    // visible image identical, but the renderer no longer has to skip over the
-    // other three planes at the end of every row. The Copper now advances to
-    // the next source row with modulo 0 after each 4-line stretch.
     for (UWORD i = 0; i < 2; ++i)
     {
         RotoBuffers[i] = (UBYTE*)AllocMem(ROTO_VISIBLE_BYTES, MEMF_CHIP | MEMF_CLEAR);
@@ -584,8 +724,19 @@ static void InitRotoBuffers(void)
 static UWORD* CopperList = NULL;
 static ULONG CopperListSize = 0;
 
-static UWORD BPLPTH_Idx[NUMBEROFBITPLANES];
-static UWORD BPLPTL_Idx[NUMBEROFBITPLANES];
+enum
+{
+    COPPER_BPL0PTH_IDX = 23,
+    COPPER_BPL0PTL_IDX = 25,
+    COPPER_BPL1PTH_IDX = 27,
+    COPPER_BPL1PTL_IDX = 29,
+    COPPER_BPL2PTH_IDX = 31,
+    COPPER_BPL2PTL_IDX = 33,
+    COPPER_BPL3PTH_IDX = 35,
+    COPPER_BPL3PTL_IDX = 37
+};
+
+static UWORD RotoBufferCopperWords[2][NUMBEROFBITPLANES * 2];
 
 static void CopperAppendWait(UWORD* Index, UWORD VPos, UBYTE* Wrapped)
 {
@@ -610,6 +761,8 @@ static void Init_CopperList(void)
     UWORD Index = 0;
     UBYTE WrapWaitInserted = 0;
 
+    // Display window and data-fetch setup. The visible area is centered in
+    // a normal PAL lowres screen, while DDF fetches only the 176 roto pixels.
     CopperList[Index++] = 0x008E;
     CopperList[Index++] = ROTO_DIWSTRT;
     CopperList[Index++] = 0x0090;
@@ -619,6 +772,9 @@ static void Init_CopperList(void)
     CopperList[Index++] = 0x0094;
     CopperList[Index++] = ROTO_DDFSTOP;
 
+    // Bitplane control setup. The display runs in HAM mode with the requested
+    // plane count; BPLCON1/BPLCON2 stay neutral because no scrolling or
+    // playfield-priority tricks are used.
     CopperList[Index++] = 0x0100;
     CopperList[Index++] = (UWORD)((HAM_DISPLAY_BPU << 12) | 0x0A00);
     CopperList[Index++] = 0x0102;
@@ -626,33 +782,42 @@ static void Init_CopperList(void)
     CopperList[Index++] = 0x0104;
     CopperList[Index++] = 0x0000;
 
+    // Start in row-repeat mode. The copper switches to modulo zero for one
+    // scanline out of every four so each rendered row is stretched to 4x4.
     CopperList[Index++] = 0x0108;
     CopperList[Index++] = ROTO_REPEAT_MOD;
     CopperList[Index++] = 0x010A;
     CopperList[Index++] = ROTO_REPEAT_MOD;
 
+    // Constant HAM control-plane data. These registers provide stable control
+    // bits for the whole line while the CPU renderer writes the data planes.
     CopperList[Index++] = 0x0118;
     CopperList[Index++] = HAM_CONTROL_WORD_P5;
     CopperList[Index++] = 0x011A;
     CopperList[Index++] = HAM_CONTROL_WORD_P6;
 
+    // Bitplane pointer placeholders. Their data-word positions are fixed by
+    // the layout above so the main loop can patch them with constant indexes.
     for (UWORD Plane = 0; Plane < NUMBEROFBITPLANES; ++Plane)
     {
         CopperList[Index++] = (UWORD)(0x00E0 + (Plane * 4));
-        BPLPTH_Idx[Plane] = Index;
         CopperList[Index++] = 0x0000;
 
         CopperList[Index++] = (UWORD)(0x00E2 + (Plane * 4));
-        BPLPTL_Idx[Plane] = Index;
         CopperList[Index++] = 0x0000;
     }
 
+    // Palette upload. Only the base palette is loaded here; HAM changes the
+    // running RGB value per pixel through the encoded image data.
     for (UWORD c = 0; c < SCREEN_COLORS; ++c)
     {
         CopperList[Index++] = (UWORD)(0x0180 + (c * 2));
         CopperList[Index++] = DisplayPalette[c];
     }
 
+    // 4x vertical stretch. For each rendered source row, the first three
+    // scanlines repeat the same bitplane addresses; the fourth scanline uses
+    // modulo zero so DMA advances to the next source row.
     for (UWORD Line = 3; (Line + 1) < ROTO_DISPLAY_HEIGHT; Line += 4)
     {
         CopperAppendWait(&Index, (UWORD)(ROTO_VPOS_START + Line), &WrapWaitInserted);
@@ -668,29 +833,41 @@ static void Init_CopperList(void)
         CopperList[Index++] = ROTO_REPEAT_MOD;
     }
 
+    // End marker and activation of the generated copper list.
     CopperList[Index++] = 0xFFFF;
     CopperList[Index++] = 0xFFFE;
 
     *COP1LC = (ULONG)CopperList;
 }
 
+static void BuildRotoBufferCopperWords(void)
+{
+    for (UWORD Buffer = 0; Buffer < 2; ++Buffer)
+    {
+        ULONG Ptr = (ULONG)RotoBuffers[Buffer];
+        UWORD* Words = RotoBufferCopperWords[Buffer];
+
+        for (UWORD Plane = 0; Plane < NUMBEROFBITPLANES; ++Plane)
+        {
+            Words[(Plane * 2) + 0] = (UWORD)(Ptr >> 16);
+            Words[(Plane * 2) + 1] = (UWORD)Ptr;
+            Ptr += ROTO_PLANE_BYTES;
+        }
+    }
+}
+
 inline static void Update_BitplanePointers(UBYTE Buffer)
 {
-    ULONG Ptr = (ULONG)RotoBuffers[Buffer];
-    CopperList[BPLPTH_Idx[0]] = (UWORD)(Ptr >> 16);
-    CopperList[BPLPTL_Idx[0]] = (UWORD)(Ptr & 0xFFFF);
+    const UWORD* Words = RotoBufferCopperWords[Buffer];
 
-    Ptr += ROTO_PLANE_BYTES;
-    CopperList[BPLPTH_Idx[1]] = (UWORD)(Ptr >> 16);
-    CopperList[BPLPTL_Idx[1]] = (UWORD)(Ptr & 0xFFFF);
-
-    Ptr += ROTO_PLANE_BYTES;
-    CopperList[BPLPTH_Idx[2]] = (UWORD)(Ptr >> 16);
-    CopperList[BPLPTL_Idx[2]] = (UWORD)(Ptr & 0xFFFF);
-
-    Ptr += ROTO_PLANE_BYTES;
-    CopperList[BPLPTH_Idx[3]] = (UWORD)(Ptr >> 16);
-    CopperList[BPLPTL_Idx[3]] = (UWORD)(Ptr & 0xFFFF);
+    CopperList[COPPER_BPL0PTH_IDX] = Words[0];
+    CopperList[COPPER_BPL0PTL_IDX] = Words[1];
+    CopperList[COPPER_BPL1PTH_IDX] = Words[2];
+    CopperList[COPPER_BPL1PTL_IDX] = Words[3];
+    CopperList[COPPER_BPL2PTH_IDX] = Words[4];
+    CopperList[COPPER_BPL2PTL_IDX] = Words[5];
+    CopperList[COPPER_BPL3PTH_IDX] = Words[6];
+    CopperList[COPPER_BPL3PTL_IDX] = Words[7];
 }
 
 // ---------------------------------------------------------------------
@@ -712,11 +889,11 @@ static void Cleanup_All(void)
     TexturePackedMidLo = NULL;
     TexturePackedSize = 0;
 
+
     FreeMem(FrameBlocks, FrameBlocksSize);
     FrameBlocks = NULL;
     FrameBlocksSize = 0;
     CurrentFrameBlock = NULL;
-    FrameBlocksEnd = NULL;
 
     for (UWORD i = 0; i < 2; ++i)
     {
@@ -733,9 +910,9 @@ int main(void)
 
     InitTexture();
     BuildFrameStates();
-    FrameBlocksEnd = FrameBlocks + 256;
-    CurrentFrameBlock = &FrameBlocks[1];
+    CurrentFrameBlock = FrameBlocks->NextFrame;
     InitRotoBuffers();
+    BuildRotoBufferCopperWords();
     Init_CopperList();
 
     Update_BitplanePointers(0);
@@ -746,11 +923,7 @@ int main(void)
     while (*CIAA_PRA & 0x40)
     {
         RenderFrameAsm(RotoBuffers[DrawBuffer], CurrentFrameBlock);
-        ++CurrentFrameBlock;
-        if (CurrentFrameBlock == FrameBlocksEnd)
-        {
-            CurrentFrameBlock = FrameBlocks;
-        }
+        CurrentFrameBlock = CurrentFrameBlock->NextFrame;
 
         DBG_COLOR(0x00F);
         lwmf_WaitVertBlank();
