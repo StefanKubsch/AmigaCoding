@@ -19,7 +19,7 @@
 // Debugging
 // ---------------------------------------------------------------------
 
-#define DEBUG 0
+#define DEBUG 1
 
 #if DEBUG
 #define DBG_COLOR(c) (*COLOR00 = (c))
@@ -244,14 +244,11 @@ static const UBYTE ZeroPlaneRow[TEXTURE_SOURCE_WIDTH / 8] = { 0 };
 
 static void BuildFrameStates(void)
 {
-    // The shipped effect only ever walks one fixed ROTO_FRAME_COUNT-frame cycle. Build the
-    // exact prefix bytes for each frame and each rendered row once so the
-    // assembler can skip most row setup: all 13 prefix pairs are precomputed,
-    // leaving only 9 runtime pairs (14-22) per row.
+    // Precompute pairs 01-17 for every frame and row so the hot-loop
+    // only handles the 11 runtime pairs (18-28).
     UBYTE* FrameWrite;
     RotoFrameBlock* PreviousState = NULL;
 
-    // All frames use the same uniform 80-byte row layout (P20).
     FrameBlocksSize = (ULONG)ROTO_FRAME_COUNT * (ROTO_FRAME_HEADER_BYTES + (ULONG)ROTO_ROWS * ROTO_ROW_BYTES);
 
     FrameBlocks = (RotoFrameBlock*)lwmf_AllocCpuMem(FrameBlocksSize, MEMF_CLEAR);
@@ -290,9 +287,6 @@ static void BuildFrameStates(void)
         const UWORD DuCWord = (UWORD)DuC;
         const UBYTE DuLByte = (UBYTE)DuL;
         const ULONG USampleAdvance = ((((ULONG)DuCWord) << 8) | (ULONG)DuLByte) & 0x00FFFFFFUL;
-        const UWORD RowStepUcWord = (UWORD)RowStepUc;
-        const UBYTE RowStepUlByte = (UBYTE)RowStepUl;
-        const UWORD RowStepVWord = (UWORD)RowStepV;
         const UBYTE DvRem = (UBYTE)DvDx;
 
         ULONG UState = (((ULONG)(UWORD)StartUc) << 8) | (ULONG)(UBYTE)StartUl;
@@ -306,10 +300,6 @@ static void BuildFrameStates(void)
         RotoFrameBlock* State;
         UBYTE* RowWrite;
 
-        // All frames use the uniform P20 row layout (80 bytes, pairs 01-20 precomputed).
-        const ULONG RowStride = ROTO_ROW_BYTES;
-        const UWORD PrefixPairs = (UWORD)ROTO_PREFIX_PAIRS;
-
         if (DvDx < 0)
         {
             Family = (DvDx < -256) ? ROTO_FAMILY_BM2 : ROTO_FAMILY_BM1;
@@ -321,7 +311,7 @@ static void BuildFrameStates(void)
 
         State = (RotoFrameBlock*)FrameWrite;
         RowWrite = FrameWrite + ROTO_FRAME_HEADER_BYTES;
-        FrameWrite += ROTO_FRAME_HEADER_BYTES + ((ULONG)ROTO_ROWS * RowStride);
+        FrameWrite += ROTO_FRAME_HEADER_BYTES + ((ULONG)ROTO_ROWS * ROTO_ROW_BYTES);
 
         if (PreviousState)
         {
@@ -336,8 +326,7 @@ static void BuildFrameStates(void)
         State->DuL = DuLByte;
         State->DvRem = DvRem;
 
-        // All frames use the P20 row layout. V0 frames still use dedicated
-        // entry points that skip the V-carry checks in the 8 runtime pairs.
+        // V0 frames use dedicated entry points that skip the V-carry checks.
         if (Family == ROTO_FAMILY_B0)
         {
             if (DvRem == 0)
@@ -367,18 +356,18 @@ static void BuildFrameStates(void)
             VSampleStep = (UWORD)(0x0100U | (UWORD)DvRem);
         }
 
-        URowAdvance = (((ULONG)ROTO_COLUMNS * ((((ULONG)DuCWord) << 8) | (ULONG)DuLByte)) + ((((ULONG)RowStepUcWord) << 8) | (ULONG)RowStepUlByte)) & 0x00FFFFFFUL;
-        WRowAdvance = (UWORD)(((ULONG)ROTO_COLUMNS * (ULONG)VSampleStep + (ULONG)RowStepVWord) & 0xFFFFUL);
+        const ULONG RowStepU_Long = (((ULONG)(UWORD)RowStepUc) << 8) | (ULONG)(UBYTE)RowStepUl;
+        URowAdvance = ((ULONG)ROTO_COLUMNS * USampleAdvance + RowStepU_Long) & 0x00FFFFFFUL;
+        WRowAdvance = (UWORD)(((ULONG)ROTO_COLUMNS * (ULONG)VSampleStep + (ULONG)(UWORD)RowStepV) & 0xFFFFUL);
 
         // Runtime intentionally skips the accumulator update after the final
         // rendered sample of the row. Fold that one skipped sample advance into
         // the post-row delta together with the next row's folded prefix samples.
-        UPostRowAdvance = ((((ULONG)((PrefixPairs * 2U) + 1U) * ((((ULONG)DuCWord) << 8) | (ULONG)DuLByte)) + ((((ULONG)RowStepUcWord) << 8) | (ULONG)RowStepUlByte)) & 0x00FFFFFFUL);
-        WPostRowAdvance = (UWORD)((((ULONG)((PrefixPairs * 2U) + 1U) * (ULONG)VSampleStep) + (ULONG)RowStepVWord) & 0xFFFFUL);
+        UPostRowAdvance = ((ULONG)((ROTO_PREFIX_PAIRS * 2U) + 1U) * USampleAdvance + RowStepU_Long) & 0x00FFFFFFUL;
+        WPostRowAdvance = (UWORD)(((ULONG)((ROTO_PREFIX_PAIRS * 2U) + 1U) * (ULONG)VSampleStep + (ULONG)(UWORD)RowStepV) & 0xFFFFUL);
 
         State->PostRowDuC = (WORD)(UPostRowAdvance >> 8);
         State->PostRowDuL = (UBYTE)UPostRowAdvance;
-        State->DvRemPad   = 0;
         State->PostRowVBase = (WORD)((LONG)Asr8Word((WORD)WPostRowAdvance) * 0x0200L);
         State->PostRowVRemShift = (UWORD)(((UWORD)(UBYTE)WPostRowAdvance) << 8);
 
@@ -390,33 +379,31 @@ static void BuildFrameStates(void)
             // Groups 0-3 accumulate pairs 01-04, 05-08, 09-12, 13-16 as longs per plane.
             ULONG PrefixGroupLongs[4][4] = {{ 0 }};
 
-            for (UWORD Pair = 0; Pair < 17; ++Pair)
+            for (UWORD Pair = 0; Pair < 16; ++Pair)
             {
                 const UWORD StartOffset0 = (UWORD)(((PrefixWState << 1) & 0xFE00U) + ((UWORD)(PrefixUState >> 8) & 0x01FCU));
-
                 PrefixUState = (PrefixUState + USampleAdvance) & 0x00FFFFFFUL;
                 PrefixWState = (UWORD)((PrefixWState + VSampleStep) & 0xFFFFU);
-
                 const UWORD StartOffset1 = (UWORD)(((PrefixWState << 1) & 0xFE00U) + ((UWORD)(PrefixUState >> 8) & 0x01FCU));
-
                 const ULONG Packed = (*(const ULONG*)((const UBYTE*)TexturePackedMidHi + (WORD)StartOffset0)) | (*(const ULONG*)((const UBYTE*)TexturePackedMidLo + (WORD)StartOffset1));
-
-                if (Pair < 16)
-                {
-                    const UWORD Group = Pair >> 2;
-                    PrefixGroupLongs[Group][0] = (PrefixGroupLongs[Group][0] << 8) | (ULONG)(UBYTE)(Packed);
-                    PrefixGroupLongs[Group][1] = (PrefixGroupLongs[Group][1] << 8) | (ULONG)(UBYTE)(Packed >> 8);
-                    PrefixGroupLongs[Group][2] = (PrefixGroupLongs[Group][2] << 8) | (ULONG)(UBYTE)(Packed >> 16);
-                    PrefixGroupLongs[Group][3] = (PrefixGroupLongs[Group][3] << 8) | (ULONG)(UBYTE)(Packed >> 24);
-                }
-                else
-                {
-                    RowSeed->PrefixPair17Bytes[0] = (UBYTE)Packed;
-                    RowSeed->PrefixPair17Bytes[1] = (UBYTE)(Packed >> 8);
-                    RowSeed->PrefixPair17Bytes[2] = (UBYTE)(Packed >> 16);
-                    RowSeed->PrefixPair17Bytes[3] = (UBYTE)(Packed >> 24);
-                }
-
+                const UWORD Group = Pair >> 2;
+                PrefixGroupLongs[Group][0] = (PrefixGroupLongs[Group][0] << 8) | (ULONG)(UBYTE)(Packed);
+                PrefixGroupLongs[Group][1] = (PrefixGroupLongs[Group][1] << 8) | (ULONG)(UBYTE)(Packed >> 8);
+                PrefixGroupLongs[Group][2] = (PrefixGroupLongs[Group][2] << 8) | (ULONG)(UBYTE)(Packed >> 16);
+                PrefixGroupLongs[Group][3] = (PrefixGroupLongs[Group][3] << 8) | (ULONG)(UBYTE)(Packed >> 24);
+                PrefixUState = (PrefixUState + USampleAdvance) & 0x00FFFFFFUL;
+                PrefixWState = (UWORD)((PrefixWState + VSampleStep) & 0xFFFFU);
+            }
+            {
+                const UWORD StartOffset0 = (UWORD)(((PrefixWState << 1) & 0xFE00U) + ((UWORD)(PrefixUState >> 8) & 0x01FCU));
+                PrefixUState = (PrefixUState + USampleAdvance) & 0x00FFFFFFUL;
+                PrefixWState = (UWORD)((PrefixWState + VSampleStep) & 0xFFFFU);
+                const UWORD StartOffset1 = (UWORD)(((PrefixWState << 1) & 0xFE00U) + ((UWORD)(PrefixUState >> 8) & 0x01FCU));
+                const ULONG Packed = (*(const ULONG*)((const UBYTE*)TexturePackedMidHi + (WORD)StartOffset0)) | (*(const ULONG*)((const UBYTE*)TexturePackedMidLo + (WORD)StartOffset1));
+                RowSeed->PrefixPair17Bytes[0] = (UBYTE)Packed;
+                RowSeed->PrefixPair17Bytes[1] = (UBYTE)(Packed >> 8);
+                RowSeed->PrefixPair17Bytes[2] = (UBYTE)(Packed >> 16);
+                RowSeed->PrefixPair17Bytes[3] = (UBYTE)(Packed >> 24);
                 PrefixUState = (PrefixUState + USampleAdvance) & 0x00FFFFFFUL;
                 PrefixWState = (UWORD)((PrefixWState + VSampleStep) & 0xFFFFU);
             }
@@ -438,7 +425,7 @@ static void BuildFrameStates(void)
                 RowSeed->PrefixPair13_16Longs[Pl] = PrefixGroupLongs[3][Pl];
             }
 
-            RowWrite += RowStride;
+            RowWrite += ROTO_ROW_BYTES;
 
             UState = (UState + URowAdvance) & 0x00FFFFFFUL;
             WState = (UWORD)((WState + WRowAdvance) & 0xFFFFU);
@@ -468,11 +455,6 @@ static void AllocTexturePacked(void)
 
 static void BuildDisplayPalette(const struct lwmf_Image* Image)
 {
-    for (UWORD i = 0; i < SCREEN_COLORS; ++i)
-    {
-        DisplayPalette[i] = 0x000;
-    }
-
     DisplayPalette[0] = HAM_BACKGROUND_RGB4;
 
     const UWORD Limit = (Image->NumberOfColors < 16) ? Image->NumberOfColors : 16;
@@ -501,7 +483,8 @@ static void BuildTextureFromHAM(const struct lwmf_Image* Image)
         const ULONG PlaneRowOffset = (ULONG)Y * ImageRowBytes;
         const UBYTE* PlaneRows[8];
         UWORD CurrentRGB = BasePal[0];
-        UWORD TexOffset = (UWORD)((ULONG)Y * (ULONG)TEXTURE_PACKED_ROW_BYTES);
+        ULONG* OutHi = (ULONG*)(TexturePackedHi + (ULONG)Y * TEXTURE_PACKED_ROW_BYTES);
+        ULONG* OutLo = (ULONG*)(TexturePackedLo + (ULONG)Y * TEXTURE_PACKED_ROW_BYTES);
 
         for (UWORD Plane = 0; Plane < 8; ++Plane)
         {
@@ -572,9 +555,8 @@ static void BuildTextureFromHAM(const struct lwmf_Image* Image)
 
                 CurrentRGB = OutRGB;
                 PackedHi = PackHamContributionHi(OutRGB);
-                *(ULONG*)(TexturePackedHi + TexOffset) = PackedHi;
-                *(ULONG*)(TexturePackedLo + TexOffset) = (PackedHi >> 4);
-                TexOffset = (UWORD)(TexOffset + TEXTURE_PACKED_STRIDE);
+                *OutHi++ = PackedHi;
+                *OutLo++ = (PackedHi >> 4);
             }
         }
     }
@@ -729,6 +711,7 @@ static void Cleanup_All(void)
         FreeMem(CopperLists[i], CopperListSize);
         CopperLists[i] = NULL;
     }
+
     CopperListSize = 0;
 
     FreeMem(TexturePackedBlock, TexturePackedSize);
@@ -739,7 +722,6 @@ static void Cleanup_All(void)
     TexturePackedMidHi = NULL;
     TexturePackedMidLo = NULL;
     TexturePackedSize = 0;
-
 
     FreeMem(FrameBlocks, FrameBlocksSize);
     FrameBlocks = NULL;
