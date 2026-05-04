@@ -3413,4 +3413,3 @@ _RenderFastB0U0V0Entry::                 ; Family entry for zero integer V row b
     lea     STACK_TEMP_BYTES(sp),sp        ; Discard the temporary row-prefix and post-row stack slots.
     movem.l (sp)+,d2-d7/a2-a6              ; Restore all preserved registers.
     rts                                    ; Return to the C main loop without an extra final branch.
-

@@ -19,12 +19,12 @@
 // Debugging
 // ---------------------------------------------------------------------
 
-#define DEBUG 1
+#define DEBUG 0
 
 #if DEBUG
 #define DBG_COLOR(c) (*COLOR00 = (c))
 #else
-#define DBG_COLOR(c) ((void)0)
+#define DBG_COLOR(c) do {} while (0)
 #endif
 
 // ---------------------------------------------------------------------
@@ -89,9 +89,11 @@ extern void RenderFastB0U0V0Entry(void);
 #define ROTO_DIWSTRT            (UWORD)(((ROTO_VPOS_START & 0xFF) << 8) | 0x0081)
 #define ROTO_DIWSTOP            (UWORD)(((ROTO_VPOS_STOP  & 0xFF) << 8) | 0x00C1)
 
-// Center the playfield inside the normal 320-pixel lowres window
-// by shrinking the data fetch symmetrically on both sides. In lowres, one
-// byte (8 pixels) corresponds to a DDF delta of 0x04.
+// Center the playfield inside the normal 320-pixel lowres window.
+// In OCS lowres: fetches = (DDFSTOP - DDFSTRT) / 8 + 1
+// We need ROTO_FETCH_BYTES/2 word fetches, so:
+//   DDFSTOP = DDFSTRT + (ROTO_FETCH_BYTES/2 - 1) * 8
+// The symmetric formula 0x38+shift*4 / 0xD0-shift*4 satisfies this exactly.
 #define ROTO_DDFSTRT            (0x0038 + (ROTO_DDF_SHIFT_BYTES * 4))
 #define ROTO_DDFSTOP            (0x00D0 - (ROTO_DDF_SHIFT_BYTES * 4))
 
@@ -99,7 +101,7 @@ extern void RenderFastB0U0V0Entry(void);
 #define ROTO_ZOOM_BASE          384
 #define ROTO_ZOOM_AMPLITUDE     128
 #define ROTO_ZOOM_STEPS         32
-#define ROTO_FRAME_COUNT        128
+#define ROTO_FRAME_COUNT        127
 #define ROTO_ANGLE_PHASE_STEP   2
 #define ROTO_DELTA_SCALE        3072
 #define ROTO_CENTER_U           0x4000
@@ -249,7 +251,7 @@ static void BuildFrameStates(void)
     UBYTE* FrameWrite;
     RotoFrameBlock* PreviousState = NULL;
 
-    // All frames use the same uniform 52-byte row layout (P13).
+    // All frames use the same uniform 80-byte row layout (P20).
     FrameBlocksSize = (ULONG)ROTO_FRAME_COUNT * (ROTO_FRAME_HEADER_BYTES + (ULONG)ROTO_ROWS * ROTO_ROW_BYTES);
 
     FrameBlocks = (RotoFrameBlock*)lwmf_AllocCpuMem(FrameBlocksSize, MEMF_CLEAR);
@@ -304,7 +306,7 @@ static void BuildFrameStates(void)
         RotoFrameBlock* State;
         UBYTE* RowWrite;
 
-        // All frames use the uniform P13 row layout (52 bytes, pairs 01-13 precomputed).
+        // All frames use the uniform P20 row layout (80 bytes, pairs 01-20 precomputed).
         const ULONG RowStride = ROTO_ROW_BYTES;
         const UWORD PrefixPairs = (UWORD)ROTO_PREFIX_PAIRS;
 
@@ -334,8 +336,8 @@ static void BuildFrameStates(void)
         State->DuL = DuLByte;
         State->DvRem = DvRem;
 
-        // All frames use the P13 row layout. V0 frames still use dedicated
-        // entry points that skip the V-carry checks in the 9 runtime pairs.
+        // All frames use the P20 row layout. V0 frames still use dedicated
+        // entry points that skip the V-carry checks in the 8 runtime pairs.
         if (Family == ROTO_FAMILY_B0)
         {
             if (DvRem == 0)
@@ -463,7 +465,6 @@ static void AllocTexturePacked(void)
     TexturePackedMidHi = (ULONG*)(TexturePackedHi + TEXTURE_PACKED_CENTER);
     TexturePackedMidLo = (ULONG*)(TexturePackedLo + TEXTURE_PACKED_CENTER);
 }
-
 
 static void BuildDisplayPalette(const struct lwmf_Image* Image)
 {
@@ -602,98 +603,80 @@ static void InitRotoBuffers(void)
 // Copper
 // ---------------------------------------------------------------------
 
-static UWORD* CopperList = NULL;
+static UWORD* CopperLists[2] = { NULL, NULL };
 static ULONG CopperListSize = 0;
 
-enum
-{
-    COPPER_BPL0PTH_IDX = 23,
-    COPPER_BPL0PTL_IDX = 25,
-    COPPER_BPL1PTH_IDX = 27,
-    COPPER_BPL1PTL_IDX = 29,
-    COPPER_BPL2PTH_IDX = 31,
-    COPPER_BPL2PTL_IDX = 33,
-    COPPER_BPL3PTH_IDX = 35,
-    COPPER_BPL3PTL_IDX = 37
-};
-
-static UWORD RotoBufferCopperWords[2][NUMBEROFBITPLANES * 2];
-
-static void CopperAppendWait(UWORD* Index, UWORD VPos, UBYTE* Wrapped)
+static void CopperAppendWait(UWORD* List, UWORD* Index, UWORD VPos, UBYTE* Wrapped)
 {
     if ((VPos > 0x00FF) && !(*Wrapped))
     {
-        CopperList[(*Index)++] = 0xFFDF;
-        CopperList[(*Index)++] = 0xFFFE;
+        List[(*Index)++] = 0xFFDF;
+        List[(*Index)++] = 0xFFFE;
         *Wrapped = 1;
     }
 
-    CopperList[(*Index)++] = (UWORD)(((VPos & 0xFF) << 8) | 0x0001);
-    CopperList[(*Index)++] = 0xFFFE;
+    List[(*Index)++] = (UWORD)(((VPos & 0xFF) << 8) | 0x0001);
+    List[(*Index)++] = 0xFFFE;
 }
 
-static void Init_CopperList(void)
+static void BuildCopperList(UWORD* List, UBYTE Buffer)
 {
-    const ULONG CopperWords = 26 + (4 * NUMBEROFBITPLANES) + (SCREEN_COLORS * 2) + (ROTO_MOD_SWITCH_COUNT * 6) + 2;
-
-    CopperListSize = CopperWords * sizeof(UWORD);
-    CopperList = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR);
-
     UWORD Index = 0;
     UBYTE WrapWaitInserted = 0;
+    const ULONG BasePtr = (ULONG)RotoBuffers[Buffer];
 
     // Display window and data-fetch setup. The visible area is centered in
     // a normal PAL lowres screen, while DDF fetches only the 176 roto pixels.
-    CopperList[Index++] = 0x008E;
-    CopperList[Index++] = ROTO_DIWSTRT;
-    CopperList[Index++] = 0x0090;
-    CopperList[Index++] = ROTO_DIWSTOP;
-    CopperList[Index++] = 0x0092;
-    CopperList[Index++] = ROTO_DDFSTRT;
-    CopperList[Index++] = 0x0094;
-    CopperList[Index++] = ROTO_DDFSTOP;
+    List[Index++] = 0x008E;
+    List[Index++] = ROTO_DIWSTRT;
+    List[Index++] = 0x0090;
+    List[Index++] = ROTO_DIWSTOP;
+    List[Index++] = 0x0092;
+    List[Index++] = ROTO_DDFSTRT;
+    List[Index++] = 0x0094;
+    List[Index++] = ROTO_DDFSTOP;
 
     // Bitplane control setup. The display runs in HAM mode with the requested
     // plane count; BPLCON1/BPLCON2 stay neutral because no scrolling or
     // playfield-priority tricks are used.
-    CopperList[Index++] = 0x0100;
-    CopperList[Index++] = (UWORD)((HAM_DISPLAY_BPU << 12) | 0x0A00);
-    CopperList[Index++] = 0x0102;
-    CopperList[Index++] = 0x0000;
-    CopperList[Index++] = 0x0104;
-    CopperList[Index++] = 0x0000;
+    List[Index++] = 0x0100;
+    List[Index++] = (UWORD)((HAM_DISPLAY_BPU << 12) | 0x0A00);
+    List[Index++] = 0x0102;
+    List[Index++] = 0x0000;
+    List[Index++] = 0x0104;
+    List[Index++] = 0x0000;
 
     // Start in row-repeat mode. The copper switches to modulo zero for one
     // scanline out of every four so each rendered row is stretched to 4x4.
-    CopperList[Index++] = 0x0108;
-    CopperList[Index++] = ROTO_REPEAT_MOD;
-    CopperList[Index++] = 0x010A;
-    CopperList[Index++] = ROTO_REPEAT_MOD;
+    List[Index++] = 0x0108;
+    List[Index++] = ROTO_REPEAT_MOD;
+    List[Index++] = 0x010A;
+    List[Index++] = ROTO_REPEAT_MOD;
 
     // Constant HAM control-plane data. These registers provide stable control
     // bits for the whole line while the CPU renderer writes the data planes.
-    CopperList[Index++] = 0x0118;
-    CopperList[Index++] = HAM_CONTROL_WORD_P5;
-    CopperList[Index++] = 0x011A;
-    CopperList[Index++] = HAM_CONTROL_WORD_P6;
+    List[Index++] = 0x0118;
+    List[Index++] = HAM_CONTROL_WORD_P5;
+    List[Index++] = 0x011A;
+    List[Index++] = HAM_CONTROL_WORD_P6;
 
-    // Bitplane pointer placeholders. Their data-word positions are fixed by
-    // the layout above so the main loop can patch them with constant indexes.
+    // Bitplane pointers written once at build time with the actual buffer
+    // addresses — no per-frame patching needed.
     for (UWORD Plane = 0; Plane < NUMBEROFBITPLANES; ++Plane)
     {
-        CopperList[Index++] = (UWORD)(0x00E0 + (Plane * 4));
-        CopperList[Index++] = 0x0000;
-
-        CopperList[Index++] = (UWORD)(0x00E2 + (Plane * 4));
-        CopperList[Index++] = 0x0000;
+        const ULONG PlanePtr = BasePtr + (ULONG)Plane * ROTO_PLANE_BYTES;
+        List[Index++] = (UWORD)(0x00E0 + (Plane * 4));
+        List[Index++] = (UWORD)(PlanePtr >> 16);
+        List[Index++] = (UWORD)(0x00E2 + (Plane * 4));
+        List[Index++] = (UWORD)(PlanePtr & 0xFFFF);
     }
 
     // Palette upload. Only the base palette is loaded here; HAM changes the
     // running RGB value per pixel through the encoded image data.
     for (UWORD c = 0; c < SCREEN_COLORS; ++c)
     {
-        CopperList[Index++] = (UWORD)(0x0180 + (c * 2));
-        CopperList[Index++] = DisplayPalette[c];
+        List[Index++] = (UWORD)(0x0180 + (c * 2));
+        List[Index++] = DisplayPalette[c];
     }
 
     // 4x vertical stretch. For each rendered source row, the first three
@@ -701,54 +684,38 @@ static void Init_CopperList(void)
     // modulo zero so DMA advances to the next source row.
     for (UWORD Line = 3; (Line + 1) < ROTO_DISPLAY_HEIGHT; Line += 4)
     {
-        CopperAppendWait(&Index, (UWORD)(ROTO_VPOS_START + Line), &WrapWaitInserted);
-        CopperList[Index++] = 0x0108;
-        CopperList[Index++] = ROTO_ADVANCE_MOD;
-        CopperList[Index++] = 0x010A;
-        CopperList[Index++] = ROTO_ADVANCE_MOD;
+        CopperAppendWait(List, &Index, (UWORD)(ROTO_VPOS_START + Line), &WrapWaitInserted);
+        List[Index++] = 0x0108;
+        List[Index++] = ROTO_ADVANCE_MOD;
+        List[Index++] = 0x010A;
+        List[Index++] = ROTO_ADVANCE_MOD;
 
-        CopperAppendWait(&Index, (UWORD)(ROTO_VPOS_START + Line + 1), &WrapWaitInserted);
-        CopperList[Index++] = 0x0108;
-        CopperList[Index++] = ROTO_REPEAT_MOD;
-        CopperList[Index++] = 0x010A;
-        CopperList[Index++] = ROTO_REPEAT_MOD;
+        CopperAppendWait(List, &Index, (UWORD)(ROTO_VPOS_START + Line + 1), &WrapWaitInserted);
+        List[Index++] = 0x0108;
+        List[Index++] = ROTO_REPEAT_MOD;
+        List[Index++] = 0x010A;
+        List[Index++] = ROTO_REPEAT_MOD;
     }
 
-    // End marker and activation of the generated copper list.
-    CopperList[Index++] = 0xFFFF;
-    CopperList[Index++] = 0xFFFE;
-
-    *COP1LC = (ULONG)CopperList;
+    // End marker.
+    List[Index++] = 0xFFFF;
+    List[Index++] = 0xFFFE;
 }
 
-static void BuildRotoBufferCopperWords(void)
+static void Init_CopperList(void)
 {
-    for (UWORD Buffer = 0; Buffer < 2; ++Buffer)
+    const ULONG CopperWords = 26 + (4 * NUMBEROFBITPLANES) + (SCREEN_COLORS * 2) + (ROTO_MOD_SWITCH_COUNT * 6) + 2;
+
+    CopperListSize = CopperWords * sizeof(UWORD);
+
+    for (UBYTE Buffer = 0; Buffer < 2; ++Buffer)
     {
-        ULONG Ptr = (ULONG)RotoBuffers[Buffer];
-        UWORD* Words = RotoBufferCopperWords[Buffer];
-
-        for (UWORD Plane = 0; Plane < NUMBEROFBITPLANES; ++Plane)
-        {
-            Words[(Plane * 2) + 0] = (UWORD)(Ptr >> 16);
-            Words[(Plane * 2) + 1] = (UWORD)Ptr;
-            Ptr += ROTO_PLANE_BYTES;
-        }
+        CopperLists[Buffer] = (UWORD*)AllocMem(CopperListSize, MEMF_CHIP | MEMF_CLEAR);
+        BuildCopperList(CopperLists[Buffer], Buffer);
     }
-}
 
-inline static void Update_BitplanePointers(UBYTE Buffer)
-{
-    const UWORD* Words = RotoBufferCopperWords[Buffer];
-
-    CopperList[COPPER_BPL0PTH_IDX] = Words[0];
-    CopperList[COPPER_BPL0PTL_IDX] = Words[1];
-    CopperList[COPPER_BPL1PTH_IDX] = Words[2];
-    CopperList[COPPER_BPL1PTL_IDX] = Words[3];
-    CopperList[COPPER_BPL2PTH_IDX] = Words[4];
-    CopperList[COPPER_BPL2PTL_IDX] = Words[5];
-    CopperList[COPPER_BPL3PTH_IDX] = Words[6];
-    CopperList[COPPER_BPL3PTL_IDX] = Words[7];
+    // Activate the list for buffer 0 (displayed while buffer 1 is rendered first).
+    *COP1LC = (ULONG)CopperLists[0];
 }
 
 // ---------------------------------------------------------------------
@@ -757,8 +724,11 @@ inline static void Update_BitplanePointers(UBYTE Buffer)
 
 static void Cleanup_All(void)
 {
-    FreeMem(CopperList, CopperListSize);
-    CopperList = NULL;
+    for (UBYTE i = 0; i < 2; ++i)
+    {
+        FreeMem(CopperLists[i], CopperListSize);
+        CopperLists[i] = NULL;
+    }
     CopperListSize = 0;
 
     FreeMem(TexturePackedBlock, TexturePackedSize);
@@ -793,10 +763,8 @@ int main(void)
     BuildFrameStates();
     CurrentFrameBlock = FrameBlocks->NextFrame;
     InitRotoBuffers();
-    BuildRotoBufferCopperWords();
     Init_CopperList();
 
-    Update_BitplanePointers(0);
     lwmf_TakeOverOS();
 
     UBYTE DrawBuffer = 1;
@@ -810,7 +778,7 @@ int main(void)
         lwmf_WaitVertBlank();
         DBG_COLOR(0x000);
 
-        Update_BitplanePointers(DrawBuffer);
+        *COP1LC = (ULONG)CopperLists[DrawBuffer];
 
         DrawBuffer ^= 1;
     }
