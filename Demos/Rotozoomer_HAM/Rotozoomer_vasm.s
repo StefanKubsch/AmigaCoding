@@ -23,8 +23,9 @@ ROTO_FRAME_NEXT        equ 20         ; Frame offset of the variable-sized next-
 ROTO_FRAME_ROWS        equ 24         ; Frame offset of the first row prefix state.
 ROTO_FRAME_SIZE        equ 0          ; Uniform frame stride (all P13, computed by C side).
 ROTO_ROW_PREFIX_PLANES equ 0          ; Row offset of four premerged plane-prefix longs (pairs 01-04).
-ROTO_ROW_PREFIX_PAIR56 equ 16         ; Row offset of the fifth and sixth premerged texel pairs as four plane words.
-ROTO_ROW_PREFIX_PAIR7  equ 24         ; Row offset of pairs 07-08 plane words.
+ROTO_ROW_PREFIX_0508   equ 16         ; Row offset of pairs 05-08 as four plane longs.
+ROTO_ROW_PREFIX_0912   equ 32         ; Row offset of pairs 09-12 as four plane longs.
+ROTO_ROW_PREFIX_1316   equ 48         ; Row offset of pairs 13-16 as four plane longs.
 ROTO_ROW_SIZE          equ 68         ; Size of one uniform P17 row prefix state.
 STACK_ROWPTR           equ 0          ; Stack offset of the current row-prefix pointer.
 STACK_POST_DUL_BYTE    equ 5          ; Stack byte offset of the post-row fractional U delta.
@@ -91,37 +92,18 @@ _RenderFastB0P8Entry::                  ; Family entry for zero integer V row ba
     move.l  (a2)+,(a6)+                    ; Copy prefix pairs 01-04 directly from row state to plane 2.
     move.l  (a2)+,(a0)+                    ; Copy prefix pairs 01-04 directly from row state to plane 3.
 
-.fast_b0p8_pair05_06_prefix:               ; Emit prefix pairs 05-06 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 05-06: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 05-06: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 05-06: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 05-06: copy the two premerged plane 3 bytes and advance plane 3.
-
-.fast_b0p8_pair07_08_prefix:            ; Emit integrated prefix pairs 07-08 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 07-08: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 07-08: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 07-08: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 07-08: copy the two premerged plane 3 bytes and advance plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 09-10: copy packed word to plane 0 (high byte = pair 09, low byte = pair 10).
-    move.w  (a2)+,(a4)+                    ; Pairs 09-10: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 09-10: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 09-10: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 11-12: copy packed word to plane 0 (high byte = pair 11, low byte = pair 12).
-    move.w  (a2)+,(a4)+                    ; Pairs 11-12: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 11-12: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 11-12: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 13-14: copy packed word to plane 0 (high byte = pair 13, low byte = pair 14).
-    move.w  (a2)+,(a4)+                    ; Pairs 13-14: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 13-14: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 13-14: copy packed word to plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 15: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 05-08: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 05-08: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 05-08: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 05-08: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 09-12: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 09-12: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 09-12: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 09-12: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 13-16: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 13-16: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 13-16: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 13-16: copy four premerged plane 3 bytes and advance plane 3.
     move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
     move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
@@ -458,37 +440,18 @@ _RenderFastBm1P8Entry::                    ; Family entry for minus-one integer 
     move.l  (a2)+,(a6)+                    ; Copy prefix pairs 01-04 directly from row state to plane 2.
     move.l  (a2)+,(a0)+                    ; Copy prefix pairs 01-04 directly from row state to plane 3.
 
-.fast_bm1_pair05_06_prefix:              ; Emit prefix pairs 05-06 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 05-06: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 05-06: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 05-06: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 05-06: copy the two premerged plane 3 bytes and advance plane 3.
-
-.fast_bm1_pair07_08_prefix:            ; Emit integrated prefix pairs 07-08 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 07-08: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 07-08: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 07-08: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 07-08: copy the two premerged plane 3 bytes and advance plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 09-10: copy packed word to plane 0 (high byte = pair 09, low byte = pair 10).
-    move.w  (a2)+,(a4)+                    ; Pairs 09-10: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 09-10: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 09-10: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 11-12: copy packed word to plane 0 (high byte = pair 11, low byte = pair 12).
-    move.w  (a2)+,(a4)+                    ; Pairs 11-12: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 11-12: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 11-12: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 13-14: copy packed word to plane 0 (high byte = pair 13, low byte = pair 14).
-    move.w  (a2)+,(a4)+                    ; Pairs 13-14: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 13-14: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 13-14: copy packed word to plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 15: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 05-08: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 05-08: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 05-08: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 05-08: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 09-12: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 09-12: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 09-12: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 09-12: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 13-16: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 13-16: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 13-16: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 13-16: copy four premerged plane 3 bytes and advance plane 3.
     move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
     move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
@@ -806,6 +769,7 @@ _RenderFastBm1P8Entry::                    ; Family entry for minus-one integer 
 
 
 _RenderFastB0U0P8Entry::                  ; Family entry for zero integer V row base and integrated pair 08.
+    moveq   #(ROTO_ROWS-1),d4            ; Use d4 as row counter (DuL=0 so d4 is free).
     bra.s   .fast_b0u0p8_after_swap            ; Enter the first row without applying the post-row delta.
 .fast_b0u0p8_loop:                           ; Start of the next logical row after DBRA branched.
     swap    d5                             ; Restore row count to the high word and V step to the low word.
@@ -826,37 +790,18 @@ _RenderFastB0U0P8Entry::                  ; Family entry for zero integer V row 
     move.l  (a2)+,(a6)+                    ; Copy prefix pairs 01-04 directly from row state to plane 2.
     move.l  (a2)+,(a0)+                    ; Copy prefix pairs 01-04 directly from row state to plane 3.
 
-.fast_b0u0p8_pair05_06_prefix:               ; Emit prefix pairs 05-06 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 05-06: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 05-06: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 05-06: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 05-06: copy the two premerged plane 3 bytes and advance plane 3.
-
-.fast_b0u0p8_pair07_08_prefix:            ; Emit integrated prefix pairs 07-08 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 07-08: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 07-08: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 07-08: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 07-08: copy the two premerged plane 3 bytes and advance plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 09-10: copy packed word to plane 0 (high byte = pair 09, low byte = pair 10).
-    move.w  (a2)+,(a4)+                    ; Pairs 09-10: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 09-10: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 09-10: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 11-12: copy packed word to plane 0 (high byte = pair 11, low byte = pair 12).
-    move.w  (a2)+,(a4)+                    ; Pairs 11-12: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 11-12: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 11-12: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 13-14: copy packed word to plane 0 (high byte = pair 13, low byte = pair 14).
-    move.w  (a2)+,(a4)+                    ; Pairs 13-14: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 13-14: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 13-14: copy packed word to plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 15: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 05-08: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 05-08: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 05-08: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 05-08: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 09-12: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 09-12: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 09-12: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 09-12: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 13-16: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 13-16: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 13-16: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 13-16: copy four premerged plane 3 bytes and advance plane 3.
     move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
     move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
@@ -1152,6 +1097,7 @@ _RenderFastB0U0P8Entry::                  ; Family entry for zero integer V row 
     rts                                    ; Return to the C main loop without an extra final branch.
 
 _RenderFastBm1U0P8Entry::                    ; Family entry for minus-one integer V row base and integrated pair 08.
+    moveq   #(ROTO_ROWS-1),d4            ; Use d4 as row counter (DuL=0 so d4 is free).
     bra.s   .fast_bm1_after_swap           ; Enter the first row without applying the post-row delta.
 .fast_bm1_loop:                          ; Start of the next logical row after DBRA branched.
     swap    d5                             ; Restore row count to the high word and V step to the low word.
@@ -1172,37 +1118,18 @@ _RenderFastBm1U0P8Entry::                    ; Family entry for minus-one intege
     move.l  (a2)+,(a6)+                    ; Copy prefix pairs 01-04 directly from row state to plane 2.
     move.l  (a2)+,(a0)+                    ; Copy prefix pairs 01-04 directly from row state to plane 3.
 
-.fast_bm1_pair05_06_prefix:              ; Emit prefix pairs 05-06 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 05-06: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 05-06: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 05-06: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 05-06: copy the two premerged plane 3 bytes and advance plane 3.
-
-.fast_bm1_pair07_08_prefix:            ; Emit integrated prefix pairs 07-08 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 07-08: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 07-08: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 07-08: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 07-08: copy the two premerged plane 3 bytes and advance plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 09-10: copy packed word to plane 0 (high byte = pair 09, low byte = pair 10).
-    move.w  (a2)+,(a4)+                    ; Pairs 09-10: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 09-10: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 09-10: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 11-12: copy packed word to plane 0 (high byte = pair 11, low byte = pair 12).
-    move.w  (a2)+,(a4)+                    ; Pairs 11-12: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 11-12: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 11-12: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 13-14: copy packed word to plane 0 (high byte = pair 13, low byte = pair 14).
-    move.w  (a2)+,(a4)+                    ; Pairs 13-14: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 13-14: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 13-14: copy packed word to plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 15: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 05-08: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 05-08: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 05-08: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 05-08: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 09-12: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 09-12: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 09-12: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 09-12: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 13-16: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 13-16: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 13-16: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 13-16: copy four premerged plane 3 bytes and advance plane 3.
     move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
     move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
@@ -1522,37 +1449,18 @@ _RenderFastBp1P8Entry::                  ; Family entry for plus-one integer V r
     move.l  (a2)+,(a6)+                    ; Copy prefix pairs 01-04 directly from row state to plane 2.
     move.l  (a2)+,(a0)+                    ; Copy prefix pairs 01-04 directly from row state to plane 3.
 
-.fast_bp1p8_pair05_06_prefix:            ; Emit prefix pairs 05-06 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 05-06: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 05-06: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 05-06: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 05-06: copy the two premerged plane 3 bytes and advance plane 3.
-
-.fast_bp1p8_pair07_08_prefix:            ; Emit integrated prefix pairs 07-08 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 07-08: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 07-08: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 07-08: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 07-08: copy the two premerged plane 3 bytes and advance plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 09-10: copy packed word to plane 0 (high byte = pair 09, low byte = pair 10).
-    move.w  (a2)+,(a4)+                    ; Pairs 09-10: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 09-10: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 09-10: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 11-12: copy packed word to plane 0 (high byte = pair 11, low byte = pair 12).
-    move.w  (a2)+,(a4)+                    ; Pairs 11-12: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 11-12: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 11-12: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 13-14: copy packed word to plane 0 (high byte = pair 13, low byte = pair 14).
-    move.w  (a2)+,(a4)+                    ; Pairs 13-14: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 13-14: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 13-14: copy packed word to plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 15: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 05-08: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 05-08: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 05-08: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 05-08: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 09-12: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 09-12: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 09-12: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 09-12: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 13-16: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 13-16: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 13-16: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 13-16: copy four premerged plane 3 bytes and advance plane 3.
     move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
     move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
@@ -1910,37 +1818,18 @@ _RenderFastBm2P8Entry::                  ; Family entry for minus-two integer V 
     move.l  (a2)+,(a6)+                    ; Copy prefix pairs 01-04 directly from row state to plane 2.
     move.l  (a2)+,(a0)+                    ; Copy prefix pairs 01-04 directly from row state to plane 3.
 
-.fast_bm2p8_pair05_06_prefix:            ; Emit prefix pairs 05-06 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 05-06: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 05-06: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 05-06: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 05-06: copy the two premerged plane 3 bytes and advance plane 3.
-
-.fast_bm2p8_pair07_08_prefix:            ; Emit integrated prefix pairs 07-08 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 07-08: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 07-08: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 07-08: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 07-08: copy the two premerged plane 3 bytes and advance plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 09-10: copy packed word to plane 0 (high byte = pair 09, low byte = pair 10).
-    move.w  (a2)+,(a4)+                    ; Pairs 09-10: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 09-10: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 09-10: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 11-12: copy packed word to plane 0 (high byte = pair 11, low byte = pair 12).
-    move.w  (a2)+,(a4)+                    ; Pairs 11-12: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 11-12: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 11-12: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 13-14: copy packed word to plane 0 (high byte = pair 13, low byte = pair 14).
-    move.w  (a2)+,(a4)+                    ; Pairs 13-14: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 13-14: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 13-14: copy packed word to plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 15: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 05-08: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 05-08: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 05-08: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 05-08: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 09-12: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 09-12: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 09-12: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 09-12: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 13-16: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 13-16: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 13-16: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 13-16: copy four premerged plane 3 bytes and advance plane 3.
     move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
     move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
@@ -2299,37 +2188,18 @@ _RenderFastBp1U0P8Entry::                ; Family entry for plus-one integer V r
     move.l  (a2)+,(a6)+                    ; Copy prefix pairs 01-04 directly from row state to plane 2.
     move.l  (a2)+,(a0)+                    ; Copy prefix pairs 01-04 directly from row state to plane 3.
 
-.fast_bp1u0p8_pair05_06_prefix:          ; Emit prefix pairs 05-06 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 05-06: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 05-06: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 05-06: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 05-06: copy the two premerged plane 3 bytes and advance plane 3.
-
-.fast_bp1u0p8_pair07_08_prefix:            ; Emit integrated prefix pairs 07-08 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 07-08: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 07-08: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 07-08: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 07-08: copy the two premerged plane 3 bytes and advance plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 09-10: copy packed word to plane 0 (high byte = pair 09, low byte = pair 10).
-    move.w  (a2)+,(a4)+                    ; Pairs 09-10: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 09-10: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 09-10: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 11-12: copy packed word to plane 0 (high byte = pair 11, low byte = pair 12).
-    move.w  (a2)+,(a4)+                    ; Pairs 11-12: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 11-12: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 11-12: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 13-14: copy packed word to plane 0 (high byte = pair 13, low byte = pair 14).
-    move.w  (a2)+,(a4)+                    ; Pairs 13-14: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 13-14: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 13-14: copy packed word to plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 15: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 05-08: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 05-08: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 05-08: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 05-08: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 09-12: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 09-12: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 09-12: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 09-12: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 13-16: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 13-16: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 13-16: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 13-16: copy four premerged plane 3 bytes and advance plane 3.
     move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
     move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
@@ -2667,37 +2537,18 @@ _RenderFastBm2U0P8Entry::                ; Family entry for minus-two integer V 
     move.l  (a2)+,(a6)+                    ; Copy prefix pairs 01-04 directly from row state to plane 2.
     move.l  (a2)+,(a0)+                    ; Copy prefix pairs 01-04 directly from row state to plane 3.
 
-.fast_bm2u0p8_pair05_06_prefix:          ; Emit prefix pairs 05-06 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 05-06: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 05-06: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 05-06: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 05-06: copy the two premerged plane 3 bytes and advance plane 3.
-
-.fast_bm2u0p8_pair07_08_prefix:            ; Emit integrated prefix pairs 07-08 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 07-08: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 07-08: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 07-08: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 07-08: copy the two premerged plane 3 bytes and advance plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 09-10: copy packed word to plane 0 (high byte = pair 09, low byte = pair 10).
-    move.w  (a2)+,(a4)+                    ; Pairs 09-10: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 09-10: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 09-10: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 11-12: copy packed word to plane 0 (high byte = pair 11, low byte = pair 12).
-    move.w  (a2)+,(a4)+                    ; Pairs 11-12: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 11-12: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 11-12: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 13-14: copy packed word to plane 0 (high byte = pair 13, low byte = pair 14).
-    move.w  (a2)+,(a4)+                    ; Pairs 13-14: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 13-14: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 13-14: copy packed word to plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 15: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 05-08: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 05-08: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 05-08: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 05-08: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 09-12: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 09-12: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 09-12: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 09-12: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 13-16: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 13-16: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 13-16: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 13-16: copy four premerged plane 3 bytes and advance plane 3.
     move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
     move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
@@ -3034,37 +2885,18 @@ _RenderFastB0V0Entry::                   ; Family entry for zero integer V row b
     move.l  (a2)+,(a6)+                    ; Copy prefix pairs 01-04 directly from row state to plane 2.
     move.l  (a2)+,(a0)+                    ; Copy prefix pairs 01-04 directly from row state to plane 3.
 
-.fast_b0v0_pair05_06_prefix:             ; Emit prefix pairs 05-06 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 05-06: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 05-06: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 05-06: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 05-06: copy the two premerged plane 3 bytes and advance plane 3.
-
-.fast_b0v0_pair07_08_prefix:              ; Emit prefix pairs 07-08 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 07-08: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 07-08: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 07-08: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 07-08: copy the two premerged plane 3 bytes and advance plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 09-10: copy packed word to plane 0 (high byte = pair 09, low byte = pair 10).
-    move.w  (a2)+,(a4)+                    ; Pairs 09-10: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 09-10: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 09-10: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 11-12: copy packed word to plane 0 (high byte = pair 11, low byte = pair 12).
-    move.w  (a2)+,(a4)+                    ; Pairs 11-12: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 11-12: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 11-12: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 13-14: copy packed word to plane 0 (high byte = pair 13, low byte = pair 14).
-    move.w  (a2)+,(a4)+                    ; Pairs 13-14: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 13-14: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 13-14: copy packed word to plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 15: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 05-08: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 05-08: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 05-08: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 05-08: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 09-12: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 09-12: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 09-12: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 09-12: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 13-16: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 13-16: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 13-16: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 13-16: copy four premerged plane 3 bytes and advance plane 3.
     move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
     move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
@@ -3339,37 +3171,18 @@ _RenderFastB0U0V0Entry::                 ; Family entry for zero integer V row b
     move.l  (a2)+,(a6)+                    ; Copy prefix pairs 01-04 directly from row state to plane 2.
     move.l  (a2)+,(a0)+                    ; Copy prefix pairs 01-04 directly from row state to plane 3.
 
-.fast_b0u0v0_pair05_06_prefix:           ; Emit prefix pairs 05-06 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 05-06: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 05-06: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 05-06: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 05-06: copy the two premerged plane 3 bytes and advance plane 3.
-
-.fast_b0u0v0_pair07_08_prefix:              ; Emit prefix pairs 07-08 as direct plane words.
-    move.w  (a2)+,(a5)+                    ; Pairs 07-08: copy the two premerged plane 0 bytes and advance plane 0.
-    move.w  (a2)+,(a4)+                    ; Pairs 07-08: copy the two premerged plane 1 bytes and advance plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 07-08: copy the two premerged plane 2 bytes and advance plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 07-08: copy the two premerged plane 3 bytes and advance plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 09-10: copy packed word to plane 0 (high byte = pair 09, low byte = pair 10).
-    move.w  (a2)+,(a4)+                    ; Pairs 09-10: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 09-10: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 09-10: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 11-12: copy packed word to plane 0 (high byte = pair 11, low byte = pair 12).
-    move.w  (a2)+,(a4)+                    ; Pairs 11-12: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 11-12: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 11-12: copy packed word to plane 3.
-    move.w  (a2)+,(a5)+                    ; Pairs 13-14: copy packed word to plane 0 (high byte = pair 13, low byte = pair 14).
-    move.w  (a2)+,(a4)+                    ; Pairs 13-14: copy packed word to plane 1.
-    move.w  (a2)+,(a6)+                    ; Pairs 13-14: copy packed word to plane 2.
-    move.w  (a2)+,(a0)+                    ; Pairs 13-14: copy packed word to plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 15: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
-    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
-    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
-    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 05-08: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 05-08: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 05-08: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 05-08: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 09-12: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 09-12: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 09-12: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 09-12: copy four premerged plane 3 bytes and advance plane 3.
+    move.l  (a2)+,(a5)+                    ; Pairs 13-16: copy four premerged plane 0 bytes and advance plane 0.
+    move.l  (a2)+,(a4)+                    ; Pairs 13-16: copy four premerged plane 1 bytes and advance plane 1.
+    move.l  (a2)+,(a6)+                    ; Pairs 13-16: copy four premerged plane 2 bytes and advance plane 2.
+    move.l  (a2)+,(a0)+                    ; Pairs 13-16: copy four premerged plane 3 bytes and advance plane 3.
     move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
     move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
