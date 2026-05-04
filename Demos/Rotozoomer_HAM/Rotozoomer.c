@@ -19,7 +19,7 @@
 // Debugging
 // ---------------------------------------------------------------------
 
-#define DEBUG 0
+#define DEBUG 1
 
 #if DEBUG
 #define DBG_COLOR(c) (*COLOR00 = (c))
@@ -63,7 +63,7 @@ extern void RenderFastB0U0V0Entry(void);
 #define HAM_BACKGROUND_RGB4     0x000
 
 #define CHUNKY_PIXEL_SIZE       4
-#define ROTO_COLUMNS            52
+#define ROTO_COLUMNS            56
 #define ROTO_ROWS               48
 #define ROTO_PAIR_COUNT         (ROTO_COLUMNS / 2)
 #define ROTO_DISPLAY_WIDTH      (ROTO_COLUMNS * CHUNKY_PIXEL_SIZE)
@@ -126,6 +126,8 @@ typedef struct
     UWORD PrefixPair11_12Words[4]; // high byte = pair 11, low byte = pair 12
     UWORD PrefixPair13_14Words[4]; // high byte = pair 13, low byte = pair 14
     UBYTE PrefixPair15Bytes[4];    // pair 15: one byte per plane
+    UBYTE PrefixPair16Bytes[4];    // pair 16: one byte per plane
+    UBYTE PrefixPair17Bytes[4];    // pair 17: one byte per plane
 } RotoRowState;
 
 typedef struct RotoFrameBlock
@@ -145,17 +147,17 @@ typedef struct RotoFrameBlock
     UBYTE        DvRemPad;  // padding to keep PostRowVBase word-aligned
     WORD         PostRowVBase;
     UWORD        PostRowVRemShift;
-    // Next frame address (all frames have uniform 52-byte row size).
+    // Next frame address (all frames have uniform 68-byte row size).
     struct RotoFrameBlock* NextFrame;
     RotoRowState Rows[ROTO_ROWS];
 } RotoFrameBlock;
 
-typedef char RotoRowStateSizeMustBe60[(sizeof(RotoRowState) == 60) ? 1 : -1];
-typedef char RotoFrameBlockHeaderAndBaseRowsMustBe2904[(sizeof(RotoFrameBlock) == 2904) ? 1 : -1];
+typedef char RotoRowStateSizeMustBe68[(sizeof(RotoRowState) == 68) ? 1 : -1];
+typedef char RotoFrameBlockHeaderAndBaseRowsMustBe3288[(sizeof(RotoFrameBlock) == 3288) ? 1 : -1];
 
 #define ROTO_FRAME_HEADER_BYTES 24UL
-#define ROTO_ROW_BYTES          60UL  // uniform P15 row: 16+8+8+20+8 bytes
-#define ROTO_PREFIX_PAIRS       15UL  // all frames precompute pairs 01-15
+#define ROTO_ROW_BYTES          68UL  // uniform P17 row: 16+8+8+24+8+4 bytes
+#define ROTO_PREFIX_PAIRS       17UL  // all frames precompute pairs 01-17
 
 enum
 {
@@ -455,13 +457,13 @@ static void BuildFrameStates(void)
             ULONG PrefixPlane2 = 0;
             ULONG PrefixPlane3 = 0;
             UWORD PrefixPair56Words[4] = { 0, 0, 0, 0 };
-            // Pairs 07-08 and 09-15 are stored as individual bytes per plane.
+            // Pairs 07-08 and 09-17 are stored as individual bytes per plane.
             UBYTE PrefixPair7Bytes[4]    = { 0, 0, 0, 0 };
             UBYTE PrefixPair8Bytes[4]    = { 0, 0, 0, 0 };
-            // Pairs 09-15 as individual bytes before word-packing.
-            UBYTE PairBytes09to15[7][4] = {{ 0 }};
+            // Pairs 09-17 as individual bytes before word-packing.
+            UBYTE PairBytes09to17[9][4] = {{ 0 }};
 
-            for (UWORD Pair = 0; Pair < 15; ++Pair)
+            for (UWORD Pair = 0; Pair < 17; ++Pair)
             {
                 const UWORD StartUc0 = (UWORD)(((UWORD)(PrefixUState >> 8)) & 0x01FFU);
                 const UWORD StartRow0 = (UWORD)((PrefixWState << 1) & 0xFE00U);
@@ -512,19 +514,19 @@ static void BuildFrameStates(void)
                 {
                     // Pairs 09-13 (Pair index 8-12 → array index 0-4)
                     const UWORD Idx = Pair - 8U;
-                    PairBytes09to15[Idx][0] = (UBYTE)Packed;
-                    PairBytes09to15[Idx][1] = (UBYTE)(Packed >> 8);
-                    PairBytes09to15[Idx][2] = (UBYTE)(Packed >> 16);
-                    PairBytes09to15[Idx][3] = (UBYTE)(Packed >> 24);
+                    PairBytes09to17[Idx][0] = (UBYTE)Packed;
+                    PairBytes09to17[Idx][1] = (UBYTE)(Packed >> 8);
+                    PairBytes09to17[Idx][2] = (UBYTE)(Packed >> 16);
+                    PairBytes09to17[Idx][3] = (UBYTE)(Packed >> 24);
                 }
                 else
                 {
-                    // Pairs 14-15 (Pair index 13-14 → array index 5-6)
+                    // Pairs 14-17 (Pair index 13-16 → array index 5-8)
                     const UWORD Idx = Pair - 8U;
-                    PairBytes09to15[Idx][0] = (UBYTE)Packed;
-                    PairBytes09to15[Idx][1] = (UBYTE)(Packed >> 8);
-                    PairBytes09to15[Idx][2] = (UBYTE)(Packed >> 16);
-                    PairBytes09to15[Idx][3] = (UBYTE)(Packed >> 24);
+                    PairBytes09to17[Idx][0] = (UBYTE)Packed;
+                    PairBytes09to17[Idx][1] = (UBYTE)(Packed >> 8);
+                    PairBytes09to17[Idx][2] = (UBYTE)(Packed >> 16);
+                    PairBytes09to17[Idx][3] = (UBYTE)(Packed >> 24);
                 }
 
                 PrefixUState = (PrefixUState + USampleAdvance) & 0x00FFFFFFUL;
@@ -560,10 +562,12 @@ static void BuildFrameStates(void)
             // Same endian convention as PrefixPair78Words.
             for (UWORD Pl = 0; Pl < 4U; ++Pl)
             {
-                RowSeed->PrefixPair09_10Words[Pl] = (UWORD)(((UWORD)PairBytes09to15[0][Pl] << 8) | (UWORD)PairBytes09to15[1][Pl]);
-                RowSeed->PrefixPair11_12Words[Pl] = (UWORD)(((UWORD)PairBytes09to15[2][Pl] << 8) | (UWORD)PairBytes09to15[3][Pl]);
-                RowSeed->PrefixPair13_14Words[Pl] = (UWORD)(((UWORD)PairBytes09to15[4][Pl] << 8) | (UWORD)PairBytes09to15[5][Pl]);
-                RowSeed->PrefixPair15Bytes[Pl]    = PairBytes09to15[6][Pl];
+                RowSeed->PrefixPair09_10Words[Pl] = (UWORD)(((UWORD)PairBytes09to17[0][Pl] << 8) | (UWORD)PairBytes09to17[1][Pl]);
+                RowSeed->PrefixPair11_12Words[Pl] = (UWORD)(((UWORD)PairBytes09to17[2][Pl] << 8) | (UWORD)PairBytes09to17[3][Pl]);
+                RowSeed->PrefixPair13_14Words[Pl] = (UWORD)(((UWORD)PairBytes09to17[4][Pl] << 8) | (UWORD)PairBytes09to17[5][Pl]);
+                RowSeed->PrefixPair15Bytes[Pl]    = PairBytes09to17[6][Pl];
+                RowSeed->PrefixPair16Bytes[Pl]    = PairBytes09to17[7][Pl];
+                RowSeed->PrefixPair17Bytes[Pl]    = PairBytes09to17[8][Pl];
             }
 
             RowWrite += RowStride;

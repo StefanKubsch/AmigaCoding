@@ -5,9 +5,9 @@
 
 
 ROTO_ROWS              equ 48         ; Rendered logical rows.
-ROTO_PAIR_COUNT        equ 26         ; Logical texel pairs per row.
-ROTO_PREFIX_PAIRS      equ 15         ; Pairs covered by the precomputed row prefix (01-15).
-ROTO_PLANE_STRIDE      equ 26         ; Bytes per rendered row in one bitplane.
+ROTO_PAIR_COUNT        equ 28         ; Logical texel pairs per row.
+ROTO_PREFIX_PAIRS      equ 17         ; Pairs covered by the precomputed row prefix (01-17).
+ROTO_PLANE_STRIDE      equ 28         ; Bytes per rendered row in one bitplane.
 ROTO_PLANE_BYTES       equ (ROTO_PLANE_STRIDE*ROTO_ROWS) ; Bytes in one contiguous rendered bitplane.
 ROTO_FRAME_DUC         equ 0          ; Frame offset of the signed integer U step.
 ROTO_FRAME_DUL         equ 2          ; Frame offset of the fractional U step byte.
@@ -25,7 +25,7 @@ ROTO_FRAME_SIZE        equ 0          ; Uniform frame stride (all P13, computed 
 ROTO_ROW_PREFIX_PLANES equ 0          ; Row offset of four premerged plane-prefix longs (pairs 01-04).
 ROTO_ROW_PREFIX_PAIR56 equ 16         ; Row offset of the fifth and sixth premerged texel pairs as four plane words.
 ROTO_ROW_PREFIX_PAIR7  equ 24         ; Row offset of pairs 07-08 plane words.
-ROTO_ROW_SIZE          equ 60         ; Size of one uniform P15 row prefix state.
+ROTO_ROW_SIZE          equ 68         ; Size of one uniform P17 row prefix state.
 STACK_ROWPTR           equ 0          ; Stack offset of the current row-prefix pointer.
 STACK_POST_DUL_BYTE    equ 5          ; Stack byte offset of the post-row fractional U delta.
 STACK_POST_DUC         equ 6          ; Stack offset of the post-row integer U delta.
@@ -118,64 +118,16 @@ _RenderFastB0P8Entry::                  ; Family entry for zero integer V row ba
     move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
     move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 15 bytes.            ; Store the next row-prefix pointer after the integrated pair 13 bytes.
+    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 17: copy precomputed plane 3 byte and advance plane 3.
+    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 17 bytes.
 
-    move.w  d0,d7                          ; Pair 16 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 16 sample 1: preserve the signed table offset in a2.
-    add.b   d4,d2                          ; Pair 16 sample 1: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 16 sample 1: advance integer U with the fractional carry.
-    add.w   d5,d2                          ; Pair 16 sample 1: add fractional V step to the high byte of d2.
-    bcc.s   .vb01_16_fast_b0p8               ; Pair 16 sample 1: skip row carry when the V fraction did not wrap.
-    addi.w  #$0200,d1                      ; Pair 16 sample 1: advance one wrapped texture row after V carry.
-.vb01_16_fast_b0p8:                        ; Pair 16 sample 1: V update complete for zero-base family.
-    move.w  d0,d7                          ; Pair 16 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 16 sample 2: fetch the low-nibble contribution into d7.
-    add.b   d4,d2                          ; Pair 16 sample 2: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 16 sample 2: advance integer U with the fractional carry.
-    add.w   d5,d2                          ; Pair 16 sample 2: add fractional V step to the high byte of d2.
-    bcc.s   .vb02_16_fast_b0p8               ; Pair 16 sample 2: skip row carry when the V fraction did not wrap.
-    addi.w  #$0200,d1                      ; Pair 16 sample 2: advance one wrapped texture row after V carry.
-.vb02_16_fast_b0p8:                        ; Pair 16 sample 2: V update complete for zero-base family.
-    or.l    (a1,a2.w),d7                  ; Pair 16: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 16: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 16: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 16: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 16: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 16: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 16: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 16: store plane 1 byte and advance plane 1.
-    move.w  d0,d7                          ; Pair 17 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 17 sample 1: preserve the signed table offset in a2.
-    add.b   d4,d2                          ; Pair 17 sample 1: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 17 sample 1: advance integer U with the fractional carry.
-    add.w   d5,d2                          ; Pair 17 sample 1: add fractional V step to the high byte of d2.
-    bcc.s   .vb01_17_fast_b0p8               ; Pair 17 sample 1: skip row carry when the V fraction did not wrap.
-    addi.w  #$0200,d1                      ; Pair 17 sample 1: advance one wrapped texture row after V carry.
-.vb01_17_fast_b0p8:                        ; Pair 17 sample 1: V update complete for zero-base family.
-    move.w  d0,d7                          ; Pair 17 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 17 sample 2: fetch the low-nibble contribution into d7.
-    add.b   d4,d2                          ; Pair 17 sample 2: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 17 sample 2: advance integer U with the fractional carry.
-    add.w   d5,d2                          ; Pair 17 sample 2: add fractional V step to the high byte of d2.
-    bcc.s   .vb02_17_fast_b0p8               ; Pair 17 sample 2: skip row carry when the V fraction did not wrap.
-    addi.w  #$0200,d1                      ; Pair 17 sample 2: advance one wrapped texture row after V carry.
-.vb02_17_fast_b0p8:                        ; Pair 17 sample 2: V update complete for zero-base family.
-    or.l    (a1,a2.w),d7                  ; Pair 17: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 17: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 17: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 17: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 17: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 17: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 17: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 17: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 18 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 18 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 18 sample 1: add the wrapped V row offset.
@@ -308,14 +260,14 @@ _RenderFastB0P8Entry::                  ; Family entry for zero integer V row ba
     bcc.s   .vb02_22_fast_b0p8               ; Pair 22 sample 2: skip row carry when the V fraction did not wrap.
     addi.w  #$0200,d1                      ; Pair 22 sample 2: advance one wrapped texture row after V carry.
 .vb02_22_fast_b0p8:                        ; Pair 22 sample 2: V update complete for zero-base family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 22: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 22: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 22: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 22: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 22: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 22: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 22: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 22: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 23 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 23 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 23 sample 1: add the wrapped V row offset.
@@ -336,14 +288,14 @@ _RenderFastB0P8Entry::                  ; Family entry for zero integer V row ba
     bcc.s   .vb02_23_fast_b0p8               ; Pair 23 sample 2: skip row carry when the V fraction did not wrap.
     addi.w  #$0200,d1                      ; Pair 23 sample 2: advance one wrapped texture row after V carry.
 .vb02_23_fast_b0p8:                        ; Pair 23 sample 2: V update complete for zero-base family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 23: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 23: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 23: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 23: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 23: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 23: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 23: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 23: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 24 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 24 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 24 sample 1: add the wrapped V row offset.
@@ -364,14 +316,14 @@ _RenderFastB0P8Entry::                  ; Family entry for zero integer V row ba
     bcc.s   .vb02_24_fast_b0p8               ; Pair 24 sample 2: skip row carry when the V fraction did not wrap.
     addi.w  #$0200,d1                      ; Pair 24 sample 2: advance one wrapped texture row after V carry.
 .vb02_24_fast_b0p8:                        ; Pair 24 sample 2: V update complete for zero-base family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 24: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 24: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 24: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 24: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 24: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 24: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 24: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 24: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 25 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 25 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 25 sample 1: add the wrapped V row offset.
@@ -392,14 +344,14 @@ _RenderFastB0P8Entry::                  ; Family entry for zero integer V row ba
     bcc.s   .vb02_25_fast_b0p8               ; Pair 25 sample 2: skip row carry when the V fraction did not wrap.
     addi.w  #$0200,d1                      ; Pair 25 sample 2: advance one wrapped texture row after V carry.
 .vb02_25_fast_b0p8:                        ; Pair 25 sample 2: V update complete for zero-base family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 25: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 25: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 25: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 25: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 25: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 25: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 25: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 25: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 26 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 26 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 1: add the wrapped V row offset.
@@ -414,15 +366,71 @@ _RenderFastB0P8Entry::                  ; Family entry for zero integer V row ba
     and.w   d6,d7                          ; Pair 26 sample 2: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 2: add the wrapped V row offset.
     move.l  (a3,d7.w),d7                   ; Pair 26 sample 2: fetch the low-nibble contribution into d7.
-    ;                                      ; Pair 26 sample 2: skip the final accumulator update; post-row delta includes it.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    add.b   d4,d2                          ; Pair 26 sample 2: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 26 sample 2: advance integer U with the fractional carry.
+    add.w   d5,d2                          ; Pair 26 sample 2: add fractional V step to the high byte of d2.
+    bcc.s   .vb02_26_fast_b0p8               ; Pair 26 sample 2: skip row carry when the V fraction did not wrap.
+    addi.w  #$0200,d1                      ; Pair 26 sample 2: advance one wrapped texture row after V carry.
+.vb02_26_fast_b0p8:                        ; Pair 26 sample 2: V update complete for zero-base family.
+    or.l    (a1,a2.w),d7                  ; Pair 26: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 26: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 26: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 26: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 26: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 26: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 26: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 26: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 27 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 27 sample 1: preserve the signed table offset in a2.
+    add.b   d4,d2                          ; Pair 27 sample 1: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 27 sample 1: advance integer U with the fractional carry.
+    add.w   d5,d2                          ; Pair 27 sample 1: add fractional V step to the high byte of d2.
+    bcc.s   .vb01_27_fast_b0p8               ; Pair 27 sample 1: skip row carry when the V fraction did not wrap.
+    addi.w  #$0200,d1                      ; Pair 27 sample 1: advance one wrapped texture row after V carry.
+.vb01_27_fast_b0p8:                        ; Pair 27 sample 1: V update complete for zero-base family.
+    move.w  d0,d7                          ; Pair 27 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 27 sample 2: fetch the low-nibble contribution into d7.
+    add.b   d4,d2                          ; Pair 27 sample 2: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 27 sample 2: advance integer U with the fractional carry.
+    add.w   d5,d2                          ; Pair 27 sample 2: add fractional V step to the high byte of d2.
+    bcc.s   .vb02_27_fast_b0p8               ; Pair 27 sample 2: skip row carry when the V fraction did not wrap.
+    addi.w  #$0200,d1                      ; Pair 27 sample 2: advance one wrapped texture row after V carry.
+.vb02_27_fast_b0p8:                        ; Pair 27 sample 2: V update complete for zero-base family.
+    or.l    (a1,a2.w),d7                  ; Pair 27: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 27: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 27: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 27: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 27: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 27: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 27: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 27: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 28 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 28 sample 1: preserve the signed table offset in a2.
+    add.b   d4,d2                          ; Pair 28 sample 1: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 28 sample 1: advance integer U with the fractional carry.
+    add.w   d5,d2                          ; Pair 28 sample 1: add fractional V step to the high byte of d2.
+    bcc.s   .vb01_28_fast_b0p8               ; Pair 28 sample 1: skip row carry when the V fraction did not wrap.
+    addi.w  #$0200,d1                      ; Pair 28 sample 1: advance one wrapped texture row after V carry.
+.vb01_28_fast_b0p8:                        ; Pair 28 sample 1: V update complete for zero-base family.
+    move.w  d0,d7                          ; Pair 28 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 28 sample 2: fetch the low-nibble contribution into d7.
+    ;                                      ; Pair 28 sample 2: skip the final accumulator update; post-row delta includes it.
+    or.l    (a1,a2.w),d7                  ; Pair 28: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 28: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 28: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 28: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 28: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 28: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 28: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 28: store plane 1 byte and advance plane 1.
     swap    d5                             ; Move the row count into the low word for DBRA.
     dbra    d5,.fast_b0p8_loop               ; Render the next logical row until all rows are complete.
     lea     STACK_TEMP_BYTES(sp),sp        ; Discard the temporary row-prefix and post-row stack slots.
@@ -477,64 +485,16 @@ _RenderFastBm1P8Entry::                    ; Family entry for minus-one integer 
     move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
     move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 15 bytes.            ; Store the next row-prefix pointer after the integrated pair 13 bytes.
+    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 17: copy precomputed plane 3 byte and advance plane 3.
+    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 17 bytes.
 
-    move.w  d0,d7                          ; Pair 16 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 16 sample 1: preserve the signed table offset in a2.
-    add.b   d4,d2                          ; Pair 16 sample 1: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 16 sample 1: advance integer U with the fractional carry.
-    add.w   d5,d2                          ; Pair 16 sample 1: add negative fractional V step to the high byte of d2.
-    bcs.s   .vbm11_16_fast_bm1             ; Pair 16 sample 1: skip row decrement when the fractional add carried.
-    subi.w  #$0200,d1                      ; Pair 16 sample 1: decrement one wrapped texture row without carry.
-.vbm11_16_fast_bm1:                      ; Pair 16 sample 1: V update complete for minus-one family.
-    move.w  d0,d7                          ; Pair 16 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 16 sample 2: fetch the low-nibble contribution into d7.
-    add.b   d4,d2                          ; Pair 16 sample 2: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 16 sample 2: advance integer U with the fractional carry.
-    add.w   d5,d2                          ; Pair 16 sample 2: add negative fractional V step to the high byte of d2.
-    bcs.s   .vbm12_16_fast_bm1             ; Pair 16 sample 2: skip row decrement when the fractional add carried.
-    subi.w  #$0200,d1                      ; Pair 16 sample 2: decrement one wrapped texture row without carry.
-.vbm12_16_fast_bm1:                      ; Pair 16 sample 2: V update complete for minus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 16: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 16: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 16: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 16: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 16: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 16: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 16: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 16: store plane 1 byte and advance plane 1.
-    move.w  d0,d7                          ; Pair 17 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 17 sample 1: preserve the signed table offset in a2.
-    add.b   d4,d2                          ; Pair 17 sample 1: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 17 sample 1: advance integer U with the fractional carry.
-    add.w   d5,d2                          ; Pair 17 sample 1: add negative fractional V step to the high byte of d2.
-    bcs.s   .vbm11_17_fast_bm1             ; Pair 17 sample 1: skip row decrement when the fractional add carried.
-    subi.w  #$0200,d1                      ; Pair 17 sample 1: decrement one wrapped texture row without carry.
-.vbm11_17_fast_bm1:                      ; Pair 17 sample 1: V update complete for minus-one family.
-    move.w  d0,d7                          ; Pair 17 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 17 sample 2: fetch the low-nibble contribution into d7.
-    add.b   d4,d2                          ; Pair 17 sample 2: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 17 sample 2: advance integer U with the fractional carry.
-    add.w   d5,d2                          ; Pair 17 sample 2: add negative fractional V step to the high byte of d2.
-    bcs.s   .vbm12_17_fast_bm1             ; Pair 17 sample 2: skip row decrement when the fractional add carried.
-    subi.w  #$0200,d1                      ; Pair 17 sample 2: decrement one wrapped texture row without carry.
-.vbm12_17_fast_bm1:                      ; Pair 17 sample 2: V update complete for minus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 17: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 17: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 17: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 17: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 17: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 17: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 17: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 17: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 18 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 18 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 18 sample 1: add the wrapped V row offset.
@@ -667,14 +627,14 @@ _RenderFastBm1P8Entry::                    ; Family entry for minus-one integer 
     bcs.s   .vbm12_22_fast_bm1             ; Pair 22 sample 2: skip row decrement when the fractional add carried.
     subi.w  #$0200,d1                      ; Pair 22 sample 2: decrement one wrapped texture row without carry.
 .vbm12_22_fast_bm1:                      ; Pair 22 sample 2: V update complete for minus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 22: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 22: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 22: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 22: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 22: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 22: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 22: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 22: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 23 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 23 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 23 sample 1: add the wrapped V row offset.
@@ -695,14 +655,14 @@ _RenderFastBm1P8Entry::                    ; Family entry for minus-one integer 
     bcs.s   .vbm12_23_fast_bm1             ; Pair 23 sample 2: skip row decrement when the fractional add carried.
     subi.w  #$0200,d1                      ; Pair 23 sample 2: decrement one wrapped texture row without carry.
 .vbm12_23_fast_bm1:                      ; Pair 23 sample 2: V update complete for minus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 23: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 23: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 23: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 23: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 23: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 23: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 23: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 23: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 24 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 24 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 24 sample 1: add the wrapped V row offset.
@@ -723,14 +683,14 @@ _RenderFastBm1P8Entry::                    ; Family entry for minus-one integer 
     bcs.s   .vbm12_24_fast_bm1             ; Pair 24 sample 2: skip row decrement when the fractional add carried.
     subi.w  #$0200,d1                      ; Pair 24 sample 2: decrement one wrapped texture row without carry.
 .vbm12_24_fast_bm1:                      ; Pair 24 sample 2: V update complete for minus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 24: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 24: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 24: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 24: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 24: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 24: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 24: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 24: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 25 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 25 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 25 sample 1: add the wrapped V row offset.
@@ -751,14 +711,14 @@ _RenderFastBm1P8Entry::                    ; Family entry for minus-one integer 
     bcs.s   .vbm12_25_fast_bm1             ; Pair 25 sample 2: skip row decrement when the fractional add carried.
     subi.w  #$0200,d1                      ; Pair 25 sample 2: decrement one wrapped texture row without carry.
 .vbm12_25_fast_bm1:                      ; Pair 25 sample 2: V update complete for minus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 25: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 25: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 25: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 25: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 25: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 25: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 25: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 25: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 26 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 26 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 1: add the wrapped V row offset.
@@ -773,15 +733,71 @@ _RenderFastBm1P8Entry::                    ; Family entry for minus-one integer 
     and.w   d6,d7                          ; Pair 26 sample 2: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 2: add the wrapped V row offset.
     move.l  (a3,d7.w),d7                   ; Pair 26 sample 2: fetch the low-nibble contribution into d7.
-    ;                                      ; Pair 26 sample 2: skip the final accumulator update; post-row delta includes it.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    add.b   d4,d2                          ; Pair 26 sample 2: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 26 sample 2: advance integer U with the fractional carry.
+    add.w   d5,d2                          ; Pair 26 sample 2: add negative fractional V step to the high byte of d2.
+    bcs.s   .vbm12_26_fast_bm1             ; Pair 26 sample 2: skip row decrement when the fractional add carried.
+    subi.w  #$0200,d1                      ; Pair 26 sample 2: decrement one wrapped texture row without carry.
+.vbm12_26_fast_bm1:                      ; Pair 26 sample 2: V update complete for minus-one family.
+    or.l    (a1,a2.w),d7                  ; Pair 26: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 26: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 26: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 26: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 26: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 26: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 26: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 26: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 27 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 27 sample 1: preserve the signed table offset in a2.
+    add.b   d4,d2                          ; Pair 27 sample 1: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 27 sample 1: advance integer U with the fractional carry.
+    add.w   d5,d2                          ; Pair 27 sample 1: add negative fractional V step to the high byte of d2.
+    bcs.s   .vbm11_27_fast_bm1             ; Pair 27 sample 1: skip row decrement when the fractional add carried.
+    subi.w  #$0200,d1                      ; Pair 27 sample 1: decrement one wrapped texture row without carry.
+.vbm11_27_fast_bm1:                      ; Pair 27 sample 1: V update complete for minus-one family.
+    move.w  d0,d7                          ; Pair 27 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 27 sample 2: fetch the low-nibble contribution into d7.
+    add.b   d4,d2                          ; Pair 27 sample 2: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 27 sample 2: advance integer U with the fractional carry.
+    add.w   d5,d2                          ; Pair 27 sample 2: add negative fractional V step to the high byte of d2.
+    bcs.s   .vbm12_27_fast_bm1             ; Pair 27 sample 2: skip row decrement when the fractional add carried.
+    subi.w  #$0200,d1                      ; Pair 27 sample 2: decrement one wrapped texture row without carry.
+.vbm12_27_fast_bm1:                      ; Pair 27 sample 2: V update complete for minus-one family.
+    or.l    (a1,a2.w),d7                  ; Pair 27: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 27: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 27: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 27: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 27: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 27: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 27: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 27: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 28 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 28 sample 1: preserve the signed table offset in a2.
+    add.b   d4,d2                          ; Pair 28 sample 1: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 28 sample 1: advance integer U with the fractional carry.
+    add.w   d5,d2                          ; Pair 28 sample 1: add negative fractional V step to the high byte of d2.
+    bcs.s   .vbm11_28_fast_bm1             ; Pair 28 sample 1: skip row decrement when the fractional add carried.
+    subi.w  #$0200,d1                      ; Pair 28 sample 1: decrement one wrapped texture row without carry.
+.vbm11_28_fast_bm1:                      ; Pair 28 sample 1: V update complete for minus-one family.
+    move.w  d0,d7                          ; Pair 28 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 28 sample 2: fetch the low-nibble contribution into d7.
+    ;                                      ; Pair 28 sample 2: skip the final accumulator update; post-row delta includes it.
+    or.l    (a1,a2.w),d7                  ; Pair 28: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 28: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 28: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 28: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 28: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 28: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 28: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 28: store plane 1 byte and advance plane 1.
     swap    d5                             ; Move the row count into the low word for DBRA.
     dbra    d5,.fast_bm1_loop              ; Render the next logical row until all rows are complete.
     lea     STACK_TEMP_BYTES(sp),sp        ; Discard the temporary row-prefix and post-row stack slots.
@@ -837,60 +853,16 @@ _RenderFastB0U0P8Entry::                  ; Family entry for zero integer V row 
     move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
     move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 15 bytes.            ; Store the next row-prefix pointer after the integrated pair 13 bytes.
+    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 17: copy precomputed plane 3 byte and advance plane 3.
+    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 17 bytes.
 
-    move.w  d0,d7                          ; Pair 16 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 16 sample 1: preserve the signed table offset in a2.
-    add.w   d3,d0                          ; Advance integer U (DuL is zero, no fractional carry).
-    add.w   d5,d2                          ; Pair 16 sample 1: add fractional V step to the high byte of d2.
-    bcc.s   .vb01_16_fast_b0p8               ; Pair 16 sample 1: skip row carry when the V fraction did not wrap.
-    addi.w  #$0200,d1                      ; Pair 16 sample 1: advance one wrapped texture row after V carry.
-.vb01_16_fast_b0p8:                        ; Pair 16 sample 1: V update complete for zero-base family.
-    move.w  d0,d7                          ; Pair 16 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 16 sample 2: fetch the low-nibble contribution into d7.
-    add.w   d3,d0                          ; Advance integer U (DuL is zero, no fractional carry).
-    add.w   d5,d2                          ; Pair 16 sample 2: add fractional V step to the high byte of d2.
-    bcc.s   .vb02_16_fast_b0p8               ; Pair 16 sample 2: skip row carry when the V fraction did not wrap.
-    addi.w  #$0200,d1                      ; Pair 16 sample 2: advance one wrapped texture row after V carry.
-.vb02_16_fast_b0p8:                        ; Pair 16 sample 2: V update complete for zero-base family.
-    or.l    (a1,a2.w),d7                  ; Pair 16: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 16: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 16: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 16: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 16: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 16: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 16: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 16: store plane 1 byte and advance plane 1.
-    move.w  d0,d7                          ; Pair 17 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 17 sample 1: preserve the signed table offset in a2.
-    add.w   d3,d0                          ; Advance integer U (DuL is zero, no fractional carry).
-    add.w   d5,d2                          ; Pair 17 sample 1: add fractional V step to the high byte of d2.
-    bcc.s   .vb01_17_fast_b0p8               ; Pair 17 sample 1: skip row carry when the V fraction did not wrap.
-    addi.w  #$0200,d1                      ; Pair 17 sample 1: advance one wrapped texture row after V carry.
-.vb01_17_fast_b0p8:                        ; Pair 17 sample 1: V update complete for zero-base family.
-    move.w  d0,d7                          ; Pair 17 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 17 sample 2: fetch the low-nibble contribution into d7.
-    add.w   d3,d0                          ; Advance integer U (DuL is zero, no fractional carry).
-    add.w   d5,d2                          ; Pair 17 sample 2: add fractional V step to the high byte of d2.
-    bcc.s   .vb02_17_fast_b0p8               ; Pair 17 sample 2: skip row carry when the V fraction did not wrap.
-    addi.w  #$0200,d1                      ; Pair 17 sample 2: advance one wrapped texture row after V carry.
-.vb02_17_fast_b0p8:                        ; Pair 17 sample 2: V update complete for zero-base family.
-    or.l    (a1,a2.w),d7                  ; Pair 17: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 17: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 17: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 17: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 17: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 17: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 17: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 17: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 18 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 18 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 18 sample 1: add the wrapped V row offset.
@@ -1013,14 +985,14 @@ _RenderFastB0U0P8Entry::                  ; Family entry for zero integer V row 
     bcc.s   .vb02_22_fast_b0p8               ; Pair 22 sample 2: skip row carry when the V fraction did not wrap.
     addi.w  #$0200,d1                      ; Pair 22 sample 2: advance one wrapped texture row after V carry.
 .vb02_22_fast_b0p8:                        ; Pair 22 sample 2: V update complete for zero-base family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 22: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 22: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 22: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 22: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 22: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 22: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 22: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 22: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 23 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 23 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 23 sample 1: add the wrapped V row offset.
@@ -1039,14 +1011,14 @@ _RenderFastB0U0P8Entry::                  ; Family entry for zero integer V row 
     bcc.s   .vb02_23_fast_b0p8               ; Pair 23 sample 2: skip row carry when the V fraction did not wrap.
     addi.w  #$0200,d1                      ; Pair 23 sample 2: advance one wrapped texture row after V carry.
 .vb02_23_fast_b0p8:                        ; Pair 23 sample 2: V update complete for zero-base family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 23: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 23: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 23: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 23: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 23: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 23: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 23: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 23: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 24 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 24 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 24 sample 1: add the wrapped V row offset.
@@ -1065,14 +1037,14 @@ _RenderFastB0U0P8Entry::                  ; Family entry for zero integer V row 
     bcc.s   .vb02_24_fast_b0p8               ; Pair 24 sample 2: skip row carry when the V fraction did not wrap.
     addi.w  #$0200,d1                      ; Pair 24 sample 2: advance one wrapped texture row after V carry.
 .vb02_24_fast_b0p8:                        ; Pair 24 sample 2: V update complete for zero-base family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 24: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 24: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 24: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 24: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 24: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 24: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 24: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 24: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 25 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 25 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 25 sample 1: add the wrapped V row offset.
@@ -1091,14 +1063,14 @@ _RenderFastB0U0P8Entry::                  ; Family entry for zero integer V row 
     bcc.s   .vb02_25_fast_b0p8               ; Pair 25 sample 2: skip row carry when the V fraction did not wrap.
     addi.w  #$0200,d1                      ; Pair 25 sample 2: advance one wrapped texture row after V carry.
 .vb02_25_fast_b0p8:                        ; Pair 25 sample 2: V update complete for zero-base family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 25: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 25: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 25: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 25: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 25: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 25: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 25: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 25: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 26 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 26 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 1: add the wrapped V row offset.
@@ -1112,15 +1084,67 @@ _RenderFastB0U0P8Entry::                  ; Family entry for zero integer V row 
     and.w   d6,d7                          ; Pair 26 sample 2: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 2: add the wrapped V row offset.
     move.l  (a3,d7.w),d7                   ; Pair 26 sample 2: fetch the low-nibble contribution into d7.
-    ;                                      ; Pair 26 sample 2: skip the final accumulator update; post-row delta includes it.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    add.w   d3,d0                          ; Pair 26 sample 2: advance integer U without fractional carry.
+    add.w   d5,d2                          ; Pair 26 sample 2: add fractional V step to the high byte of d2.
+    bcc.s   .vb02_26_fast_b0u0p8               ; Pair 26 sample 2: skip row carry when the V fraction did not wrap.
+    addi.w  #$0200,d1                      ; Pair 26 sample 2: advance one wrapped texture row after V carry.
+.vb02_26_fast_b0u0p8:                        ; Pair 26 sample 2: V update complete for zero-base family.
+    or.l    (a1,a2.w),d7                  ; Pair 26: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 26: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 26: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 26: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 26: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 26: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 26: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 26: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 27 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 27 sample 1: preserve the signed table offset in a2.
+    add.w   d3,d0                          ; Pair 27 sample 1: advance integer U without fractional carry.
+    add.w   d5,d2                          ; Pair 27 sample 1: add fractional V step to the high byte of d2.
+    bcc.s   .vb01_27_fast_b0u0p8               ; Pair 27 sample 1: skip row carry when the V fraction did not wrap.
+    addi.w  #$0200,d1                      ; Pair 27 sample 1: advance one wrapped texture row after V carry.
+.vb01_27_fast_b0u0p8:                        ; Pair 27 sample 1: V update complete for zero-base family.
+    move.w  d0,d7                          ; Pair 27 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 27 sample 2: fetch the low-nibble contribution into d7.
+    add.w   d3,d0                          ; Pair 27 sample 2: advance integer U without fractional carry.
+    add.w   d5,d2                          ; Pair 27 sample 2: add fractional V step to the high byte of d2.
+    bcc.s   .vb02_27_fast_b0u0p8               ; Pair 27 sample 2: skip row carry when the V fraction did not wrap.
+    addi.w  #$0200,d1                      ; Pair 27 sample 2: advance one wrapped texture row after V carry.
+.vb02_27_fast_b0u0p8:                        ; Pair 27 sample 2: V update complete for zero-base family.
+    or.l    (a1,a2.w),d7                  ; Pair 27: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 27: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 27: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 27: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 27: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 27: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 27: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 27: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 28 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 28 sample 1: preserve the signed table offset in a2.
+    add.w   d3,d0                          ; Pair 28 sample 1: advance integer U without fractional carry.
+    add.w   d5,d2                          ; Pair 28 sample 1: add fractional V step to the high byte of d2.
+    bcc.s   .vb01_28_fast_b0u0p8               ; Pair 28 sample 1: skip row carry when the V fraction did not wrap.
+    addi.w  #$0200,d1                      ; Pair 28 sample 1: advance one wrapped texture row after V carry.
+.vb01_28_fast_b0u0p8:                        ; Pair 28 sample 1: V update complete for zero-base family.
+    move.w  d0,d7                          ; Pair 28 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 28 sample 2: fetch the low-nibble contribution into d7.
+    ;                                      ; Pair 28 sample 2: skip the final accumulator update; post-row delta includes it.
+    or.l    (a1,a2.w),d7                  ; Pair 28: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 28: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 28: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 28: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 28: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 28: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 28: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 28: store plane 1 byte and advance plane 1.
     swap    d5                             ; Move the row count into the low word for DBRA.
     dbra    d5,.fast_b0u0p8_loop               ; Render the next logical row until all rows are complete.
     lea     STACK_TEMP_BYTES(sp),sp        ; Discard the temporary row-prefix and post-row stack slots.
@@ -1175,60 +1199,16 @@ _RenderFastBm1U0P8Entry::                    ; Family entry for minus-one intege
     move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
     move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 15 bytes.            ; Store the next row-prefix pointer after the integrated pair 13 bytes.
+    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 17: copy precomputed plane 3 byte and advance plane 3.
+    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 17 bytes.
 
-    move.w  d0,d7                          ; Pair 16 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 16 sample 1: preserve the signed table offset in a2.
-    add.w   d3,d0                          ; Advance integer U (DuL is zero, no fractional carry).
-    add.w   d5,d2                          ; Pair 16 sample 1: add negative fractional V step to the high byte of d2.
-    bcs.s   .vbm11_16_fast_bm1             ; Pair 16 sample 1: skip row decrement when the fractional add carried.
-    subi.w  #$0200,d1                      ; Pair 16 sample 1: decrement one wrapped texture row without carry.
-.vbm11_16_fast_bm1:                      ; Pair 16 sample 1: V update complete for minus-one family.
-    move.w  d0,d7                          ; Pair 16 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 16 sample 2: fetch the low-nibble contribution into d7.
-    add.w   d3,d0                          ; Advance integer U (DuL is zero, no fractional carry).
-    add.w   d5,d2                          ; Pair 16 sample 2: add negative fractional V step to the high byte of d2.
-    bcs.s   .vbm12_16_fast_bm1             ; Pair 16 sample 2: skip row decrement when the fractional add carried.
-    subi.w  #$0200,d1                      ; Pair 16 sample 2: decrement one wrapped texture row without carry.
-.vbm12_16_fast_bm1:                      ; Pair 16 sample 2: V update complete for minus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 16: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 16: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 16: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 16: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 16: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 16: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 16: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 16: store plane 1 byte and advance plane 1.
-    move.w  d0,d7                          ; Pair 17 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 17 sample 1: preserve the signed table offset in a2.
-    add.w   d3,d0                          ; Advance integer U (DuL is zero, no fractional carry).
-    add.w   d5,d2                          ; Pair 17 sample 1: add negative fractional V step to the high byte of d2.
-    bcs.s   .vbm11_17_fast_bm1             ; Pair 17 sample 1: skip row decrement when the fractional add carried.
-    subi.w  #$0200,d1                      ; Pair 17 sample 1: decrement one wrapped texture row without carry.
-.vbm11_17_fast_bm1:                      ; Pair 17 sample 1: V update complete for minus-one family.
-    move.w  d0,d7                          ; Pair 17 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 17 sample 2: fetch the low-nibble contribution into d7.
-    add.w   d3,d0                          ; Advance integer U (DuL is zero, no fractional carry).
-    add.w   d5,d2                          ; Pair 17 sample 2: add negative fractional V step to the high byte of d2.
-    bcs.s   .vbm12_17_fast_bm1             ; Pair 17 sample 2: skip row decrement when the fractional add carried.
-    subi.w  #$0200,d1                      ; Pair 17 sample 2: decrement one wrapped texture row without carry.
-.vbm12_17_fast_bm1:                      ; Pair 17 sample 2: V update complete for minus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 17: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 17: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 17: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 17: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 17: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 17: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 17: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 17: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 18 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 18 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 18 sample 1: add the wrapped V row offset.
@@ -1351,14 +1331,14 @@ _RenderFastBm1U0P8Entry::                    ; Family entry for minus-one intege
     bcs.s   .vbm12_22_fast_bm1             ; Pair 22 sample 2: skip row decrement when the fractional add carried.
     subi.w  #$0200,d1                      ; Pair 22 sample 2: decrement one wrapped texture row without carry.
 .vbm12_22_fast_bm1:                      ; Pair 22 sample 2: V update complete for minus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 22: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 22: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 22: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 22: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 22: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 22: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 22: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 22: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 23 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 23 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 23 sample 1: add the wrapped V row offset.
@@ -1377,14 +1357,14 @@ _RenderFastBm1U0P8Entry::                    ; Family entry for minus-one intege
     bcs.s   .vbm12_23_fast_bm1             ; Pair 23 sample 2: skip row decrement when the fractional add carried.
     subi.w  #$0200,d1                      ; Pair 23 sample 2: decrement one wrapped texture row without carry.
 .vbm12_23_fast_bm1:                      ; Pair 23 sample 2: V update complete for minus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 23: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 23: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 23: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 23: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 23: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 23: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 23: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 23: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 24 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 24 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 24 sample 1: add the wrapped V row offset.
@@ -1403,14 +1383,14 @@ _RenderFastBm1U0P8Entry::                    ; Family entry for minus-one intege
     bcs.s   .vbm12_24_fast_bm1             ; Pair 24 sample 2: skip row decrement when the fractional add carried.
     subi.w  #$0200,d1                      ; Pair 24 sample 2: decrement one wrapped texture row without carry.
 .vbm12_24_fast_bm1:                      ; Pair 24 sample 2: V update complete for minus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 24: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 24: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 24: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 24: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 24: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 24: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 24: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 24: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 25 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 25 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 25 sample 1: add the wrapped V row offset.
@@ -1429,14 +1409,14 @@ _RenderFastBm1U0P8Entry::                    ; Family entry for minus-one intege
     bcs.s   .vbm12_25_fast_bm1             ; Pair 25 sample 2: skip row decrement when the fractional add carried.
     subi.w  #$0200,d1                      ; Pair 25 sample 2: decrement one wrapped texture row without carry.
 .vbm12_25_fast_bm1:                      ; Pair 25 sample 2: V update complete for minus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 25: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 25: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 25: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 25: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 25: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 25: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 25: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 25: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 26 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 26 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 1: add the wrapped V row offset.
@@ -1450,15 +1430,71 @@ _RenderFastBm1U0P8Entry::                    ; Family entry for minus-one intege
     and.w   d6,d7                          ; Pair 26 sample 2: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 2: add the wrapped V row offset.
     move.l  (a3,d7.w),d7                   ; Pair 26 sample 2: fetch the low-nibble contribution into d7.
-    ;                                      ; Pair 26 sample 2: skip the final accumulator update; post-row delta includes it.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    add.b   d4,d2                          ; Pair 26 sample 2: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 26 sample 2: advance integer U with the fractional carry.
+    add.w   d5,d2                          ; Pair 26 sample 2: add negative fractional V step to the high byte of d2.
+    bcs.s   .vbm12_26_fast_bm1             ; Pair 26 sample 2: skip row decrement when the fractional add carried.
+    subi.w  #$0200,d1                      ; Pair 26 sample 2: decrement one wrapped texture row without carry.
+.vbm12_26_fast_bm1:                      ; Pair 26 sample 2: V update complete for minus-one family.
+    or.l    (a1,a2.w),d7                  ; Pair 26: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 26: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 26: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 26: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 26: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 26: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 26: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 26: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 27 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 27 sample 1: preserve the signed table offset in a2.
+    add.b   d4,d2                          ; Pair 27 sample 1: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 27 sample 1: advance integer U with the fractional carry.
+    add.w   d5,d2                          ; Pair 27 sample 1: add negative fractional V step to the high byte of d2.
+    bcs.s   .vbm11_27_fast_bm1             ; Pair 27 sample 1: skip row decrement when the fractional add carried.
+    subi.w  #$0200,d1                      ; Pair 27 sample 1: decrement one wrapped texture row without carry.
+.vbm11_27_fast_bm1:                      ; Pair 27 sample 1: V update complete for minus-one family.
+    move.w  d0,d7                          ; Pair 27 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 27 sample 2: fetch the low-nibble contribution into d7.
+    add.b   d4,d2                          ; Pair 27 sample 2: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 27 sample 2: advance integer U with the fractional carry.
+    add.w   d5,d2                          ; Pair 27 sample 2: add negative fractional V step to the high byte of d2.
+    bcs.s   .vbm12_27_fast_bm1             ; Pair 27 sample 2: skip row decrement when the fractional add carried.
+    subi.w  #$0200,d1                      ; Pair 27 sample 2: decrement one wrapped texture row without carry.
+.vbm12_27_fast_bm1:                      ; Pair 27 sample 2: V update complete for minus-one family.
+    or.l    (a1,a2.w),d7                  ; Pair 27: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 27: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 27: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 27: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 27: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 27: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 27: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 27: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 28 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 28 sample 1: preserve the signed table offset in a2.
+    add.b   d4,d2                          ; Pair 28 sample 1: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 28 sample 1: advance integer U with the fractional carry.
+    add.w   d5,d2                          ; Pair 28 sample 1: add negative fractional V step to the high byte of d2.
+    bcs.s   .vbm11_28_fast_bm1             ; Pair 28 sample 1: skip row decrement when the fractional add carried.
+    subi.w  #$0200,d1                      ; Pair 28 sample 1: decrement one wrapped texture row without carry.
+.vbm11_28_fast_bm1:                      ; Pair 28 sample 1: V update complete for minus-one family.
+    move.w  d0,d7                          ; Pair 28 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 28 sample 2: fetch the low-nibble contribution into d7.
+    ;                                      ; Pair 28 sample 2: skip the final accumulator update; post-row delta includes it.
+    or.l    (a1,a2.w),d7                  ; Pair 28: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 28: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 28: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 28: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 28: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 28: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 28: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 28: store plane 1 byte and advance plane 1.
     swap    d5                             ; Move the row count into the low word for DBRA.
     dbra    d5,.fast_bm1_loop              ; Render the next logical row until all rows are complete.
     lea     STACK_TEMP_BYTES(sp),sp        ; Discard the temporary row-prefix and post-row stack slots.
@@ -1513,68 +1549,16 @@ _RenderFastBp1P8Entry::                  ; Family entry for plus-one integer V r
     move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
     move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 15 bytes.            ; Store the next row-prefix pointer after the integrated pair 13 bytes.
+    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 17: copy precomputed plane 3 byte and advance plane 3.
+    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 17 bytes.
 
-    move.w  d0,d7                          ; Pair 16 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 16 sample 1: preserve the signed table offset in a2.
-    add.b   d4,d2                          ; Pair 16 sample 1: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 16 sample 1: advance integer U with the fractional carry.
-    addi.w  #$0200,d1                      ; Pair 16 sample 1: apply the mandatory plus-one texture row step.
-    add.w   d5,d2                          ; Pair 16 sample 1: add fractional V step to the high byte of d2.
-    bcc.s   .vbp01_16_fast_bp1p8           ; Pair 16 sample 1: skip the extra row step when the V fraction did not wrap.
-    addi.w  #$0200,d1                      ; Pair 16 sample 1: add the fractional carry texture row step.
-.vbp01_16_fast_bp1p8:                    ; Pair 16 sample 1: V update complete for plus-one family.
-    move.w  d0,d7                          ; Pair 16 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 16 sample 2: fetch the low-nibble contribution into d7.
-    add.b   d4,d2                          ; Pair 16 sample 2: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 16 sample 2: advance integer U with the fractional carry.
-    addi.w  #$0200,d1                      ; Pair 16 sample 2: apply the mandatory plus-one texture row step.
-    add.w   d5,d2                          ; Pair 16 sample 2: add fractional V step to the high byte of d2.
-    bcc.s   .vbp02_16_fast_bp1p8           ; Pair 16 sample 2: skip the extra row step when the V fraction did not wrap.
-    addi.w  #$0200,d1                      ; Pair 16 sample 2: add the fractional carry texture row step.
-.vbp02_16_fast_bp1p8:                    ; Pair 16 sample 2: V update complete for plus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 16: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 16: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 16: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 16: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 16: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 16: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 16: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 16: store plane 1 byte and advance plane 1.
-    move.w  d0,d7                          ; Pair 17 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 17 sample 1: preserve the signed table offset in a2.
-    add.b   d4,d2                          ; Pair 17 sample 1: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 17 sample 1: advance integer U with the fractional carry.
-    addi.w  #$0200,d1                      ; Pair 17 sample 1: apply the mandatory plus-one texture row step.
-    add.w   d5,d2                          ; Pair 17 sample 1: add fractional V step to the high byte of d2.
-    bcc.s   .vbp01_17_fast_bp1p8           ; Pair 17 sample 1: skip the extra row step when the V fraction did not wrap.
-    addi.w  #$0200,d1                      ; Pair 17 sample 1: add the fractional carry texture row step.
-.vbp01_17_fast_bp1p8:                    ; Pair 17 sample 1: V update complete for plus-one family.
-    move.w  d0,d7                          ; Pair 17 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 17 sample 2: fetch the low-nibble contribution into d7.
-    add.b   d4,d2                          ; Pair 17 sample 2: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 17 sample 2: advance integer U with the fractional carry.
-    addi.w  #$0200,d1                      ; Pair 17 sample 2: apply the mandatory plus-one texture row step.
-    add.w   d5,d2                          ; Pair 17 sample 2: add fractional V step to the high byte of d2.
-    bcc.s   .vbp02_17_fast_bp1p8           ; Pair 17 sample 2: skip the extra row step when the V fraction did not wrap.
-    addi.w  #$0200,d1                      ; Pair 17 sample 2: add the fractional carry texture row step.
-.vbp02_17_fast_bp1p8:                    ; Pair 17 sample 2: V update complete for plus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 17: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 17: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 17: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 17: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 17: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 17: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 17: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 17: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 18 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 18 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 18 sample 1: add the wrapped V row offset.
@@ -1717,14 +1701,14 @@ _RenderFastBp1P8Entry::                  ; Family entry for plus-one integer V r
     bcc.s   .vbp02_22_fast_bp1p8           ; Pair 22 sample 2: skip the extra row step when the V fraction did not wrap.
     addi.w  #$0200,d1                      ; Pair 22 sample 2: add the fractional carry texture row step.
 .vbp02_22_fast_bp1p8:                    ; Pair 22 sample 2: V update complete for plus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 22: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 22: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 22: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 22: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 22: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 22: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 22: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 22: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 23 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 23 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 23 sample 1: add the wrapped V row offset.
@@ -1747,14 +1731,14 @@ _RenderFastBp1P8Entry::                  ; Family entry for plus-one integer V r
     bcc.s   .vbp02_23_fast_bp1p8           ; Pair 23 sample 2: skip the extra row step when the V fraction did not wrap.
     addi.w  #$0200,d1                      ; Pair 23 sample 2: add the fractional carry texture row step.
 .vbp02_23_fast_bp1p8:                    ; Pair 23 sample 2: V update complete for plus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 23: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 23: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 23: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 23: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 23: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 23: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 23: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 23: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 24 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 24 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 24 sample 1: add the wrapped V row offset.
@@ -1777,14 +1761,14 @@ _RenderFastBp1P8Entry::                  ; Family entry for plus-one integer V r
     bcc.s   .vbp02_24_fast_bp1p8           ; Pair 24 sample 2: skip the extra row step when the V fraction did not wrap.
     addi.w  #$0200,d1                      ; Pair 24 sample 2: add the fractional carry texture row step.
 .vbp02_24_fast_bp1p8:                    ; Pair 24 sample 2: V update complete for plus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 24: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 24: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 24: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 24: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 24: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 24: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 24: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 24: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 25 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 25 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 25 sample 1: add the wrapped V row offset.
@@ -1807,14 +1791,14 @@ _RenderFastBp1P8Entry::                  ; Family entry for plus-one integer V r
     bcc.s   .vbp02_25_fast_bp1p8           ; Pair 25 sample 2: skip the extra row step when the V fraction did not wrap.
     addi.w  #$0200,d1                      ; Pair 25 sample 2: add the fractional carry texture row step.
 .vbp02_25_fast_bp1p8:                    ; Pair 25 sample 2: V update complete for plus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 25: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 25: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 25: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 25: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 25: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 25: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 25: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 25: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 26 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 26 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 1: add the wrapped V row offset.
@@ -1830,15 +1814,75 @@ _RenderFastBp1P8Entry::                  ; Family entry for plus-one integer V r
     and.w   d6,d7                          ; Pair 26 sample 2: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 2: add the wrapped V row offset.
     move.l  (a3,d7.w),d7                   ; Pair 26 sample 2: fetch the low-nibble contribution into d7.
-    ;                                      ; Pair 26 sample 2: skip the final accumulator update; post-row delta includes it.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    add.b   d4,d2                          ; Pair 26 sample 2: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 26 sample 2: advance integer U with the fractional carry.
+    addi.w  #$0200,d1                      ; Pair 26 sample 2: apply the mandatory plus-one texture row step.
+    add.w   d5,d2                          ; Pair 26 sample 2: add fractional V step to the high byte of d2.
+    bcc.s   .vbp12_26_fast_bp1p8             ; Pair 26 sample 2: skip the extra row step when the V fraction did not wrap.
+    addi.w  #$0200,d1                      ; Pair 26 sample 2: advance one wrapped texture row after V carry.
+.vbp12_26_fast_bp1p8:                      ; Pair 26 sample 2: V update complete for plus-one family.
+    or.l    (a1,a2.w),d7                  ; Pair 26: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 26: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 26: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 26: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 26: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 26: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 26: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 26: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 27 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 27 sample 1: preserve the signed table offset in a2.
+    add.b   d4,d2                          ; Pair 27 sample 1: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 27 sample 1: advance integer U with the fractional carry.
+    addi.w  #$0200,d1                      ; Pair 27 sample 1: apply the mandatory plus-one texture row step.
+    add.w   d5,d2                          ; Pair 27 sample 1: add fractional V step to the high byte of d2.
+    bcc.s   .vbp11_27_fast_bp1p8             ; Pair 27 sample 1: skip the extra row step when the V fraction did not wrap.
+    addi.w  #$0200,d1                      ; Pair 27 sample 1: advance one wrapped texture row after V carry.
+.vbp11_27_fast_bp1p8:                      ; Pair 27 sample 1: V update complete for plus-one family.
+    move.w  d0,d7                          ; Pair 27 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 27 sample 2: fetch the low-nibble contribution into d7.
+    add.b   d4,d2                          ; Pair 27 sample 2: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 27 sample 2: advance integer U with the fractional carry.
+    addi.w  #$0200,d1                      ; Pair 27 sample 2: apply the mandatory plus-one texture row step.
+    add.w   d5,d2                          ; Pair 27 sample 2: add fractional V step to the high byte of d2.
+    bcc.s   .vbp12_27_fast_bp1p8             ; Pair 27 sample 2: skip the extra row step when the V fraction did not wrap.
+    addi.w  #$0200,d1                      ; Pair 27 sample 2: advance one wrapped texture row after V carry.
+.vbp12_27_fast_bp1p8:                      ; Pair 27 sample 2: V update complete for plus-one family.
+    or.l    (a1,a2.w),d7                  ; Pair 27: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 27: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 27: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 27: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 27: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 27: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 27: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 27: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 28 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 28 sample 1: preserve the signed table offset in a2.
+    add.b   d4,d2                          ; Pair 28 sample 1: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 28 sample 1: advance integer U with the fractional carry.
+    addi.w  #$0200,d1                      ; Pair 28 sample 1: apply the mandatory plus-one texture row step.
+    add.w   d5,d2                          ; Pair 28 sample 1: add fractional V step to the high byte of d2.
+    bcc.s   .vbp11_28_fast_bp1p8             ; Pair 28 sample 1: skip the extra row step when the V fraction did not wrap.
+    addi.w  #$0200,d1                      ; Pair 28 sample 1: advance one wrapped texture row after V carry.
+.vbp11_28_fast_bp1p8:                      ; Pair 28 sample 1: V update complete for plus-one family.
+    move.w  d0,d7                          ; Pair 28 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 28 sample 2: fetch the low-nibble contribution into d7.
+    ;                                      ; Pair 28 sample 2: skip the final accumulator update; post-row delta includes it.
+    or.l    (a1,a2.w),d7                  ; Pair 28: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 28: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 28: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 28: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 28: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 28: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 28: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 28: store plane 1 byte and advance plane 1.
     swap    d5                             ; Move the row count into the low word for DBRA.
     dbra    d5,.fast_bp1p8_loop            ; Render the next logical row until all rows are complete.
     lea     STACK_TEMP_BYTES(sp),sp        ; Discard the temporary row-prefix and post-row stack slots.
@@ -1893,68 +1937,16 @@ _RenderFastBm2P8Entry::                  ; Family entry for minus-two integer V 
     move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
     move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 15 bytes.            ; Store the next row-prefix pointer after the integrated pair 13 bytes.
+    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 17: copy precomputed plane 3 byte and advance plane 3.
+    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 17 bytes.
 
-    move.w  d0,d7                          ; Pair 16 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 16 sample 1: preserve the signed table offset in a2.
-    add.b   d4,d2                          ; Pair 16 sample 1: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 16 sample 1: advance integer U with the fractional carry.
-    subi.w  #$0200,d1                      ; Pair 16 sample 1: apply the mandatory minus-one texture row step.
-    add.w   d5,d2                          ; Pair 16 sample 1: add negative fractional V step to the high byte of d2.
-    bcs.s   .vbm21_16_fast_bm2p8           ; Pair 16 sample 1: skip the extra decrement when the fractional add carried.
-    subi.w  #$0200,d1                      ; Pair 16 sample 1: apply the second row decrement without carry.
-.vbm21_16_fast_bm2p8:                    ; Pair 16 sample 1: V update complete for minus-two family.
-    move.w  d0,d7                          ; Pair 16 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 16 sample 2: fetch the low-nibble contribution into d7.
-    add.b   d4,d2                          ; Pair 16 sample 2: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 16 sample 2: advance integer U with the fractional carry.
-    subi.w  #$0200,d1                      ; Pair 16 sample 2: apply the mandatory minus-one texture row step.
-    add.w   d5,d2                          ; Pair 16 sample 2: add negative fractional V step to the high byte of d2.
-    bcs.s   .vbm22_16_fast_bm2p8           ; Pair 16 sample 2: skip the extra decrement when the fractional add carried.
-    subi.w  #$0200,d1                      ; Pair 16 sample 2: apply the second row decrement without carry.
-.vbm22_16_fast_bm2p8:                    ; Pair 16 sample 2: V update complete for minus-two family.
-    or.l    (a1,a2.w),d7                  ; Pair 16: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 16: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 16: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 16: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 16: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 16: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 16: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 16: store plane 1 byte and advance plane 1.
-    move.w  d0,d7                          ; Pair 17 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 17 sample 1: preserve the signed table offset in a2.
-    add.b   d4,d2                          ; Pair 17 sample 1: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 17 sample 1: advance integer U with the fractional carry.
-    subi.w  #$0200,d1                      ; Pair 17 sample 1: apply the mandatory minus-one texture row step.
-    add.w   d5,d2                          ; Pair 17 sample 1: add negative fractional V step to the high byte of d2.
-    bcs.s   .vbm21_17_fast_bm2p8           ; Pair 17 sample 1: skip the extra decrement when the fractional add carried.
-    subi.w  #$0200,d1                      ; Pair 17 sample 1: apply the second row decrement without carry.
-.vbm21_17_fast_bm2p8:                    ; Pair 17 sample 1: V update complete for minus-two family.
-    move.w  d0,d7                          ; Pair 17 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 17 sample 2: fetch the low-nibble contribution into d7.
-    add.b   d4,d2                          ; Pair 17 sample 2: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 17 sample 2: advance integer U with the fractional carry.
-    subi.w  #$0200,d1                      ; Pair 17 sample 2: apply the mandatory minus-one texture row step.
-    add.w   d5,d2                          ; Pair 17 sample 2: add negative fractional V step to the high byte of d2.
-    bcs.s   .vbm22_17_fast_bm2p8           ; Pair 17 sample 2: skip the extra decrement when the fractional add carried.
-    subi.w  #$0200,d1                      ; Pair 17 sample 2: apply the second row decrement without carry.
-.vbm22_17_fast_bm2p8:                    ; Pair 17 sample 2: V update complete for minus-two family.
-    or.l    (a1,a2.w),d7                  ; Pair 17: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 17: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 17: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 17: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 17: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 17: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 17: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 17: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 18 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 18 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 18 sample 1: add the wrapped V row offset.
@@ -2097,14 +2089,14 @@ _RenderFastBm2P8Entry::                  ; Family entry for minus-two integer V 
     bcs.s   .vbm22_22_fast_bm2p8           ; Pair 22 sample 2: skip the extra decrement when the fractional add carried.
     subi.w  #$0200,d1                      ; Pair 22 sample 2: apply the second row decrement without carry.
 .vbm22_22_fast_bm2p8:                    ; Pair 22 sample 2: V update complete for minus-two family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 22: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 22: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 22: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 22: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 22: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 22: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 22: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 22: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 23 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 23 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 23 sample 1: add the wrapped V row offset.
@@ -2127,14 +2119,14 @@ _RenderFastBm2P8Entry::                  ; Family entry for minus-two integer V 
     bcs.s   .vbm22_23_fast_bm2p8           ; Pair 23 sample 2: skip the extra decrement when the fractional add carried.
     subi.w  #$0200,d1                      ; Pair 23 sample 2: apply the second row decrement without carry.
 .vbm22_23_fast_bm2p8:                    ; Pair 23 sample 2: V update complete for minus-two family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 23: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 23: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 23: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 23: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 23: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 23: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 23: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 23: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 24 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 24 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 24 sample 1: add the wrapped V row offset.
@@ -2157,14 +2149,14 @@ _RenderFastBm2P8Entry::                  ; Family entry for minus-two integer V 
     bcs.s   .vbm22_24_fast_bm2p8           ; Pair 24 sample 2: skip the extra decrement when the fractional add carried.
     subi.w  #$0200,d1                      ; Pair 24 sample 2: apply the second row decrement without carry.
 .vbm22_24_fast_bm2p8:                    ; Pair 24 sample 2: V update complete for minus-two family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 24: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 24: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 24: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 24: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 24: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 24: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 24: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 24: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 25 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 25 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 25 sample 1: add the wrapped V row offset.
@@ -2187,14 +2179,14 @@ _RenderFastBm2P8Entry::                  ; Family entry for minus-two integer V 
     bcs.s   .vbm22_25_fast_bm2p8           ; Pair 25 sample 2: skip the extra decrement when the fractional add carried.
     subi.w  #$0200,d1                      ; Pair 25 sample 2: apply the second row decrement without carry.
 .vbm22_25_fast_bm2p8:                    ; Pair 25 sample 2: V update complete for minus-two family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 25: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 25: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 25: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 25: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 25: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 25: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 25: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 25: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 26 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 26 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 1: add the wrapped V row offset.
@@ -2210,15 +2202,75 @@ _RenderFastBm2P8Entry::                  ; Family entry for minus-two integer V 
     and.w   d6,d7                          ; Pair 26 sample 2: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 2: add the wrapped V row offset.
     move.l  (a3,d7.w),d7                   ; Pair 26 sample 2: fetch the low-nibble contribution into d7.
-    ;                                      ; Pair 26 sample 2: skip the final accumulator update; post-row delta includes it.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    add.b   d4,d2                          ; Pair 26 sample 2: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 26 sample 2: advance integer U with the fractional carry.
+    subi.w  #$0200,d1                      ; Pair 26 sample 2: apply the mandatory minus-one texture row step.
+    add.w   d5,d2                          ; Pair 26 sample 2: add negative fractional V step to the high byte of d2.
+    bcs.s   .vbm22_26_fast_bm2p8             ; Pair 26 sample 2: skip the extra decrement when the fractional add carried.
+    subi.w  #$0200,d1                      ; Pair 26 sample 2: decrement two wrapped texture rows without carry.
+.vbm22_26_fast_bm2p8:                      ; Pair 26 sample 2: V update complete for minus-two family.
+    or.l    (a1,a2.w),d7                  ; Pair 26: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 26: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 26: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 26: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 26: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 26: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 26: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 26: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 27 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 27 sample 1: preserve the signed table offset in a2.
+    add.b   d4,d2                          ; Pair 27 sample 1: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 27 sample 1: advance integer U with the fractional carry.
+    subi.w  #$0200,d1                      ; Pair 27 sample 1: apply the mandatory minus-one texture row step.
+    add.w   d5,d2                          ; Pair 27 sample 1: add negative fractional V step to the high byte of d2.
+    bcs.s   .vbm21_27_fast_bm2p8             ; Pair 27 sample 1: skip the extra decrement when the fractional add carried.
+    subi.w  #$0200,d1                      ; Pair 27 sample 1: decrement two wrapped texture rows without carry.
+.vbm21_27_fast_bm2p8:                      ; Pair 27 sample 1: V update complete for minus-two family.
+    move.w  d0,d7                          ; Pair 27 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 27 sample 2: fetch the low-nibble contribution into d7.
+    add.b   d4,d2                          ; Pair 27 sample 2: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 27 sample 2: advance integer U with the fractional carry.
+    subi.w  #$0200,d1                      ; Pair 27 sample 2: apply the mandatory minus-one texture row step.
+    add.w   d5,d2                          ; Pair 27 sample 2: add negative fractional V step to the high byte of d2.
+    bcs.s   .vbm22_27_fast_bm2p8             ; Pair 27 sample 2: skip the extra decrement when the fractional add carried.
+    subi.w  #$0200,d1                      ; Pair 27 sample 2: decrement two wrapped texture rows without carry.
+.vbm22_27_fast_bm2p8:                      ; Pair 27 sample 2: V update complete for minus-two family.
+    or.l    (a1,a2.w),d7                  ; Pair 27: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 27: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 27: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 27: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 27: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 27: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 27: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 27: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 28 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 28 sample 1: preserve the signed table offset in a2.
+    add.b   d4,d2                          ; Pair 28 sample 1: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 28 sample 1: advance integer U with the fractional carry.
+    subi.w  #$0200,d1                      ; Pair 28 sample 1: apply the mandatory minus-one texture row step.
+    add.w   d5,d2                          ; Pair 28 sample 1: add negative fractional V step to the high byte of d2.
+    bcs.s   .vbm21_28_fast_bm2p8             ; Pair 28 sample 1: skip the extra decrement when the fractional add carried.
+    subi.w  #$0200,d1                      ; Pair 28 sample 1: decrement two wrapped texture rows without carry.
+.vbm21_28_fast_bm2p8:                      ; Pair 28 sample 1: V update complete for minus-two family.
+    move.w  d0,d7                          ; Pair 28 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 28 sample 2: fetch the low-nibble contribution into d7.
+    ;                                      ; Pair 28 sample 2: skip the final accumulator update; post-row delta includes it.
+    or.l    (a1,a2.w),d7                  ; Pair 28: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 28: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 28: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 28: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 28: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 28: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 28: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 28: store plane 1 byte and advance plane 1.
     swap    d5                             ; Move the row count into the low word for DBRA.
     dbra    d5,.fast_bm2p8_loop            ; Render the next logical row until all rows are complete.
     lea     STACK_TEMP_BYTES(sp),sp        ; Discard the temporary row-prefix and post-row stack slots.
@@ -2274,64 +2326,16 @@ _RenderFastBp1U0P8Entry::                ; Family entry for plus-one integer V r
     move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
     move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 15 bytes.            ; Store the next row-prefix pointer after the integrated pair 13 bytes.
+    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 17: copy precomputed plane 3 byte and advance plane 3.
+    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 17 bytes.
 
-    move.w  d0,d7                          ; Pair 16 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 16 sample 1: preserve the signed table offset in a2.
-    add.w   d3,d0                          ; Pair 16 sample 1: advance integer U without fractional carry.
-    add.w   d4,d1                          ; Pair 16 sample 1: apply the mandatory plus-one texture row step.
-    add.w   d5,d2                          ; Pair 16 sample 1: add fractional V step to the high byte of d2.
-    bcc.s   .vbp01_16_fast_bp1u0p8         ; Pair 16 sample 1: skip the extra row step when the V fraction did not wrap.
-    add.w   d4,d1                          ; Pair 16 sample 1: add the fractional carry texture row step.
-.vbp01_16_fast_bp1u0p8:                  ; Pair 16 sample 1: V update complete for plus-one family.
-    move.w  d0,d7                          ; Pair 16 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 16 sample 2: fetch the low-nibble contribution into d7.
-    add.w   d3,d0                          ; Pair 16 sample 2: advance integer U without fractional carry.
-    add.w   d4,d1                          ; Pair 16 sample 2: apply the mandatory plus-one texture row step.
-    add.w   d5,d2                          ; Pair 16 sample 2: add fractional V step to the high byte of d2.
-    bcc.s   .vbp02_16_fast_bp1u0p8         ; Pair 16 sample 2: skip the extra row step when the V fraction did not wrap.
-    add.w   d4,d1                          ; Pair 16 sample 2: add the fractional carry texture row step.
-.vbp02_16_fast_bp1u0p8:                  ; Pair 16 sample 2: V update complete for plus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 16: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 16: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 16: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 16: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 16: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 16: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 16: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 16: store plane 1 byte and advance plane 1.
-    move.w  d0,d7                          ; Pair 17 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 17 sample 1: preserve the signed table offset in a2.
-    add.w   d3,d0                          ; Pair 17 sample 1: advance integer U without fractional carry.
-    add.w   d4,d1                          ; Pair 17 sample 1: apply the mandatory plus-one texture row step.
-    add.w   d5,d2                          ; Pair 17 sample 1: add fractional V step to the high byte of d2.
-    bcc.s   .vbp01_17_fast_bp1u0p8         ; Pair 17 sample 1: skip the extra row step when the V fraction did not wrap.
-    add.w   d4,d1                          ; Pair 17 sample 1: add the fractional carry texture row step.
-.vbp01_17_fast_bp1u0p8:                  ; Pair 17 sample 1: V update complete for plus-one family.
-    move.w  d0,d7                          ; Pair 17 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 17 sample 2: fetch the low-nibble contribution into d7.
-    add.w   d3,d0                          ; Pair 17 sample 2: advance integer U without fractional carry.
-    add.w   d4,d1                          ; Pair 17 sample 2: apply the mandatory plus-one texture row step.
-    add.w   d5,d2                          ; Pair 17 sample 2: add fractional V step to the high byte of d2.
-    bcc.s   .vbp02_17_fast_bp1u0p8         ; Pair 17 sample 2: skip the extra row step when the V fraction did not wrap.
-    add.w   d4,d1                          ; Pair 17 sample 2: add the fractional carry texture row step.
-.vbp02_17_fast_bp1u0p8:                  ; Pair 17 sample 2: V update complete for plus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 17: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 17: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 17: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 17: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 17: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 17: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 17: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 17: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 18 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 18 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 18 sample 1: add the wrapped V row offset.
@@ -2464,14 +2468,14 @@ _RenderFastBp1U0P8Entry::                ; Family entry for plus-one integer V r
     bcc.s   .vbp02_22_fast_bp1u0p8         ; Pair 22 sample 2: skip the extra row step when the V fraction did not wrap.
     add.w   d4,d1                          ; Pair 22 sample 2: add the fractional carry texture row step.
 .vbp02_22_fast_bp1u0p8:                  ; Pair 22 sample 2: V update complete for plus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 22: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 22: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 22: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 22: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 22: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 22: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 22: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 22: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 23 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 23 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 23 sample 1: add the wrapped V row offset.
@@ -2492,14 +2496,14 @@ _RenderFastBp1U0P8Entry::                ; Family entry for plus-one integer V r
     bcc.s   .vbp02_23_fast_bp1u0p8         ; Pair 23 sample 2: skip the extra row step when the V fraction did not wrap.
     add.w   d4,d1                          ; Pair 23 sample 2: add the fractional carry texture row step.
 .vbp02_23_fast_bp1u0p8:                  ; Pair 23 sample 2: V update complete for plus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 23: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 23: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 23: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 23: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 23: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 23: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 23: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 23: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 24 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 24 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 24 sample 1: add the wrapped V row offset.
@@ -2520,14 +2524,14 @@ _RenderFastBp1U0P8Entry::                ; Family entry for plus-one integer V r
     bcc.s   .vbp02_24_fast_bp1u0p8         ; Pair 24 sample 2: skip the extra row step when the V fraction did not wrap.
     add.w   d4,d1                          ; Pair 24 sample 2: add the fractional carry texture row step.
 .vbp02_24_fast_bp1u0p8:                  ; Pair 24 sample 2: V update complete for plus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 24: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 24: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 24: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 24: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 24: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 24: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 24: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 24: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 25 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 25 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 25 sample 1: add the wrapped V row offset.
@@ -2548,14 +2552,14 @@ _RenderFastBp1U0P8Entry::                ; Family entry for plus-one integer V r
     bcc.s   .vbp02_25_fast_bp1u0p8         ; Pair 25 sample 2: skip the extra row step when the V fraction did not wrap.
     add.w   d4,d1                          ; Pair 25 sample 2: add the fractional carry texture row step.
 .vbp02_25_fast_bp1u0p8:                  ; Pair 25 sample 2: V update complete for plus-one family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 25: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 25: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 25: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 25: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 25: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 25: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 25: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 25: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 26 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 26 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 1: add the wrapped V row offset.
@@ -2570,15 +2574,71 @@ _RenderFastBp1U0P8Entry::                ; Family entry for plus-one integer V r
     and.w   d6,d7                          ; Pair 26 sample 2: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 2: add the wrapped V row offset.
     move.l  (a3,d7.w),d7                   ; Pair 26 sample 2: fetch the low-nibble contribution into d7.
-    ;                                      ; Pair 26 sample 2: skip the final accumulator update; post-row delta includes it.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    add.w   d3,d0                          ; Pair 26 sample 2: advance integer U without fractional carry.
+    add.w   d4,d1                          ; Pair 26 sample 2: apply the mandatory plus-one texture row step.
+    add.w   d5,d2                          ; Pair 26 sample 2: add fractional V step to the high byte of d2.
+    bcc.s   .vbp12_26_fast_bp1u0p8             ; Pair 26 sample 2: skip the extra row step when the V fraction did not wrap.
+    add.w   d4,d1                      ; Pair 26 sample 2: add the fractional carry texture row step.
+.vbp12_26_fast_bp1u0p8:                      ; Pair 26 sample 2: V update complete for plus-one family.
+    or.l    (a1,a2.w),d7                  ; Pair 26: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 26: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 26: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 26: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 26: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 26: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 26: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 26: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 27 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 27 sample 1: preserve the signed table offset in a2.
+    add.w   d3,d0                          ; Pair 27 sample 1: advance integer U without fractional carry.
+    add.w   d4,d1                          ; Pair 27 sample 1: apply the mandatory plus-one texture row step.
+    add.w   d5,d2                          ; Pair 27 sample 1: add fractional V step to the high byte of d2.
+    bcc.s   .vbp11_27_fast_bp1u0p8             ; Pair 27 sample 1: skip the extra row step when the V fraction did not wrap.
+    add.w   d4,d1                      ; Pair 27 sample 1: add the fractional carry texture row step.
+.vbp11_27_fast_bp1u0p8:                      ; Pair 27 sample 1: V update complete for plus-one family.
+    move.w  d0,d7                          ; Pair 27 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 27 sample 2: fetch the low-nibble contribution into d7.
+    add.w   d3,d0                          ; Pair 27 sample 2: advance integer U without fractional carry.
+    add.w   d4,d1                          ; Pair 27 sample 2: apply the mandatory plus-one texture row step.
+    add.w   d5,d2                          ; Pair 27 sample 2: add fractional V step to the high byte of d2.
+    bcc.s   .vbp12_27_fast_bp1u0p8             ; Pair 27 sample 2: skip the extra row step when the V fraction did not wrap.
+    add.w   d4,d1                      ; Pair 27 sample 2: add the fractional carry texture row step.
+.vbp12_27_fast_bp1u0p8:                      ; Pair 27 sample 2: V update complete for plus-one family.
+    or.l    (a1,a2.w),d7                  ; Pair 27: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 27: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 27: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 27: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 27: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 27: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 27: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 27: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 28 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 28 sample 1: preserve the signed table offset in a2.
+    add.w   d3,d0                          ; Pair 28 sample 1: advance integer U without fractional carry.
+    add.w   d4,d1                          ; Pair 28 sample 1: apply the mandatory plus-one texture row step.
+    add.w   d5,d2                          ; Pair 28 sample 1: add fractional V step to the high byte of d2.
+    bcc.s   .vbp11_28_fast_bp1u0p8             ; Pair 28 sample 1: skip the extra row step when the V fraction did not wrap.
+    add.w   d4,d1                      ; Pair 28 sample 1: add the fractional carry texture row step.
+.vbp11_28_fast_bp1u0p8:                      ; Pair 28 sample 1: V update complete for plus-one family.
+    move.w  d0,d7                          ; Pair 28 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 28 sample 2: fetch the low-nibble contribution into d7.
+    ;                                      ; Pair 28 sample 2: skip the final accumulator update; post-row delta includes it.
+    or.l    (a1,a2.w),d7                  ; Pair 28: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 28: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 28: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 28: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 28: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 28: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 28: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 28: store plane 1 byte and advance plane 1.
     swap    d5                             ; Move the row count into the low word for DBRA.
     dbra    d5,.fast_bp1u0p8_loop          ; Render the next logical row until all rows are complete.
     lea     STACK_TEMP_BYTES(sp),sp        ; Discard the temporary row-prefix and post-row stack slots.
@@ -2634,64 +2694,16 @@ _RenderFastBm2U0P8Entry::                ; Family entry for minus-two integer V 
     move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
     move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 15 bytes.            ; Store the next row-prefix pointer after the integrated pair 13 bytes.
+    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 17: copy precomputed plane 3 byte and advance plane 3.
+    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 17 bytes.
 
-    move.w  d0,d7                          ; Pair 16 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 16 sample 1: preserve the signed table offset in a2.
-    add.w   d3,d0                          ; Pair 16 sample 1: advance integer U without fractional carry.
-    sub.w   d4,d1                          ; Pair 16 sample 1: apply the mandatory minus-one texture row step.
-    add.w   d5,d2                          ; Pair 16 sample 1: add negative fractional V step to the high byte of d2.
-    bcs.s   .vbm21_16_fast_bm2u0p8         ; Pair 16 sample 1: skip the extra decrement when the fractional add carried.
-    sub.w   d4,d1                          ; Pair 16 sample 1: apply the second row decrement without carry.
-.vbm21_16_fast_bm2u0p8:                  ; Pair 16 sample 1: V update complete for minus-two family.
-    move.w  d0,d7                          ; Pair 16 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 16 sample 2: fetch the low-nibble contribution into d7.
-    add.w   d3,d0                          ; Pair 16 sample 2: advance integer U without fractional carry.
-    sub.w   d4,d1                          ; Pair 16 sample 2: apply the mandatory minus-one texture row step.
-    add.w   d5,d2                          ; Pair 16 sample 2: add negative fractional V step to the high byte of d2.
-    bcs.s   .vbm22_16_fast_bm2u0p8         ; Pair 16 sample 2: skip the extra decrement when the fractional add carried.
-    sub.w   d4,d1                          ; Pair 16 sample 2: apply the second row decrement without carry.
-.vbm22_16_fast_bm2u0p8:                  ; Pair 16 sample 2: V update complete for minus-two family.
-    or.l    (a1,a2.w),d7                  ; Pair 16: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 16: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 16: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 16: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 16: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 16: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 16: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 16: store plane 1 byte and advance plane 1.
-    move.w  d0,d7                          ; Pair 17 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 17 sample 1: preserve the signed table offset in a2.
-    add.w   d3,d0                          ; Pair 17 sample 1: advance integer U without fractional carry.
-    sub.w   d4,d1                          ; Pair 17 sample 1: apply the mandatory minus-one texture row step.
-    add.w   d5,d2                          ; Pair 17 sample 1: add negative fractional V step to the high byte of d2.
-    bcs.s   .vbm21_17_fast_bm2u0p8         ; Pair 17 sample 1: skip the extra decrement when the fractional add carried.
-    sub.w   d4,d1                          ; Pair 17 sample 1: apply the second row decrement without carry.
-.vbm21_17_fast_bm2u0p8:                  ; Pair 17 sample 1: V update complete for minus-two family.
-    move.w  d0,d7                          ; Pair 17 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 17 sample 2: fetch the low-nibble contribution into d7.
-    add.w   d3,d0                          ; Pair 17 sample 2: advance integer U without fractional carry.
-    sub.w   d4,d1                          ; Pair 17 sample 2: apply the mandatory minus-one texture row step.
-    add.w   d5,d2                          ; Pair 17 sample 2: add negative fractional V step to the high byte of d2.
-    bcs.s   .vbm22_17_fast_bm2u0p8         ; Pair 17 sample 2: skip the extra decrement when the fractional add carried.
-    sub.w   d4,d1                          ; Pair 17 sample 2: apply the second row decrement without carry.
-.vbm22_17_fast_bm2u0p8:                  ; Pair 17 sample 2: V update complete for minus-two family.
-    or.l    (a1,a2.w),d7                  ; Pair 17: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 17: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 17: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 17: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 17: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 17: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 17: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 17: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 18 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 18 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 18 sample 1: add the wrapped V row offset.
@@ -2824,14 +2836,14 @@ _RenderFastBm2U0P8Entry::                ; Family entry for minus-two integer V 
     bcs.s   .vbm22_22_fast_bm2u0p8         ; Pair 22 sample 2: skip the extra decrement when the fractional add carried.
     sub.w   d4,d1                          ; Pair 22 sample 2: apply the second row decrement without carry.
 .vbm22_22_fast_bm2u0p8:                  ; Pair 22 sample 2: V update complete for minus-two family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 22: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 22: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 22: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 22: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 22: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 22: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 22: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 22: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 23 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 23 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 23 sample 1: add the wrapped V row offset.
@@ -2852,14 +2864,14 @@ _RenderFastBm2U0P8Entry::                ; Family entry for minus-two integer V 
     bcs.s   .vbm22_23_fast_bm2u0p8         ; Pair 23 sample 2: skip the extra decrement when the fractional add carried.
     sub.w   d4,d1                          ; Pair 23 sample 2: apply the second row decrement without carry.
 .vbm22_23_fast_bm2u0p8:                  ; Pair 23 sample 2: V update complete for minus-two family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 23: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 23: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 23: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 23: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 23: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 23: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 23: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 23: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 24 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 24 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 24 sample 1: add the wrapped V row offset.
@@ -2880,14 +2892,14 @@ _RenderFastBm2U0P8Entry::                ; Family entry for minus-two integer V 
     bcs.s   .vbm22_24_fast_bm2u0p8         ; Pair 24 sample 2: skip the extra decrement when the fractional add carried.
     sub.w   d4,d1                          ; Pair 24 sample 2: apply the second row decrement without carry.
 .vbm22_24_fast_bm2u0p8:                  ; Pair 24 sample 2: V update complete for minus-two family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 24: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 24: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 24: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 24: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 24: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 24: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 24: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 24: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 25 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 25 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 25 sample 1: add the wrapped V row offset.
@@ -2908,14 +2920,14 @@ _RenderFastBm2U0P8Entry::                ; Family entry for minus-two integer V 
     bcs.s   .vbm22_25_fast_bm2u0p8         ; Pair 25 sample 2: skip the extra decrement when the fractional add carried.
     sub.w   d4,d1                          ; Pair 25 sample 2: apply the second row decrement without carry.
 .vbm22_25_fast_bm2u0p8:                  ; Pair 25 sample 2: V update complete for minus-two family.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 25: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 25: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 25: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 25: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 25: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 25: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 25: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 25: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 26 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 26 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 1: add the wrapped V row offset.
@@ -2930,15 +2942,71 @@ _RenderFastBm2U0P8Entry::                ; Family entry for minus-two integer V 
     and.w   d6,d7                          ; Pair 26 sample 2: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 2: add the wrapped V row offset.
     move.l  (a3,d7.w),d7                   ; Pair 26 sample 2: fetch the low-nibble contribution into d7.
-    ;                                      ; Pair 26 sample 2: skip the final accumulator update; post-row delta includes it.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    add.w   d3,d0                          ; Pair 26 sample 2: advance integer U without fractional carry.
+    sub.w   d4,d1                          ; Pair 26 sample 2: apply the mandatory minus-one texture row step.
+    add.w   d5,d2                          ; Pair 26 sample 2: add negative fractional V step to the high byte of d2.
+    bcs.s   .vbm22_26_fast_bm2u0p8             ; Pair 26 sample 2: skip the extra decrement when the fractional add carried.
+    subi.w  #$0200,d1                      ; Pair 26 sample 2: decrement two wrapped texture rows without carry.
+.vbm22_26_fast_bm2u0p8:                      ; Pair 26 sample 2: V update complete for minus-two family.
+    or.l    (a1,a2.w),d7                  ; Pair 26: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 26: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 26: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 26: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 26: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 26: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 26: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 26: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 27 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 27 sample 1: preserve the signed table offset in a2.
+    add.w   d3,d0                          ; Pair 27 sample 1: advance integer U without fractional carry.
+    sub.w   d4,d1                          ; Pair 27 sample 1: apply the mandatory minus-one texture row step.
+    add.w   d5,d2                          ; Pair 27 sample 1: add negative fractional V step to the high byte of d2.
+    bcs.s   .vbm21_27_fast_bm2u0p8             ; Pair 27 sample 1: skip the extra decrement when the fractional add carried.
+    subi.w  #$0200,d1                      ; Pair 27 sample 1: decrement two wrapped texture rows without carry.
+.vbm21_27_fast_bm2u0p8:                      ; Pair 27 sample 1: V update complete for minus-two family.
+    move.w  d0,d7                          ; Pair 27 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 27 sample 2: fetch the low-nibble contribution into d7.
+    add.w   d3,d0                          ; Pair 27 sample 2: advance integer U without fractional carry.
+    sub.w   d4,d1                          ; Pair 27 sample 2: apply the mandatory minus-one texture row step.
+    add.w   d5,d2                          ; Pair 27 sample 2: add negative fractional V step to the high byte of d2.
+    bcs.s   .vbm22_27_fast_bm2u0p8             ; Pair 27 sample 2: skip the extra decrement when the fractional add carried.
+    subi.w  #$0200,d1                      ; Pair 27 sample 2: decrement two wrapped texture rows without carry.
+.vbm22_27_fast_bm2u0p8:                      ; Pair 27 sample 2: V update complete for minus-two family.
+    or.l    (a1,a2.w),d7                  ; Pair 27: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 27: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 27: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 27: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 27: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 27: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 27: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 27: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 28 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 28 sample 1: preserve the signed table offset in a2.
+    add.w   d3,d0                          ; Pair 28 sample 1: advance integer U without fractional carry.
+    sub.w   d4,d1                          ; Pair 28 sample 1: apply the mandatory minus-one texture row step.
+    add.w   d5,d2                          ; Pair 28 sample 1: add negative fractional V step to the high byte of d2.
+    bcs.s   .vbm21_28_fast_bm2u0p8             ; Pair 28 sample 1: skip the extra decrement when the fractional add carried.
+    subi.w  #$0200,d1                      ; Pair 28 sample 1: decrement two wrapped texture rows without carry.
+.vbm21_28_fast_bm2u0p8:                      ; Pair 28 sample 1: V update complete for minus-two family.
+    move.w  d0,d7                          ; Pair 28 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 28 sample 2: fetch the low-nibble contribution into d7.
+    ;                                      ; Pair 28 sample 2: skip the final accumulator update; post-row delta includes it.
+    or.l    (a1,a2.w),d7                  ; Pair 28: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 28: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 28: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 28: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 28: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 28: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 28: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 28: store plane 1 byte and advance plane 1.
     swap    d5                             ; Move the row count into the low word for DBRA.
     dbra    d5,.fast_bm2u0p8_loop          ; Render the next logical row until all rows are complete.
     lea     STACK_TEMP_BYTES(sp),sp        ; Discard the temporary row-prefix and post-row stack slots.
@@ -2993,52 +3061,16 @@ _RenderFastB0V0Entry::                   ; Family entry for zero integer V row b
     move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
     move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 15 bytes.            ; Store the next row-prefix pointer after the integrated pair 13 bytes.
+    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 17: copy precomputed plane 3 byte and advance plane 3.
+    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 17 bytes.
 
-    move.w  d0,d7                          ; Pair 16 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 16 sample 1: preserve the signed table offset in a2.
-    add.b   d4,d2                          ; Pair 16 sample 1: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 16 sample 1: advance integer U with the fractional carry.
-    ;                                      ; Pair 16 sample 1: V is constant for this frame, so no V update is emitted.
-    move.w  d0,d7                          ; Pair 16 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 16 sample 2: fetch the low-nibble contribution into d7.
-    add.b   d4,d2                          ; Pair 16 sample 2: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 16 sample 2: advance integer U with the fractional carry.
-    ;                                      ; Pair 16 sample 2: V is constant for this frame, so no V update is emitted.
-    or.l    (a1,a2.w),d7                  ; Pair 16: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 16: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 16: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 16: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 16: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 16: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 16: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 16: store plane 1 byte and advance plane 1.
-    move.w  d0,d7                          ; Pair 17 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 17 sample 1: preserve the signed table offset in a2.
-    add.b   d4,d2                          ; Pair 17 sample 1: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 17 sample 1: advance integer U with the fractional carry.
-    ;                                      ; Pair 17 sample 1: V is constant for this frame, so no V update is emitted.
-    move.w  d0,d7                          ; Pair 17 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 17 sample 2: fetch the low-nibble contribution into d7.
-    add.b   d4,d2                          ; Pair 17 sample 2: advance the fractional U accumulator.
-    addx.w  d3,d0                          ; Pair 17 sample 2: advance integer U with the fractional carry.
-    ;                                      ; Pair 17 sample 2: V is constant for this frame, so no V update is emitted.
-    or.l    (a1,a2.w),d7                  ; Pair 17: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 17: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 17: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 17: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 17: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 17: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 17: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 17: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 18 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 18 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 18 sample 1: add the wrapped V row offset.
@@ -3141,14 +3173,14 @@ _RenderFastB0V0Entry::                   ; Family entry for zero integer V row b
     add.b   d4,d2                          ; Pair 22 sample 2: advance the fractional U accumulator.
     addx.w  d3,d0                          ; Pair 22 sample 2: advance integer U with the fractional carry.
     ;                                      ; Pair 22 sample 2: V is constant for this frame, so no V update is emitted.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 22: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 22: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 22: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 22: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 22: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 22: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 22: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 22: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 23 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 23 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 23 sample 1: add the wrapped V row offset.
@@ -3163,14 +3195,14 @@ _RenderFastB0V0Entry::                   ; Family entry for zero integer V row b
     add.b   d4,d2                          ; Pair 23 sample 2: advance the fractional U accumulator.
     addx.w  d3,d0                          ; Pair 23 sample 2: advance integer U with the fractional carry.
     ;                                      ; Pair 23 sample 2: V is constant for this frame, so no V update is emitted.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 23: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 23: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 23: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 23: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 23: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 23: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 23: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 23: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 24 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 24 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 24 sample 1: add the wrapped V row offset.
@@ -3185,14 +3217,14 @@ _RenderFastB0V0Entry::                   ; Family entry for zero integer V row b
     add.b   d4,d2                          ; Pair 24 sample 2: advance the fractional U accumulator.
     addx.w  d3,d0                          ; Pair 24 sample 2: advance integer U with the fractional carry.
     ;                                      ; Pair 24 sample 2: V is constant for this frame, so no V update is emitted.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 24: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 24: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 24: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 24: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 24: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 24: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 24: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 24: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 25 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 25 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 25 sample 1: add the wrapped V row offset.
@@ -3207,14 +3239,14 @@ _RenderFastB0V0Entry::                   ; Family entry for zero integer V row b
     add.b   d4,d2                          ; Pair 25 sample 2: advance the fractional U accumulator.
     addx.w  d3,d0                          ; Pair 25 sample 2: advance integer U with the fractional carry.
     ;                                      ; Pair 25 sample 2: V is constant for this frame, so no V update is emitted.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 25: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 25: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 25: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 25: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 25: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 25: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 25: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 25: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 26 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 26 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 1: add the wrapped V row offset.
@@ -3226,15 +3258,59 @@ _RenderFastB0V0Entry::                   ; Family entry for zero integer V row b
     and.w   d6,d7                          ; Pair 26 sample 2: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 2: add the wrapped V row offset.
     move.l  (a3,d7.w),d7                   ; Pair 26 sample 2: fetch the low-nibble contribution into d7.
-    ;                                      ; Pair 26 sample 2: skip the final accumulator update; post-row delta includes it.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    add.b   d4,d2                          ; Pair 26 sample 2: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 26 sample 2: advance integer U with the fractional carry.
+    ;                                      ; Pair 26 sample 2: V is constant for this frame, so no V update is emitted.
+    or.l    (a1,a2.w),d7                  ; Pair 26: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 26: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 26: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 26: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 26: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 26: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 26: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 26: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 27 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 27 sample 1: preserve the signed table offset in a2.
+    add.b   d4,d2                          ; Pair 27 sample 1: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 27 sample 1: advance integer U with the fractional carry.
+    ;                                      ; Pair 27 sample 1: V is constant for this frame, so no V update is emitted.
+    move.w  d0,d7                          ; Pair 27 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 27 sample 2: fetch the low-nibble contribution into d7.
+    add.b   d4,d2                          ; Pair 27 sample 2: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 27 sample 2: advance integer U with the fractional carry.
+    ;                                      ; Pair 27 sample 2: V is constant for this frame, so no V update is emitted.
+    or.l    (a1,a2.w),d7                  ; Pair 27: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 27: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 27: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 27: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 27: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 27: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 27: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 27: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 28 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 28 sample 1: preserve the signed table offset in a2.
+    add.b   d4,d2                          ; Pair 28 sample 1: advance the fractional U accumulator.
+    addx.w  d3,d0                          ; Pair 28 sample 1: advance integer U with the fractional carry.
+    ;                                      ; Pair 28 sample 1: V is constant for this frame, so no V update is emitted.
+    move.w  d0,d7                          ; Pair 28 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 28 sample 2: fetch the low-nibble contribution into d7.
+    ;                                      ; Pair 28 sample 2: skip the final accumulator update; post-row delta includes it.
+    or.l    (a1,a2.w),d7                  ; Pair 28: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 28: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 28: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 28: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 28: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 28: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 28: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 28: store plane 1 byte and advance plane 1.
     swap    d5                             ; Move the row count into the low word for DBRA.
     dbra    d5,.fast_b0v0_loop             ; Render the next logical row until all rows are complete.
     lea     STACK_TEMP_BYTES(sp),sp        ; Discard the temporary row-prefix and post-row stack slots.
@@ -3290,48 +3366,16 @@ _RenderFastB0U0V0Entry::                 ; Family entry for zero integer V row b
     move.b  (a2)+,(a4)+                    ; Pair 15: copy precomputed plane 1 byte and advance plane 1.
     move.b  (a2)+,(a6)+                    ; Pair 15: copy precomputed plane 2 byte and advance plane 2.
     move.b  (a2)+,(a0)+                    ; Pair 15: copy precomputed plane 3 byte and advance plane 3.
-    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 15 bytes.            ; Store the next row-prefix pointer after the integrated pair 13 bytes.
+    move.b  (a2)+,(a5)+                    ; Pair 16: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 16: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 16: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 16: copy precomputed plane 3 byte and advance plane 3.
+    move.b  (a2)+,(a5)+                    ; Pair 17: copy precomputed plane 0 byte and advance plane 0.
+    move.b  (a2)+,(a4)+                    ; Pair 17: copy precomputed plane 1 byte and advance plane 1.
+    move.b  (a2)+,(a6)+                    ; Pair 17: copy precomputed plane 2 byte and advance plane 2.
+    move.b  (a2)+,(a0)+                    ; Pair 17: copy precomputed plane 3 byte and advance plane 3.
+    move.l  a2,(sp)            ; Store the next row-prefix pointer after the integrated pair 17 bytes.
 
-    move.w  d0,d7                          ; Pair 16 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 16 sample 1: preserve the signed table offset in a2.
-    add.w   d3,d0                          ; Pair 16 sample 1: advance integer U without fractional carry.
-    ;                                      ; Pair 16 sample 1: V is constant for this frame, so no V update is emitted.
-    move.w  d0,d7                          ; Pair 16 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 16 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 16 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 16 sample 2: fetch the low-nibble contribution into d7.
-    add.w   d3,d0                          ; Pair 16 sample 2: advance integer U without fractional carry.
-    ;                                      ; Pair 16 sample 2: V is constant for this frame, so no V update is emitted.
-    or.l    (a1,a2.w),d7                  ; Pair 16: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 16: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 16: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 16: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 16: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 16: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 16: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 16: store plane 1 byte and advance plane 1.
-    move.w  d0,d7                          ; Pair 17 sample 1: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 1: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 1: add the wrapped V row offset.
-    movea.w d7,a2                          ; Pair 17 sample 1: preserve the signed table offset in a2.
-    add.w   d3,d0                          ; Pair 17 sample 1: advance integer U without fractional carry.
-    ;                                      ; Pair 17 sample 1: V is constant for this frame, so no V update is emitted.
-    move.w  d0,d7                          ; Pair 17 sample 2: copy current U coordinate into d7.
-    and.w   d6,d7                          ; Pair 17 sample 2: wrap U to a 128-pixel texture byte offset.
-    add.w   d1,d7                          ; Pair 17 sample 2: add the wrapped V row offset.
-    move.l  (a3,d7.w),d7                   ; Pair 17 sample 2: fetch the low-nibble contribution into d7.
-    add.w   d3,d0                          ; Pair 17 sample 2: advance integer U without fractional carry.
-    ;                                      ; Pair 17 sample 2: V is constant for this frame, so no V update is emitted.
-    or.l    (a1,a2.w),d7                  ; Pair 17: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 17: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 17: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 17: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 17: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 17: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 17: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 17: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 18 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 18 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 18 sample 1: add the wrapped V row offset.
@@ -3424,14 +3468,14 @@ _RenderFastB0U0V0Entry::                 ; Family entry for zero integer V row b
     move.l  (a3,d7.w),d7                   ; Pair 22 sample 2: fetch the low-nibble contribution into d7.
     add.w   d3,d0                          ; Pair 22 sample 2: advance integer U without fractional carry.
     ;                                      ; Pair 22 sample 2: V is constant for this frame, so no V update is emitted.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 22: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 22: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 22: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 22: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 22: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 22: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 22: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 22: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 23 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 23 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 23 sample 1: add the wrapped V row offset.
@@ -3444,14 +3488,14 @@ _RenderFastB0U0V0Entry::                 ; Family entry for zero integer V row b
     move.l  (a3,d7.w),d7                   ; Pair 23 sample 2: fetch the low-nibble contribution into d7.
     add.w   d3,d0                          ; Pair 23 sample 2: advance integer U without fractional carry.
     ;                                      ; Pair 23 sample 2: V is constant for this frame, so no V update is emitted.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 23: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 23: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 23: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 23: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 23: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 23: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 23: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 23: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 24 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 24 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 24 sample 1: add the wrapped V row offset.
@@ -3464,14 +3508,14 @@ _RenderFastB0U0V0Entry::                 ; Family entry for zero integer V row b
     move.l  (a3,d7.w),d7                   ; Pair 24 sample 2: fetch the low-nibble contribution into d7.
     add.w   d3,d0                          ; Pair 24 sample 2: advance integer U without fractional carry.
     ;                                      ; Pair 24 sample 2: V is constant for this frame, so no V update is emitted.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 24: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 24: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 24: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 24: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 24: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 24: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 24: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 24: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 25 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 25 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 25 sample 1: add the wrapped V row offset.
@@ -3484,14 +3528,14 @@ _RenderFastB0U0V0Entry::                 ; Family entry for zero integer V row b
     move.l  (a3,d7.w),d7                   ; Pair 25 sample 2: fetch the low-nibble contribution into d7.
     add.w   d3,d0                          ; Pair 25 sample 2: advance integer U without fractional carry.
     ;                                      ; Pair 25 sample 2: V is constant for this frame, so no V update is emitted.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    or.l    (a1,a2.w),d7                  ; Pair 25: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 25: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 25: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 25: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 25: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 25: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 25: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 25: store plane 1 byte and advance plane 1.
     move.w  d0,d7                          ; Pair 26 sample 1: copy current U coordinate into d7.
     and.w   d6,d7                          ; Pair 26 sample 1: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 1: add the wrapped V row offset.
@@ -3502,15 +3546,55 @@ _RenderFastB0U0V0Entry::                 ; Family entry for zero integer V row b
     and.w   d6,d7                          ; Pair 26 sample 2: wrap U to a 128-pixel texture byte offset.
     add.w   d1,d7                          ; Pair 26 sample 2: add the wrapped V row offset.
     move.l  (a3,d7.w),d7                   ; Pair 26 sample 2: fetch the low-nibble contribution into d7.
-    ;                                      ; Pair 26 sample 2: skip the final accumulator update; post-row delta includes it.
-    or.l    (a1,a2.w),d7                  ; Pair 21: merge the high-nibble contribution from sample 1.
-    move.b  d7,(a5)+                       ; Pair 21: store plane 0 byte and advance plane 0.
-    swap    d7                             ; Pair 21: expose the plane 2 byte in the low byte.
-    move.b  d7,(a6)+                       ; Pair 21: store plane 2 byte and advance plane 2.
-    lsr.l   #8,d7                          ; Pair 21: expose the plane 3 byte while preserving plane 1 for the final swap.
-    move.b  d7,(a0)+                       ; Pair 21: store plane 3 byte and advance plane 3.
-    swap    d7                             ; Pair 21: expose the plane 1 byte in the low byte.
-    move.b  d7,(a4)+                       ; Pair 21: store plane 1 byte and advance plane 1.
+    add.w   d3,d0                          ; Pair 26 sample 2: advance integer U without fractional carry.
+    ;                                      ; Pair 26 sample 2: V is constant for this frame, so no V update is emitted.
+    or.l    (a1,a2.w),d7                  ; Pair 26: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 26: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 26: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 26: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 26: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 26: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 26: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 26: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 27 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 27 sample 1: preserve the signed table offset in a2.
+    add.w   d3,d0                          ; Pair 27 sample 1: advance integer U without fractional carry.
+    ;                                      ; Pair 27 sample 1: V is constant for this frame, so no V update is emitted.
+    move.w  d0,d7                          ; Pair 27 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 27 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 27 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 27 sample 2: fetch the low-nibble contribution into d7.
+    add.w   d3,d0                          ; Pair 27 sample 2: advance integer U without fractional carry.
+    ;                                      ; Pair 27 sample 2: V is constant for this frame, so no V update is emitted.
+    or.l    (a1,a2.w),d7                  ; Pair 27: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 27: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 27: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 27: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 27: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 27: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 27: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 27: store plane 1 byte and advance plane 1.
+    move.w  d0,d7                          ; Pair 28 sample 1: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 1: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 1: add the wrapped V row offset.
+    movea.w d7,a2                          ; Pair 28 sample 1: preserve the signed table offset in a2.
+    add.w   d3,d0                          ; Pair 28 sample 1: advance integer U without fractional carry.
+    ;                                      ; Pair 28 sample 1: V is constant for this frame, so no V update is emitted.
+    move.w  d0,d7                          ; Pair 28 sample 2: copy current U coordinate into d7.
+    and.w   d6,d7                          ; Pair 28 sample 2: wrap U to a 128-pixel texture byte offset.
+    add.w   d1,d7                          ; Pair 28 sample 2: add the wrapped V row offset.
+    move.l  (a3,d7.w),d7                   ; Pair 28 sample 2: fetch the low-nibble contribution into d7.
+    ;                                      ; Pair 28 sample 2: skip the final accumulator update; post-row delta includes it.
+    or.l    (a1,a2.w),d7                  ; Pair 28: merge the high-nibble contribution from sample 1.
+    move.b  d7,(a5)+                       ; Pair 28: store plane 0 byte and advance plane 0.
+    swap    d7                             ; Pair 28: expose the plane 2 byte in the low byte.
+    move.b  d7,(a6)+                       ; Pair 28: store plane 2 byte and advance plane 2.
+    lsr.l   #8,d7                          ; Pair 28: expose the plane 3 byte while preserving plane 1 for the final swap.
+    move.b  d7,(a0)+                       ; Pair 28: store plane 3 byte and advance plane 3.
+    swap    d7                             ; Pair 28: expose the plane 1 byte in the low byte.
+    move.b  d7,(a4)+                       ; Pair 28: store plane 1 byte and advance plane 1.
     swap    d5                             ; Move the row count into the low word for DBRA.
     dbra    d5,.fast_b0u0v0_loop           ; Render the next logical row until all rows are complete.
     lea     STACK_TEMP_BYTES(sp),sp        ; Discard the temporary row-prefix and post-row stack slots.
