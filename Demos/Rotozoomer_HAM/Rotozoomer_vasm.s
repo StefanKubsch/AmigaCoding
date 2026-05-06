@@ -43,7 +43,7 @@ _RenderFrameAsm::                          ; Entry from C with destination in a0
     move.w  d0,d1                          ; Copy the packed seed for V row extraction.
     andi.w  #$FE00,d1                      ; Keep only the wrapped V row offset.
     lea     ROTO_FRAME_ROWS(a1),a2         ; Point to the first row prefix state.
-    move.l  a2,(sp)            ; Cache the current row prefix pointer.
+    move.l  a2,d6                          ; Keep the current row prefix pointer in d6.
     move.w  ROTO_FRAME_POST_VREM(a1),STACK_POST_VREM(sp) ; Cache the post-row V fraction delta.
     move.w  ROTO_FRAME_POST_VBASE(a1),STACK_POST_VBASE(sp) ; Cache the post-row V row delta.
     move.w  ROTO_FRAME_POST_DUC(a1),STACK_POST_DUC(sp) ; Cache the post-row integer U delta.
@@ -83,7 +83,7 @@ _RenderFastBm2U0P8Entry::                   ; Entry mapped to the BM2 inline V-s
     bra.w   RF_BM2_FirstRow             ; Render the first row without post-row advance.
 
 RF_B0_FirstRow:                            ; Render one logical row with inline B0 V steps.
-    movea.l (sp),a2            ; Reload the current row prefix pointer.
+    movea.l d6,a2                          ; Reload the current row prefix pointer from d6.
     move.l  (a2)+,(a5)+                    ; Copy prefix bytes 01-04 to plane 0.
     move.l  (a2)+,(a4)+                    ; Copy prefix bytes 01-04 to plane 1.
     move.l  (a2)+,(a6)+                    ; Copy prefix bytes 01-04 to plane 2.
@@ -104,7 +104,7 @@ RF_B0_FirstRow:                            ; Render one logical row with inline 
     move.b  (a2)+,(a4)+                    ; Copy prefix pair 17 to plane 1.
     move.b  (a2)+,(a6)+                    ; Copy prefix pair 17 to plane 2.
     move.b  (a2)+,(a0)+                    ; Copy prefix pair 17 to plane 3.
-    move.l  a2,(sp)            ; Store the next row prefix pointer.
+    move.l  a2,d6                          ; Store the next row prefix pointer in d6.
     ; Runtime pair 18.
     move.w  d0,d7                          ; Copy current U coordinate for sample 1.
     andi.w  #$01FC,d7                      ; Wrap U to a 128-pixel texture byte offset.
@@ -442,7 +442,7 @@ RF_B0_RowLoop:                          ; Start a following row after the previo
     bra.w   RF_B0_FirstRow             ; Render the advanced row.
 
 RF_BP1_FirstRow:                            ; Render one logical row with inline BP1 V steps.
-    movea.l (sp),a2            ; Reload the current row prefix pointer.
+    movea.l d6,a2                          ; Reload the current row prefix pointer from d6.
     move.l  (a2)+,(a5)+                    ; Copy prefix bytes 01-04 to plane 0.
     move.l  (a2)+,(a4)+                    ; Copy prefix bytes 01-04 to plane 1.
     move.l  (a2)+,(a6)+                    ; Copy prefix bytes 01-04 to plane 2.
@@ -463,7 +463,7 @@ RF_BP1_FirstRow:                            ; Render one logical row with inline
     move.b  (a2)+,(a4)+                    ; Copy prefix pair 17 to plane 1.
     move.b  (a2)+,(a6)+                    ; Copy prefix pair 17 to plane 2.
     move.b  (a2)+,(a0)+                    ; Copy prefix pair 17 to plane 3.
-    move.l  a2,(sp)            ; Store the next row prefix pointer.
+    move.l  a2,d6                          ; Store the next row prefix pointer in d6.
     ; Runtime pair 18.
     move.w  d0,d7                          ; Copy current U coordinate for sample 1.
     andi.w  #$01FC,d7                      ; Wrap U to a 128-pixel texture byte offset.
@@ -823,7 +823,7 @@ RF_BP1_RowLoop:                          ; Start a following row after the previ
     bra.w   RF_BP1_FirstRow             ; Render the advanced row.
 
 RF_BM1_FirstRow:                            ; Render one logical row with inline BM1 V steps.
-    movea.l (sp),a2            ; Reload the current row prefix pointer.
+    movea.l d6,a2                          ; Reload the current row prefix pointer from d6.
     move.l  (a2)+,(a5)+                    ; Copy prefix bytes 01-04 to plane 0.
     move.l  (a2)+,(a4)+                    ; Copy prefix bytes 01-04 to plane 1.
     move.l  (a2)+,(a6)+                    ; Copy prefix bytes 01-04 to plane 2.
@@ -844,7 +844,7 @@ RF_BM1_FirstRow:                            ; Render one logical row with inline
     move.b  (a2)+,(a4)+                    ; Copy prefix pair 17 to plane 1.
     move.b  (a2)+,(a6)+                    ; Copy prefix pair 17 to plane 2.
     move.b  (a2)+,(a0)+                    ; Copy prefix pair 17 to plane 3.
-    move.l  a2,(sp)            ; Store the next row prefix pointer.
+    move.l  a2,d6                          ; Store the next row prefix pointer in d6.
     ; Runtime pair 18.
     move.w  d0,d7                          ; Copy current U coordinate for sample 1.
     andi.w  #$01FC,d7                      ; Wrap U to a 128-pixel texture byte offset.
@@ -1182,7 +1182,7 @@ RF_BM1_RowLoop:                          ; Start a following row after the previ
     bra.w   RF_BM1_FirstRow             ; Render the advanced row.
 
 RF_BM2_FirstRow:                            ; Render one logical row with inline BM2 V steps.
-    movea.l (sp),a2            ; Reload the current row prefix pointer.
+    movea.l d6,a2                          ; Reload the current row prefix pointer from d6.
     move.l  (a2)+,(a5)+                    ; Copy prefix bytes 01-04 to plane 0.
     move.l  (a2)+,(a4)+                    ; Copy prefix bytes 01-04 to plane 1.
     move.l  (a2)+,(a6)+                    ; Copy prefix bytes 01-04 to plane 2.
@@ -1203,7 +1203,7 @@ RF_BM2_FirstRow:                            ; Render one logical row with inline
     move.b  (a2)+,(a4)+                    ; Copy prefix pair 17 to plane 1.
     move.b  (a2)+,(a6)+                    ; Copy prefix pair 17 to plane 2.
     move.b  (a2)+,(a0)+                    ; Copy prefix pair 17 to plane 3.
-    move.l  a2,(sp)            ; Store the next row prefix pointer.
+    move.l  a2,d6                          ; Store the next row prefix pointer in d6.
     ; Runtime pair 18.
     move.w  d0,d7                          ; Copy current U coordinate for sample 1.
     andi.w  #$01FC,d7                      ; Wrap U to a 128-pixel texture byte offset.
