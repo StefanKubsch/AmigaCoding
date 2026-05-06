@@ -2,7 +2,7 @@
 //* 4x4 HAM7 Rotozoomer                                                *
 //*                                                                    *
 //* 4 DMA bitplanes, HAM control via BPL5DAT/BPL6DAT, 56 columns       *
-//* Amiga 500 OCS, 68000                                               *
+//* Amiga 500 OCS, 512kb Chip + 512kb Slowmem                          *
 //*                                                                    *
 //* (C) 2026 by Stefan Kubsch/Deep4                                    *
 //* Project for vbcc                                                   *
@@ -55,7 +55,7 @@ extern void RenderFastB0U0V0Entry(void);
 #define TEXTURE_PACKED_STRIDE   ((UWORD)sizeof(ULONG))
 #define TEXTURE_PACKED_ROW_BYTES ((UWORD)(TEXTURE_WIDTH * TEXTURE_PACKED_STRIDE))
 #define TEXTURE_PACKED_PLANE_BYTES ((ULONG)TEXTURE_HEIGHT * (ULONG)TEXTURE_PACKED_ROW_BYTES)
-#define TEXTURE_PACKED_TOTAL_BYTES (TEXTURE_PACKED_PLANE_BYTES * 2UL)
+#define TEXTURE_PACKED_TOTAL_BYTES (TEXTURE_PACKED_PLANE_BYTES * 2)
 #define TEXTURE_PACKED_CENTER   (TEXTURE_PACKED_PLANE_BYTES / 2)
 
 #define HAM_DISPLAY_BPU         7
@@ -151,9 +151,9 @@ typedef struct RotoFrameBlock
 typedef char RotoRowStateSizeMustBe68[(sizeof(RotoRowState) == 68) ? 1 : -1];
 typedef char RotoFrameBlockHeaderAndBaseRowsMustBe3288[(sizeof(RotoFrameBlock) == 3288) ? 1 : -1];
 
-#define ROTO_FRAME_HEADER_BYTES 24UL
-#define ROTO_ROW_BYTES          68UL  // uniform P17 row: 16+16+16+16+4 bytes
-#define ROTO_PREFIX_PAIRS       17UL  // all frames precompute pairs 01-17
+#define ROTO_FRAME_HEADER_BYTES 24
+#define ROTO_ROW_BYTES          68  // uniform P17 row: 16+16+16+16+4 bytes
+#define ROTO_PREFIX_PAIRS       17  // all frames precompute pairs 01-17
 
 enum
 {
@@ -211,34 +211,43 @@ static UBYTE* RotoBuffers[2]  = { NULL, NULL };
 
 static const ULONG HamPackedR[16] =
 {
-    0x00000000UL, 0x00000080UL, 0x00008000UL, 0x00008080UL,
-    0x00800000UL, 0x00800080UL, 0x00808000UL, 0x00808080UL,
-    0x80000000UL, 0x80000080UL, 0x80008000UL, 0x80008080UL,
-    0x80800000UL, 0x80800080UL, 0x80808000UL, 0x80808080UL
+    0x00000000, 0x00000080, 0x00008000, 0x00008080,
+    0x00800000, 0x00800080, 0x00808000, 0x00808080,
+    0x80000000, 0x80000080, 0x80008000, 0x80008080,
+    0x80800000, 0x80800080, 0x80808000, 0x80808080
 };
 
 static const ULONG HamPackedG[16] =
 {
-    0x00000000UL, 0x00000040UL, 0x00004000UL, 0x00004040UL,
-    0x00400000UL, 0x00400040UL, 0x00404000UL, 0x00404040UL,
-    0x40000000UL, 0x40000040UL, 0x40004000UL, 0x40004040UL,
-    0x40400000UL, 0x40400040UL, 0x40404000UL, 0x40404040UL
+    0x00000000, 0x00000040, 0x00004000, 0x00004040,
+    0x00400000, 0x00400040, 0x00404000, 0x00404040,
+    0x40000000, 0x40000040, 0x40004000, 0x40004040,
+    0x40400000, 0x40400040, 0x40404000, 0x40404040
 };
 
 static const ULONG HamPackedB[16] =
 {
-    0x00000000UL, 0x00000030UL, 0x00003000UL, 0x00003030UL,
-    0x00300000UL, 0x00300030UL, 0x00303000UL, 0x00303030UL,
-    0x30000000UL, 0x30000030UL, 0x30003000UL, 0x30003030UL,
-    0x30300000UL, 0x30300030UL, 0x30303000UL, 0x30303030UL
+    0x00000000, 0x00000030, 0x00003000, 0x00003030,
+    0x00300000, 0x00300030, 0x00303000, 0x00303030,
+    0x30000000, 0x30000030, 0x30003000, 0x30003030,
+    0x30300000, 0x30300030, 0x30303000, 0x30303030
 };
 
 static const UBYTE ZeroPlaneRow[TEXTURE_SOURCE_WIDTH / 8] = { 0 };
 
-#define Asr6Word(v) ((WORD)((LONG)(v) >> 6))
-#define Asr1Word(v) ((WORD)((LONG)(v) >> 1))
-#define Asr8Word(v) ((WORD)((LONG)(v) >> 8))
-#define Low6Quad(v) ((WORD)((((UWORD)(v)) & 0x003Fu) << 2))
+#define U16_MASK        0xFFFF
+#define U24_MASK        0x00FFFFFF
+#define PHASE8(v)       ((UBYTE)(v))
+#define WORD_HI(v)      ((UWORD)((ULONG)(v) >> 16))
+#define WORD_LO(v)      ((UWORD)((ULONG)(v) & U16_MASK))
+#define PACK_UC_UL(c,l) ((((ULONG)(UWORD)(c)) << 8) | (ULONG)(UBYTE)(l))
+#define BPLPTH(p)       (0x00E0 + ((p) << 2))
+#define BPLPTL(p)       (0x00E2 + ((p) << 2))
+
+#define Asr6Word(v)     ((WORD)((LONG)(v) >> 6))
+#define Asr1Word(v)     ((WORD)((LONG)(v) >> 1))
+#define Asr8Word(v)     ((WORD)((LONG)(v) >> 8))
+#define Low6Quad(v)     ((WORD)((((UWORD)(v)) & 0x003F) << 2))
 
 static void BuildFrameStates(void)
 {
@@ -254,41 +263,45 @@ static void BuildFrameStates(void)
 
     for (UWORD Frame = 0; Frame < ROTO_FRAME_COUNT; ++Frame)
     {
-        const UBYTE AnglePhase = (UBYTE)(Frame * ROTO_ANGLE_PHASE_STEP);
-        const UBYTE ZoomPhase = (UBYTE)(Frame * 2);
-        const UBYTE MovePhaseX = (UBYTE)(Frame * 2);
-        const UBYTE MovePhaseY = (UBYTE)(64 + (Frame * 2));
-        const LONG ZoomIndex = (LONG)(((ULONG)SinTab256[ZoomPhase] * 31UL) / 63UL);
-        const LONG Zoom = (LONG)ROTO_ZOOM_BASE - (LONG)ROTO_ZOOM_AMPLITUDE + ((ZoomIndex * ((LONG)ROTO_ZOOM_AMPLITUDE * 2L)) / (LONG)(ROTO_ZOOM_STEPS - 1));
-        const LONG SinV = (LONG)((WORD)SinTab256[AnglePhase] - 32);
-        const LONG CosV = (LONG)((WORD)SinTab256[(UBYTE)(AnglePhase + 64)] - 32);
+        const UBYTE AnglePhase = PHASE8(Frame * ROTO_ANGLE_PHASE_STEP);
+        const UBYTE ZoomPhase = PHASE8(Frame << 1);
+        const UBYTE MovePhaseX = ZoomPhase;
+        const UBYTE MovePhaseY = PHASE8(64 + (Frame << 1));
+        const LONG Columns = ROTO_COLUMNS;
+        const LONG HalfColumns = ROTO_HALF_COLUMNS;
+        const LONG HalfRows = ROTO_HALF_ROWS;
+        const LONG ZoomIndex = ((ULONG)SinTab256[ZoomPhase] * 31) / 63;
+        const LONG Zoom = ROTO_ZOOM_BASE - ROTO_ZOOM_AMPLITUDE + ((ZoomIndex * (ROTO_ZOOM_AMPLITUDE << 1)) / (ROTO_ZOOM_STEPS - 1));
+        const LONG SinV = (WORD)SinTab256[AnglePhase] - 32;
+        const LONG CosV = (WORD)SinTab256[PHASE8(AnglePhase + 64)] - 32;
         const WORD DuDx = (WORD)((CosV * ROTO_DELTA_SCALE) / Zoom);
         const WORD DvDx = (WORD)((SinV * ROTO_DELTA_SCALE) / Zoom);
-        const WORD StartUOffset = (WORD)(-((LONG)ROTO_HALF_COLUMNS * (LONG)DuDx) + ((LONG)ROTO_HALF_ROWS * (LONG)DvDx));
-        const WORD StartVOffset = (WORD)(-((LONG)ROTO_HALF_COLUMNS * (LONG)DvDx) - ((LONG)ROTO_HALF_ROWS * (LONG)DuDx));
-        const WORD RowStepU = (WORD)(-((LONG)DvDx + ((LONG)ROTO_COLUMNS * (LONG)DuDx)));
+        const LONG DuDxL = DuDx;
+        const LONG DvDxL = DvDx;
+        const WORD StartUOffset = (WORD)(-(HalfColumns * DuDxL) + (HalfRows * DvDxL));
+        const WORD StartVOffset = (WORD)(-(HalfColumns * DvDxL) - (HalfRows * DuDxL));
+        const WORD RowStepU = (WORD)(-(DvDxL + (Columns * DuDxL)));
         const WORD StartUcOffset = (WORD)(((UWORD)StartUOffset) >> 6);
-        const WORD StartVTransOffset = (WORD)(2L * (LONG)StartVOffset);
+        const WORD StartVTransOffset = (WORD)(StartVOffset << 1);
         const WORD RowStepUc = Asr6Word(RowStepU);
         const WORD StartUl = Low6Quad(StartUOffset);
         const WORD DuC = Asr6Word(DuDx);
         const WORD RowStepUl = Low6Quad(RowStepU);
         const WORD DuL = Low6Quad(DuDx);
-        const WORD RowStepVTrans = (WORD)(2L * ((LONG)DuDx - ((LONG)ROTO_COLUMNS * (LONG)DvDx)));
+        const WORD RowStepVTrans = (WORD)((DuDxL - (Columns * DvDxL)) << 1);
         const WORD RowStepV = Asr1Word(RowStepVTrans);
         const WORD MoveX = (WORD)(((WORD)SinTab256[MovePhaseX] - 32) << 8);
         const WORD MoveY = (WORD)(((WORD)SinTab256[MovePhaseY] - 32) << 8);
         const UWORD MoveUcBase = (UWORD)(((UWORD)((WORD)ROTO_CENTER_U + MoveX)) >> 6);
         const WORD StartUc = (WORD)(((WORD)MoveUcBase + StartUcOffset) & 0x03FF);
         const UWORD BaseV = (UWORD)((WORD)ROTO_CENTER_V + MoveY);
-        const WORD StartVTrans = (WORD)((WORD)((((ULONG)BaseV) << 1) ^ 0x8000UL) + StartVTransOffset);
-        const UWORD DuCWord = (UWORD)DuC;
+        const WORD StartVTrans = (WORD)((WORD)((((ULONG)BaseV) << 1) ^ 0x8000) + StartVTransOffset);
         const UBYTE DuLByte = (UBYTE)DuL;
-        const ULONG USampleAdvance = ((((ULONG)DuCWord) << 8) | (ULONG)DuLByte) & 0x00FFFFFFUL;
+        const ULONG USampleAdvance = PACK_UC_UL(DuC, DuL) & U24_MASK;
         const UBYTE DvRem = (UBYTE)DvDx;
 
-        ULONG UState = (((ULONG)(UWORD)StartUc) << 8) | (ULONG)(UBYTE)StartUl;
-        UWORD WState = (UWORD)(((UWORD)StartVTrans >> 1) & 0xFFFFU);
+        ULONG UState = PACK_UC_UL(StartUc, StartUl);
+        UWORD WState = (UWORD)(((UWORD)StartVTrans >> 1) & U16_MASK);
         ULONG URowAdvance;
         ULONG UPostRowAdvance;
         UWORD VSampleStep = 0;
@@ -341,31 +354,33 @@ static void BuildFrameStates(void)
         else if (Family == ROTO_FAMILY_BM1)
         {
             State->Entry = (DuLByte == 0) ? RenderFastBm1U0P8Entry : RenderFastBm1P8Entry;
-            VSampleStep = (UWORD)(0xFF00U | (UWORD)DvRem);
+            VSampleStep = (UWORD)(0xFF00 | (UWORD)DvRem);
         }
         else if (Family == ROTO_FAMILY_BM2)
         {
             State->Entry = (DuLByte == 0) ? RenderFastBm2U0P8Entry : RenderFastBm2P8Entry;
-            VSampleStep = (UWORD)(0xFE00U | (UWORD)DvRem);
+            VSampleStep = (UWORD)(0xFE00 | (UWORD)DvRem);
         }
         else
         {
             State->Entry = (DuLByte == 0) ? RenderFastBp1U0P8Entry : RenderFastBp1P8Entry;
-            VSampleStep = (UWORD)(0x0100U | (UWORD)DvRem);
+            VSampleStep = (UWORD)(0x0100 | (UWORD)DvRem);
         }
 
-        const ULONG RowStepU_Long = (((ULONG)(UWORD)RowStepUc) << 8) | (ULONG)(UBYTE)RowStepUl;
-        URowAdvance = ((ULONG)ROTO_COLUMNS * USampleAdvance + RowStepU_Long) & 0x00FFFFFFUL;
-        WRowAdvance = (UWORD)(((ULONG)ROTO_COLUMNS * (ULONG)VSampleStep + (ULONG)(UWORD)RowStepV) & 0xFFFFUL);
+        const ULONG RowStepU_Long = PACK_UC_UL(RowStepUc, RowStepUl);
+        const ULONG PrefixSamples = ROTO_PREFIX_PAIRS << 1;
+
+        URowAdvance = ((ULONG)ROTO_COLUMNS * USampleAdvance + RowStepU_Long) & U24_MASK;
+        WRowAdvance = (UWORD)(((ULONG)ROTO_COLUMNS * VSampleStep + (UWORD)RowStepV) & U16_MASK);
 
         // Runtime advances after every rendered sample. The post-row delta
         // only has to fold in the next row's prefix samples and row step.
-        UPostRowAdvance = ((ULONG)(ROTO_PREFIX_PAIRS * 2U) * USampleAdvance + RowStepU_Long) & 0x00FFFFFFUL;
-        WPostRowAdvance = (UWORD)(((ULONG)(ROTO_PREFIX_PAIRS * 2U) * (ULONG)VSampleStep + (ULONG)(UWORD)RowStepV) & 0xFFFFUL);
+        UPostRowAdvance = (PrefixSamples * USampleAdvance + RowStepU_Long) & U24_MASK;
+        WPostRowAdvance = (UWORD)((PrefixSamples * VSampleStep + (UWORD)RowStepV) & U16_MASK);
 
         State->PostRowDuC = (WORD)(UPostRowAdvance >> 8);
         State->PostRowDuL = (UBYTE)UPostRowAdvance;
-        State->PostRowVBase = (WORD)((LONG)Asr8Word((WORD)WPostRowAdvance) * 0x0200L);
+        State->PostRowVBase = (WORD)((LONG)Asr8Word((WORD)WPostRowAdvance) * 0x0200);
         State->PostRowVRemShift = (UWORD)(((UWORD)(UBYTE)WPostRowAdvance) << 8);
 
         for (UWORD Row = 0; Row < ROTO_ROWS; ++Row)
@@ -378,43 +393,43 @@ static void BuildFrameStates(void)
 
             for (UWORD Pair = 0; Pair < 16; ++Pair)
             {
-                const UWORD StartOffset0 = (UWORD)(((PrefixWState << 1) & 0xFE00U) + ((UWORD)(PrefixUState >> 8) & 0x01FCU));
-                PrefixUState = (PrefixUState + USampleAdvance) & 0x00FFFFFFUL;
-                PrefixWState = (UWORD)((PrefixWState + VSampleStep) & 0xFFFFU);
-                const UWORD StartOffset1 = (UWORD)(((PrefixWState << 1) & 0xFE00U) + ((UWORD)(PrefixUState >> 8) & 0x01FCU));
+                const UWORD StartOffset0 = (UWORD)(((PrefixWState << 1) & 0xFE00) + ((UWORD)(PrefixUState >> 8) & 0x01FC));
+                PrefixUState = (PrefixUState + USampleAdvance) & U24_MASK;
+                PrefixWState = (UWORD)((PrefixWState + VSampleStep) & U16_MASK);
+                const UWORD StartOffset1 = (UWORD)(((PrefixWState << 1) & 0xFE00) + ((UWORD)(PrefixUState >> 8) & 0x01FC));
                 const ULONG Packed = (*(const ULONG*)((const UBYTE*)TexturePackedMidHi + (WORD)StartOffset0)) | (*(const ULONG*)((const UBYTE*)TexturePackedMidLo + (WORD)StartOffset1));
                 const UWORD Group = Pair >> 2;
                 PrefixGroupLongs[Group][0] = (PrefixGroupLongs[Group][0] << 8) | (ULONG)(UBYTE)(Packed);
                 PrefixGroupLongs[Group][1] = (PrefixGroupLongs[Group][1] << 8) | (ULONG)(UBYTE)(Packed >> 8);
                 PrefixGroupLongs[Group][2] = (PrefixGroupLongs[Group][2] << 8) | (ULONG)(UBYTE)(Packed >> 16);
                 PrefixGroupLongs[Group][3] = (PrefixGroupLongs[Group][3] << 8) | (ULONG)(UBYTE)(Packed >> 24);
-                PrefixUState = (PrefixUState + USampleAdvance) & 0x00FFFFFFUL;
-                PrefixWState = (UWORD)((PrefixWState + VSampleStep) & 0xFFFFU);
+                PrefixUState = (PrefixUState + USampleAdvance) & U24_MASK;
+                PrefixWState = (UWORD)((PrefixWState + VSampleStep) & U16_MASK);
             }
             {
-                const UWORD StartOffset0 = (UWORD)(((PrefixWState << 1) & 0xFE00U) + ((UWORD)(PrefixUState >> 8) & 0x01FCU));
-                PrefixUState = (PrefixUState + USampleAdvance) & 0x00FFFFFFUL;
-                PrefixWState = (UWORD)((PrefixWState + VSampleStep) & 0xFFFFU);
-                const UWORD StartOffset1 = (UWORD)(((PrefixWState << 1) & 0xFE00U) + ((UWORD)(PrefixUState >> 8) & 0x01FCU));
+                const UWORD StartOffset0 = (UWORD)(((PrefixWState << 1) & 0xFE00) + ((UWORD)(PrefixUState >> 8) & 0x01FC));
+                PrefixUState = (PrefixUState + USampleAdvance) & U24_MASK;
+                PrefixWState = (UWORD)((PrefixWState + VSampleStep) & U16_MASK);
+                const UWORD StartOffset1 = (UWORD)(((PrefixWState << 1) & 0xFE00) + ((UWORD)(PrefixUState >> 8) & 0x01FC));
                 const ULONG Packed = (*(const ULONG*)((const UBYTE*)TexturePackedMidHi + (WORD)StartOffset0)) | (*(const ULONG*)((const UBYTE*)TexturePackedMidLo + (WORD)StartOffset1));
                 RowSeed->PrefixPair17Bytes[0] = (UBYTE)Packed;
                 RowSeed->PrefixPair17Bytes[1] = (UBYTE)(Packed >> 8);
                 RowSeed->PrefixPair17Bytes[2] = (UBYTE)(Packed >> 16);
                 RowSeed->PrefixPair17Bytes[3] = (UBYTE)(Packed >> 24);
-                PrefixUState = (PrefixUState + USampleAdvance) & 0x00FFFFFFUL;
-                PrefixWState = (UWORD)((PrefixWState + VSampleStep) & 0xFFFFU);
+                PrefixUState = (PrefixUState + USampleAdvance) & U24_MASK;
+                PrefixWState = (UWORD)((PrefixWState + VSampleStep) & U16_MASK);
             }
 
             if (Row == 0)
             {
-                const UWORD NextUc = (UWORD)(((UWORD)(PrefixUState >> 8)) & 0x01FFU);
-                const UWORD NextRow = (UWORD)((PrefixWState << 1) & 0xFE00U);
+                const UWORD NextUc = (UWORD)(((UWORD)(PrefixUState >> 8)) & 0x01FF);
+                const UWORD NextRow = (UWORD)((PrefixWState << 1) & 0xFE00);
 
                 State->InitialPackedSeed = (UWORD)(NextRow | NextUc);
-                State->InitialPackedBytes = (UWORD)((((UWORD)PrefixWState & 0x00FFU) << 8) | (UWORD)(PrefixUState & 0x00FFUL));
+                State->InitialPackedBytes = (UWORD)((((UWORD)PrefixWState & 0x00FF) << 8) | (UWORD)(PrefixUState & 0x00FF));
             }
 
-            for (UWORD Pl = 0; Pl < 4U; ++Pl)
+            for (UWORD Pl = 0; Pl < 4; ++Pl)
             {
                 RowSeed->PrefixPlaneLongs[Pl]     = PrefixGroupLongs[0][Pl];
                 RowSeed->PrefixPair05_08Longs[Pl] = PrefixGroupLongs[1][Pl];
@@ -424,8 +439,8 @@ static void BuildFrameStates(void)
 
             RowWrite += ROTO_ROW_BYTES;
 
-            UState = (UState + URowAdvance) & 0x00FFFFFFUL;
-            WState = (UWORD)((WState + WRowAdvance) & 0xFFFFU);
+            UState = (UState + URowAdvance) & U24_MASK;
+            WState = (UWORD)((WState + WRowAdvance) & U16_MASK);
         }
     }
 
@@ -512,16 +527,16 @@ static void BuildTextureFromHAM(const struct lwmf_Image* Image)
             for (UWORD Bit = 0; Bit < 8; ++Bit)
             {
                 const UBYTE Pixel =
-                    (UBYTE)(((P0 >> 7) & 0x01U) |
-                            ((P1 >> 6) & 0x02U) |
-                            ((P2 >> 5) & 0x04U) |
-                            ((P3 >> 4) & 0x08U) |
-                            ((P4 >> 3) & 0x10U) |
-                            ((P5 >> 2) & 0x20U) |
-                            ((P6 >> 1) & 0x40U) |
-                            (P7 & 0x80U));
-                const UBYTE Data = (UBYTE)(Pixel & 0x0F);
-                const UBYTE Ctrl = (UBYTE)(Pixel >> 4);
+                    ((P0 >> 7) & 0x01) |
+                    ((P1 >> 6) & 0x02) |
+                    ((P2 >> 5) & 0x04) |
+                    ((P3 >> 4) & 0x08) |
+                    ((P4 >> 3) & 0x10) |
+                    ((P5 >> 2) & 0x20) |
+                    ((P6 >> 1) & 0x40) |
+                    (P7 & 0x80);
+                const UBYTE Data = Pixel & 0x0F;
+                const UBYTE Ctrl = Pixel >> 4;
                 UWORD OutRGB;
                 ULONG PackedHi;
                 ULONG PackedLo;
@@ -542,15 +557,15 @@ static void BuildTextureFromHAM(const struct lwmf_Image* Image)
                         break;
 
                     case 1:
-                        OutRGB = (UWORD)((CurrentRGB & 0x0FF0) | Data);
+                        OutRGB = (CurrentRGB & 0x0FF0) | Data;
                         break;
 
                     case 2:
-                        OutRGB = (UWORD)((CurrentRGB & 0x00FF) | ((UWORD)Data << 8));
+                        OutRGB = (CurrentRGB & 0x00FF) | ((UWORD)Data << 8);
                         break;
 
                     default:
-                        OutRGB = (UWORD)((CurrentRGB & 0x0F0F) | ((UWORD)Data << 4));
+                        OutRGB = (CurrentRGB & 0x0F0F) | ((UWORD)Data << 4);
                         break;
                 }
 
@@ -649,17 +664,17 @@ static void BuildCopperList(UWORD* List, UBYTE Buffer)
     for (UWORD Plane = 0; Plane < NUMBEROFBITPLANES; ++Plane)
     {
         const ULONG PlanePtr = BasePtr + (ULONG)Plane * ROTO_PLANE_BYTES;
-        List[Index++] = (UWORD)(0x00E0 + (Plane * 4));
-        List[Index++] = (UWORD)(PlanePtr >> 16);
-        List[Index++] = (UWORD)(0x00E2 + (Plane * 4));
-        List[Index++] = (UWORD)(PlanePtr & 0xFFFF);
+        List[Index++] = BPLPTH(Plane);
+        List[Index++] = WORD_HI(PlanePtr);
+        List[Index++] = BPLPTL(Plane);
+        List[Index++] = WORD_LO(PlanePtr);
     }
 
     // Palette upload. Only the base palette is loaded here; HAM changes the
     // running RGB value per pixel through the encoded image data.
     for (UWORD c = 0; c < SCREEN_COLORS; ++c)
     {
-        List[Index++] = (UWORD)(0x0180 + (c * 2));
+        List[Index++] = 0x0180 + (c << 1);
         List[Index++] = DisplayPalette[c];
     }
 
