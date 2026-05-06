@@ -19,7 +19,7 @@
 // Debugging
 // ---------------------------------------------------------------------
 
-#define DEBUG 1
+#define DEBUG 0
 
 #if DEBUG
 #define DBG_COLOR(c) (*COLOR00 = (c))
@@ -54,8 +54,9 @@ extern void RenderFastB0U0V0Entry(void);
 #define TEXTURE_HEIGHT          TEXTURE_SOURCE_HEIGHT
 #define TEXTURE_PACKED_STRIDE   ((UWORD)sizeof(ULONG))
 #define TEXTURE_PACKED_ROW_BYTES ((UWORD)(TEXTURE_WIDTH * TEXTURE_PACKED_STRIDE))
-#define TEXTURE_PACKED_TOTAL_BYTES ((ULONG)TEXTURE_HEIGHT * (ULONG)TEXTURE_PACKED_ROW_BYTES)
-#define TEXTURE_PACKED_CENTER   (TEXTURE_PACKED_TOTAL_BYTES / 2)
+#define TEXTURE_PACKED_PLANE_BYTES ((ULONG)TEXTURE_HEIGHT * (ULONG)TEXTURE_PACKED_ROW_BYTES)
+#define TEXTURE_PACKED_TOTAL_BYTES (TEXTURE_PACKED_PLANE_BYTES * 2UL)
+#define TEXTURE_PACKED_CENTER   (TEXTURE_PACKED_PLANE_BYTES / 2)
 
 #define HAM_DISPLAY_BPU         7
 #define HAM_CONTROL_WORD_P5     0x7777
@@ -101,7 +102,7 @@ extern void RenderFastB0U0V0Entry(void);
 #define ROTO_ZOOM_BASE          384
 #define ROTO_ZOOM_AMPLITUDE     128
 #define ROTO_ZOOM_STEPS         32
-#define ROTO_FRAME_COUNT        127
+#define ROTO_FRAME_COUNT        128
 #define ROTO_ANGLE_PHASE_STEP   2
 #define ROTO_DELTA_SCALE        3072
 #define ROTO_CENTER_U           0x4000
@@ -186,9 +187,8 @@ const UBYTE SinTab256[256] =
 // Texture, palette and animation state
 // ---------------------------------------------------------------------
 
-// TexturePackedHi contains the high-nibble contribution for texel 0 in a pair.
-// TexturePackedLo contains the pre-shifted low-nibble contribution for texel 1.
-// Both tables live in one CPU-only allocation so the hotloop can drop a 68000 long-word shift per PROCESS_PAIR.
+// TexturePackedHi/Lo hold both HAM nibble positions so the renderer can merge
+// two sampled texels without a per-pair shift in the hot loop.
 static UBYTE* TexturePackedBlock = NULL;
 static UBYTE* TexturePackedHi = NULL;
 static UBYTE* TexturePackedLo = NULL;
@@ -201,10 +201,8 @@ static UWORD DisplayPalette[SCREEN_COLORS];
 // Copper displays RotoBuffers[DrawBuffer^1].  No intermediate copy needed.
 static UBYTE* RotoBuffers[2]  = { NULL, NULL };
 
-// CurrentFrameBlock is seeded after BuildFrameStates() so the
-// first rendered image still matches the former phase-updated-before-render
-// sequence. BuildFrameStates folds pair 07 into every row state and places
-// pair 08 directly after that row state for every non-B0 vertical family and B0 DvDx>=112 frames.
+// CurrentFrameBlock is seeded after BuildFrameStates() so the first
+// rendered image still matches the phase-updated-before-render sequence.
 // InitTexture() must have run first.
 
 // ---------------------------------------------------------------------
@@ -245,7 +243,7 @@ static const UBYTE ZeroPlaneRow[TEXTURE_SOURCE_WIDTH / 8] = { 0 };
 static void BuildFrameStates(void)
 {
     // Precompute pairs 01-17 for every frame and row so the hot-loop
-    // only handles the 11 runtime pairs (18-28).
+    // only handles the 9 runtime pairs (18-26).
     UBYTE* FrameWrite;
     RotoFrameBlock* PreviousState = NULL;
 
@@ -326,7 +324,7 @@ static void BuildFrameStates(void)
         State->DuL = DuLByte;
         State->DvRem = DvRem;
 
-        // V0 frames use dedicated entry points that skip the V-carry checks.
+        // Keep the former entry families so the C/ASM interface stays unchanged.
         if (Family == ROTO_FAMILY_B0)
         {
             if (DvRem == 0)
@@ -360,11 +358,10 @@ static void BuildFrameStates(void)
         URowAdvance = ((ULONG)ROTO_COLUMNS * USampleAdvance + RowStepU_Long) & 0x00FFFFFFUL;
         WRowAdvance = (UWORD)(((ULONG)ROTO_COLUMNS * (ULONG)VSampleStep + (ULONG)(UWORD)RowStepV) & 0xFFFFUL);
 
-        // Runtime intentionally skips the accumulator update after the final
-        // rendered sample of the row. Fold that one skipped sample advance into
-        // the post-row delta together with the next row's folded prefix samples.
-        UPostRowAdvance = ((ULONG)((ROTO_PREFIX_PAIRS * 2U) + 1U) * USampleAdvance + RowStepU_Long) & 0x00FFFFFFUL;
-        WPostRowAdvance = (UWORD)(((ULONG)((ROTO_PREFIX_PAIRS * 2U) + 1U) * (ULONG)VSampleStep + (ULONG)(UWORD)RowStepV) & 0xFFFFUL);
+        // Runtime advances after every rendered sample. The post-row delta
+        // only has to fold in the next row's prefix samples and row step.
+        UPostRowAdvance = ((ULONG)(ROTO_PREFIX_PAIRS * 2U) * USampleAdvance + RowStepU_Long) & 0x00FFFFFFUL;
+        WPostRowAdvance = (UWORD)(((ULONG)(ROTO_PREFIX_PAIRS * 2U) * (ULONG)VSampleStep + (ULONG)(UWORD)RowStepV) & 0xFFFFUL);
 
         State->PostRowDuC = (WORD)(UPostRowAdvance >> 8);
         State->PostRowDuL = (UBYTE)UPostRowAdvance;
@@ -443,12 +440,15 @@ static void BuildFrameStates(void)
      HamPackedG[((Color) >> 4) & 0x0F] | \
      HamPackedB[(Color) & 0x0F])
 
+#define PackHamContributionLo(Color) \
+    (PackHamContributionHi(Color) >> 4)
+
 static void AllocTexturePacked(void)
 {
-    TexturePackedSize = TEXTURE_PACKED_TOTAL_BYTES * 2UL;
+    TexturePackedSize = TEXTURE_PACKED_TOTAL_BYTES;
     TexturePackedBlock = (UBYTE*)lwmf_AllocCpuMem(TexturePackedSize, MEMF_CLEAR);
     TexturePackedHi = TexturePackedBlock;
-    TexturePackedLo = TexturePackedBlock + TEXTURE_PACKED_TOTAL_BYTES;
+    TexturePackedLo = TexturePackedBlock + TEXTURE_PACKED_PLANE_BYTES;
     TexturePackedMidHi = (ULONG*)(TexturePackedHi + TEXTURE_PACKED_CENTER);
     TexturePackedMidLo = (ULONG*)(TexturePackedLo + TEXTURE_PACKED_CENTER);
 }
@@ -524,6 +524,7 @@ static void BuildTextureFromHAM(const struct lwmf_Image* Image)
                 const UBYTE Ctrl = (UBYTE)(Pixel >> 4);
                 UWORD OutRGB;
                 ULONG PackedHi;
+                ULONG PackedLo;
 
                 P0 <<= 1;
                 P1 <<= 1;
@@ -555,8 +556,9 @@ static void BuildTextureFromHAM(const struct lwmf_Image* Image)
 
                 CurrentRGB = OutRGB;
                 PackedHi = PackHamContributionHi(OutRGB);
+                PackedLo = PackHamContributionLo(OutRGB);
                 *OutHi++ = PackedHi;
-                *OutLo++ = (PackedHi >> 4);
+                *OutLo++ = PackedLo;
             }
         }
     }
