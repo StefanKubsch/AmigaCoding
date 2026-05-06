@@ -1,382 +1,621 @@
 ;**********************************************************************
 ;* 4x4 HAM7 BPLDAT Quirk Rotozoomer ASM Renderer                       *
 ;*                                                                    *
+;* Unrolled renderer with persistent pair-table register.           *
 ;* Renders 48x48 HAM cells into four DMA bitplanes.                    *
 ;* BPL5DAT/BPL6DAT control words are handled by the Copperlist in C.   *
 ;**********************************************************************
 
         machine 68000
 
-        xdef    _RenderHamFrameAsm
-
 HAM_ROWS            equ     48
 HAM_PAIR_COUNT      equ     24
 HAM_FETCH_BYTES     equ     24
 HAM_PLANE_BYTES     equ     1152
+STACK_ROWPTR        equ     0
+STACK_LOCAL_BYTES   equ     4
 
-STACK_ROWU          equ     0
-STACK_ROWV          equ     2
-STACK_DUDX          equ     4
-STACK_DVDX          equ     6
-STACK_DUDY          equ     8
-STACK_DVDY          equ     10
-STACK_LOCAL_BYTES   equ     12
-
-; void RenderHamFrameAsm(a0=Base, a1=TextureCells,
-;                        d0=RowU, d1=RowV, d2=DuDx, d3=DvDx,
-;                        d4=DuDy, d5=DvDy)
+; void RenderHamFrameAsm(a0=Base, a1=TextureCellsHighMid, a2=UOffsetTableMid,
+;                        a3=PairTables, d4=RowStarts, d5=TextureCellsLowMid,
+;                        d0=DuDx, d1=DvDx)
 
 _RenderHamFrameAsm::
-        movem.l d2-d7/a2-a6,-(sp)        ; save C registers
-        bsr.w   RenderHamFrameCore        ; render frame
-        movem.l (sp)+,d2-d7/a2-a6        ; restore C registers
-        rts                               ; return to C
+        movem.l d2-d7/a2-a6,-(sp)        ; save used C registers
+        suba.w  #STACK_LOCAL_BYTES,sp     ; allocate local parameters
 
-RenderHamFrameCore:
-        move.l  a6,-(sp)                  ; save caller local pointer
-        suba.w  #STACK_LOCAL_BYTES,sp     ; allocate local word parameters
-
-        move.w  d0,STACK_ROWU(sp)         ; store current row U
-        move.w  d1,STACK_ROWV(sp)         ; store current row V
-        move.w  d2,STACK_DUDX(sp)         ; store horizontal U step
-        move.w  #HAM_ROWS,STACK_DVDX(sp)  ; reuse old DvDx slot as row counter
-        move.w  d4,STACK_DUDY(sp)         ; store vertical U step
-        move.w  d5,STACK_DVDY(sp)         ; store vertical V step
-                                            ; d3 keeps horizontal V step in register
+        move.l  d4,STACK_ROWPTR(sp)       ; store precomputed row starts
+        move.w  d0,d2                     ; d2 = horizontal U step
+        move.w  d1,d3                     ; d3 = horizontal V step
+        movea.l d5,a4                     ; a4 = low-nibble texture midpoint
+        movea.l a3,a6                     ; a6 = persistent pair table base
+        move.w  #HAM_ROWS-1,d5            ; d5 = row loop counter
 .row_loop:
-        move.w  STACK_ROWU(sp),d0         ; d0 = current U
-        move.w  STACK_ROWV(sp),d1         ; d1 = current V
-
+        movea.l STACK_ROWPTR(sp),a5        ; a5 = current row start pointer
+        move.w  (a5)+,d0                  ; d0 = current U
+        move.w  (a5)+,d1                  ; d1 = current V
+        move.l  a5,STACK_ROWPTR(sp)       ; advance row start pointer
         movea.l a0,a3                     ; a3 = plane 0 row pointer
-        lea     HAM_PLANE_BYTES(a3),a4    ; a4 = plane 1 row pointer
-        lea     HAM_PLANE_BYTES(a4),a5    ; a5 = plane 2 row pointer
-        lea     HAM_PLANE_BYTES(a5),a6    ; a6 = plane 3 row pointer
+        lea     HAM_PLANE_BYTES*2(a3),a5  ; a5 = plane 2 row pointer
+        lea     HAM_PLANE_BYTES(a5),a0    ; a0 = plane 3 row pointer
+        move.w  d1,d6                     ; pair 1: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 1: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 1: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 1: advance U to cell B
+        add.w   d3,d1                     ; pair 1: advance V to cell B
+        move.w  d1,d7                     ; pair 1: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 1: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 1: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 1: advance U to next pair
+        add.w   d3,d1                     ; pair 1: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 1: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 1: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 1: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 1: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 1: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 1: write plane 1 byte
+        addq.l  #1,a3                     ; pair 1: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 1: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 1: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 1: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 1: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 1: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 1: write plane 3 byte
 
-        moveq   #(HAM_PAIR_COUNT/4)-1,d5    ; d5 = four two-cell pairs counter
-.pair_loop:
-        move.w  d1,d6                     ; d6 = V fixed point
-        andi.w  #$7F00,d6                 ; d6 = wrapped V row word offset
-        move.w  d0,d7                     ; d7 = U fixed point
-        lsr.w   #7,d7                     ; d7 = U integer * sizeof(word)
-        andi.w  #$00FE,d7                 ; wrap U to 128 columns
-        or.w    d7,d6                     ; d6 = texture word offset
-        move.w  (a1,d6.w),d6              ; d6 = packed HAM nibbles A
+        move.w  d1,d6                     ; pair 2: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 2: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 2: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 2: advance U to cell B
+        add.w   d3,d1                     ; pair 2: advance V to cell B
+        move.w  d1,d7                     ; pair 2: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 2: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 2: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 2: advance U to next pair
+        add.w   d3,d1                     ; pair 2: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 2: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 2: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 2: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 2: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 2: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 2: write plane 1 byte
+        addq.l  #1,a3                     ; pair 2: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 2: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 2: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 2: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 2: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 2: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 2: write plane 3 byte
 
-        add.w   STACK_DUDX(sp),d0         ; advance U to sample B
-        add.w   d3,d1                     ; advance V to sample B
+        move.w  d1,d6                     ; pair 3: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 3: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 3: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 3: advance U to cell B
+        add.w   d3,d1                     ; pair 3: advance V to cell B
+        move.w  d1,d7                     ; pair 3: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 3: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 3: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 3: advance U to next pair
+        add.w   d3,d1                     ; pair 3: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 3: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 3: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 3: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 3: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 3: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 3: write plane 1 byte
+        addq.l  #1,a3                     ; pair 3: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 3: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 3: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 3: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 3: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 3: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 3: write plane 3 byte
 
-        move.w  d1,d7                     ; d7 = V fixed point
-        andi.w  #$7F00,d7                 ; d7 = wrapped V row word offset
-        move.w  d0,d2                     ; d2 = U fixed point
-        lsr.w   #7,d2                     ; d2 = U integer * sizeof(word)
-        andi.w  #$00FE,d2                 ; wrap U to 128 columns
-        or.w    d2,d7                     ; d7 = texture word offset
-        move.w  (a1,d7.w),d7              ; d7 = packed HAM nibbles B
+        move.w  d1,d6                     ; pair 4: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 4: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 4: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 4: advance U to cell B
+        add.w   d3,d1                     ; pair 4: advance V to cell B
+        move.w  d1,d7                     ; pair 4: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 4: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 4: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 4: advance U to next pair
+        add.w   d3,d1                     ; pair 4: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 4: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 4: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 4: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 4: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 4: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 4: write plane 1 byte
+        addq.l  #1,a3                     ; pair 4: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 4: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 4: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 4: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 4: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 4: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 4: write plane 3 byte
 
-        add.w   STACK_DUDX(sp),d0         ; advance U to next pair
-        add.w   d3,d1                     ; advance V to next pair
+        move.w  d1,d6                     ; pair 5: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 5: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 5: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 5: advance U to cell B
+        add.w   d3,d1                     ; pair 5: advance V to cell B
+        move.w  d1,d7                     ; pair 5: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 5: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 5: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 5: advance U to next pair
+        add.w   d3,d1                     ; pair 5: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 5: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 5: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 5: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 5: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 5: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 5: write plane 1 byte
+        addq.l  #1,a3                     ; pair 5: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 5: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 5: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 5: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 5: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 5: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 5: write plane 3 byte
 
-        move.w  d6,d4                     ; d4 = plane 0 nibble A source
-        andi.w  #$F000,d4                 ; isolate plane 0 nibble A
-        lsr.w   #8,d4                     ; move nibble A to high output nibble
-        move.w  d7,d2                     ; d2 = plane 0 nibble B source
-        lsr.w   #8,d2                     ; shift high byte down
-        lsr.w   #4,d2                     ; move nibble B to low output nibble
-        or.w    d2,d4                     ; combine two cells for plane 0
-        move.b  d4,(a3)+                  ; write plane 0 byte
+        move.w  d1,d6                     ; pair 6: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 6: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 6: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 6: advance U to cell B
+        add.w   d3,d1                     ; pair 6: advance V to cell B
+        move.w  d1,d7                     ; pair 6: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 6: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 6: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 6: advance U to next pair
+        add.w   d3,d1                     ; pair 6: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 6: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 6: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 6: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 6: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 6: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 6: write plane 1 byte
+        addq.l  #1,a3                     ; pair 6: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 6: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 6: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 6: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 6: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 6: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 6: write plane 3 byte
 
-        move.w  d6,d4                     ; d4 = plane 1 nibble A source
-        andi.w  #$0F00,d4                 ; isolate plane 1 nibble A
-        lsr.w   #4,d4                     ; move nibble A to high output nibble
-        move.w  d7,d2                     ; d2 = plane 1 nibble B source
-        andi.w  #$0F00,d2                 ; isolate plane 1 nibble B
-        lsr.w   #8,d2                     ; move nibble B to low output nibble
-        or.w    d2,d4                     ; combine two cells for plane 1
-        move.b  d4,(a4)+                  ; write plane 1 byte
+        move.w  d1,d6                     ; pair 7: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 7: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 7: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 7: advance U to cell B
+        add.w   d3,d1                     ; pair 7: advance V to cell B
+        move.w  d1,d7                     ; pair 7: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 7: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 7: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 7: advance U to next pair
+        add.w   d3,d1                     ; pair 7: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 7: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 7: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 7: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 7: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 7: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 7: write plane 1 byte
+        addq.l  #1,a3                     ; pair 7: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 7: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 7: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 7: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 7: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 7: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 7: write plane 3 byte
 
-        move.w  d6,d4                     ; d4 = plane 2 nibble A source
-        andi.w  #$00F0,d4                 ; isolate plane 2 nibble A in high nibble
-        move.w  d7,d2                     ; d2 = plane 2 nibble B source
-        andi.w  #$00F0,d2                 ; isolate plane 2 nibble B
-        lsr.w   #4,d2                     ; move nibble B to low output nibble
-        or.w    d2,d4                     ; combine two cells for plane 2
-        move.b  d4,(a5)+                  ; write plane 2 byte
+        move.w  d1,d6                     ; pair 8: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 8: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 8: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 8: advance U to cell B
+        add.w   d3,d1                     ; pair 8: advance V to cell B
+        move.w  d1,d7                     ; pair 8: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 8: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 8: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 8: advance U to next pair
+        add.w   d3,d1                     ; pair 8: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 8: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 8: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 8: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 8: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 8: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 8: write plane 1 byte
+        addq.l  #1,a3                     ; pair 8: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 8: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 8: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 8: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 8: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 8: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 8: write plane 3 byte
 
-        move.w  d6,d4                     ; d4 = plane 3 nibble A source
-        andi.w  #$000F,d4                 ; isolate plane 3 nibble A
-        lsl.w   #4,d4                     ; move nibble A to high output nibble
-        move.w  d7,d2                     ; d2 = plane 3 nibble B source
-        andi.w  #$000F,d2                 ; isolate plane 3 nibble B
-        or.w    d2,d4                     ; combine two cells for plane 3
-        move.b  d4,(a6)+                  ; write plane 3 byte
+        move.w  d1,d6                     ; pair 9: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 9: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 9: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 9: advance U to cell B
+        add.w   d3,d1                     ; pair 9: advance V to cell B
+        move.w  d1,d7                     ; pair 9: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 9: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 9: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 9: advance U to next pair
+        add.w   d3,d1                     ; pair 9: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 9: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 9: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 9: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 9: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 9: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 9: write plane 1 byte
+        addq.l  #1,a3                     ; pair 9: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 9: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 9: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 9: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 9: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 9: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 9: write plane 3 byte
 
-        move.w  d1,d6                     ; d6 = V fixed point
-        andi.w  #$7F00,d6                 ; d6 = wrapped V row word offset
-        move.w  d0,d7                     ; d7 = U fixed point
-        lsr.w   #7,d7                     ; d7 = U integer * sizeof(word)
-        andi.w  #$00FE,d7                 ; wrap U to 128 columns
-        or.w    d7,d6                     ; d6 = texture word offset
-        move.w  (a1,d6.w),d6              ; d6 = packed HAM nibbles A
+        move.w  d1,d6                     ; pair 10: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 10: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 10: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 10: advance U to cell B
+        add.w   d3,d1                     ; pair 10: advance V to cell B
+        move.w  d1,d7                     ; pair 10: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 10: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 10: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 10: advance U to next pair
+        add.w   d3,d1                     ; pair 10: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 10: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 10: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 10: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 10: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 10: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 10: write plane 1 byte
+        addq.l  #1,a3                     ; pair 10: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 10: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 10: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 10: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 10: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 10: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 10: write plane 3 byte
 
-        add.w   STACK_DUDX(sp),d0         ; advance U to sample B
-        add.w   d3,d1                     ; advance V to sample B
+        move.w  d1,d6                     ; pair 11: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 11: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 11: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 11: advance U to cell B
+        add.w   d3,d1                     ; pair 11: advance V to cell B
+        move.w  d1,d7                     ; pair 11: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 11: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 11: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 11: advance U to next pair
+        add.w   d3,d1                     ; pair 11: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 11: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 11: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 11: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 11: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 11: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 11: write plane 1 byte
+        addq.l  #1,a3                     ; pair 11: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 11: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 11: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 11: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 11: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 11: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 11: write plane 3 byte
 
-        move.w  d1,d7                     ; d7 = V fixed point
-        andi.w  #$7F00,d7                 ; d7 = wrapped V row word offset
-        move.w  d0,d2                     ; d2 = U fixed point
-        lsr.w   #7,d2                     ; d2 = U integer * sizeof(word)
-        andi.w  #$00FE,d2                 ; wrap U to 128 columns
-        or.w    d2,d7                     ; d7 = texture word offset
-        move.w  (a1,d7.w),d7              ; d7 = packed HAM nibbles B
+        move.w  d1,d6                     ; pair 12: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 12: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 12: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 12: advance U to cell B
+        add.w   d3,d1                     ; pair 12: advance V to cell B
+        move.w  d1,d7                     ; pair 12: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 12: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 12: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 12: advance U to next pair
+        add.w   d3,d1                     ; pair 12: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 12: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 12: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 12: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 12: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 12: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 12: write plane 1 byte
+        addq.l  #1,a3                     ; pair 12: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 12: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 12: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 12: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 12: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 12: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 12: write plane 3 byte
 
-        add.w   STACK_DUDX(sp),d0         ; advance U to next pair
-        add.w   d3,d1                     ; advance V to next pair
+        move.w  d1,d6                     ; pair 13: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 13: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 13: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 13: advance U to cell B
+        add.w   d3,d1                     ; pair 13: advance V to cell B
+        move.w  d1,d7                     ; pair 13: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 13: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 13: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 13: advance U to next pair
+        add.w   d3,d1                     ; pair 13: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 13: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 13: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 13: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 13: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 13: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 13: write plane 1 byte
+        addq.l  #1,a3                     ; pair 13: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 13: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 13: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 13: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 13: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 13: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 13: write plane 3 byte
 
-        move.w  d6,d4                     ; d4 = plane 0 nibble A source
-        andi.w  #$F000,d4                 ; isolate plane 0 nibble A
-        lsr.w   #8,d4                     ; move nibble A to high output nibble
-        move.w  d7,d2                     ; d2 = plane 0 nibble B source
-        lsr.w   #8,d2                     ; shift high byte down
-        lsr.w   #4,d2                     ; move nibble B to low output nibble
-        or.w    d2,d4                     ; combine two cells for plane 0
-        move.b  d4,(a3)+                  ; write plane 0 byte
+        move.w  d1,d6                     ; pair 14: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 14: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 14: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 14: advance U to cell B
+        add.w   d3,d1                     ; pair 14: advance V to cell B
+        move.w  d1,d7                     ; pair 14: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 14: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 14: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 14: advance U to next pair
+        add.w   d3,d1                     ; pair 14: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 14: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 14: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 14: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 14: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 14: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 14: write plane 1 byte
+        addq.l  #1,a3                     ; pair 14: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 14: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 14: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 14: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 14: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 14: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 14: write plane 3 byte
 
-        move.w  d6,d4                     ; d4 = plane 1 nibble A source
-        andi.w  #$0F00,d4                 ; isolate plane 1 nibble A
-        lsr.w   #4,d4                     ; move nibble A to high output nibble
-        move.w  d7,d2                     ; d2 = plane 1 nibble B source
-        andi.w  #$0F00,d2                 ; isolate plane 1 nibble B
-        lsr.w   #8,d2                     ; move nibble B to low output nibble
-        or.w    d2,d4                     ; combine two cells for plane 1
-        move.b  d4,(a4)+                  ; write plane 1 byte
+        move.w  d1,d6                     ; pair 15: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 15: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 15: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 15: advance U to cell B
+        add.w   d3,d1                     ; pair 15: advance V to cell B
+        move.w  d1,d7                     ; pair 15: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 15: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 15: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 15: advance U to next pair
+        add.w   d3,d1                     ; pair 15: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 15: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 15: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 15: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 15: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 15: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 15: write plane 1 byte
+        addq.l  #1,a3                     ; pair 15: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 15: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 15: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 15: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 15: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 15: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 15: write plane 3 byte
 
-        move.w  d6,d4                     ; d4 = plane 2 nibble A source
-        andi.w  #$00F0,d4                 ; isolate plane 2 nibble A in high nibble
-        move.w  d7,d2                     ; d2 = plane 2 nibble B source
-        andi.w  #$00F0,d2                 ; isolate plane 2 nibble B
-        lsr.w   #4,d2                     ; move nibble B to low output nibble
-        or.w    d2,d4                     ; combine two cells for plane 2
-        move.b  d4,(a5)+                  ; write plane 2 byte
+        move.w  d1,d6                     ; pair 16: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 16: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 16: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 16: advance U to cell B
+        add.w   d3,d1                     ; pair 16: advance V to cell B
+        move.w  d1,d7                     ; pair 16: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 16: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 16: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 16: advance U to next pair
+        add.w   d3,d1                     ; pair 16: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 16: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 16: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 16: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 16: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 16: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 16: write plane 1 byte
+        addq.l  #1,a3                     ; pair 16: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 16: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 16: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 16: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 16: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 16: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 16: write plane 3 byte
 
-        move.w  d6,d4                     ; d4 = plane 3 nibble A source
-        andi.w  #$000F,d4                 ; isolate plane 3 nibble A
-        lsl.w   #4,d4                     ; move nibble A to high output nibble
-        move.w  d7,d2                     ; d2 = plane 3 nibble B source
-        andi.w  #$000F,d2                 ; isolate plane 3 nibble B
-        or.w    d2,d4                     ; combine two cells for plane 3
-        move.b  d4,(a6)+                  ; write plane 3 byte
+        move.w  d1,d6                     ; pair 17: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 17: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 17: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 17: advance U to cell B
+        add.w   d3,d1                     ; pair 17: advance V to cell B
+        move.w  d1,d7                     ; pair 17: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 17: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 17: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 17: advance U to next pair
+        add.w   d3,d1                     ; pair 17: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 17: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 17: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 17: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 17: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 17: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 17: write plane 1 byte
+        addq.l  #1,a3                     ; pair 17: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 17: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 17: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 17: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 17: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 17: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 17: write plane 3 byte
 
-        move.w  d1,d6                     ; d6 = V fixed point
-        andi.w  #$7F00,d6                 ; d6 = wrapped V row word offset
-        move.w  d0,d7                     ; d7 = U fixed point
-        lsr.w   #7,d7                     ; d7 = U integer * sizeof(word)
-        andi.w  #$00FE,d7                 ; wrap U to 128 columns
-        or.w    d7,d6                     ; d6 = texture word offset
-        move.w  (a1,d6.w),d6              ; d6 = packed HAM nibbles A
+        move.w  d1,d6                     ; pair 18: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 18: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 18: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 18: advance U to cell B
+        add.w   d3,d1                     ; pair 18: advance V to cell B
+        move.w  d1,d7                     ; pair 18: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 18: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 18: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 18: advance U to next pair
+        add.w   d3,d1                     ; pair 18: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 18: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 18: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 18: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 18: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 18: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 18: write plane 1 byte
+        addq.l  #1,a3                     ; pair 18: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 18: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 18: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 18: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 18: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 18: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 18: write plane 3 byte
 
-        add.w   STACK_DUDX(sp),d0         ; advance U to sample B
-        add.w   d3,d1                     ; advance V to sample B
+        move.w  d1,d6                     ; pair 19: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 19: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 19: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 19: advance U to cell B
+        add.w   d3,d1                     ; pair 19: advance V to cell B
+        move.w  d1,d7                     ; pair 19: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 19: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 19: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 19: advance U to next pair
+        add.w   d3,d1                     ; pair 19: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 19: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 19: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 19: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 19: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 19: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 19: write plane 1 byte
+        addq.l  #1,a3                     ; pair 19: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 19: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 19: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 19: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 19: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 19: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 19: write plane 3 byte
 
-        move.w  d1,d7                     ; d7 = V fixed point
-        andi.w  #$7F00,d7                 ; d7 = wrapped V row word offset
-        move.w  d0,d2                     ; d2 = U fixed point
-        lsr.w   #7,d2                     ; d2 = U integer * sizeof(word)
-        andi.w  #$00FE,d2                 ; wrap U to 128 columns
-        or.w    d2,d7                     ; d7 = texture word offset
-        move.w  (a1,d7.w),d7              ; d7 = packed HAM nibbles B
+        move.w  d1,d6                     ; pair 20: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 20: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 20: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 20: advance U to cell B
+        add.w   d3,d1                     ; pair 20: advance V to cell B
+        move.w  d1,d7                     ; pair 20: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 20: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 20: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 20: advance U to next pair
+        add.w   d3,d1                     ; pair 20: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 20: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 20: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 20: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 20: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 20: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 20: write plane 1 byte
+        addq.l  #1,a3                     ; pair 20: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 20: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 20: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 20: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 20: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 20: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 20: write plane 3 byte
 
-        add.w   STACK_DUDX(sp),d0         ; advance U to next pair
-        add.w   d3,d1                     ; advance V to next pair
+        move.w  d1,d6                     ; pair 21: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 21: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 21: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 21: advance U to cell B
+        add.w   d3,d1                     ; pair 21: advance V to cell B
+        move.w  d1,d7                     ; pair 21: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 21: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 21: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 21: advance U to next pair
+        add.w   d3,d1                     ; pair 21: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 21: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 21: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 21: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 21: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 21: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 21: write plane 1 byte
+        addq.l  #1,a3                     ; pair 21: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 21: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 21: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 21: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 21: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 21: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 21: write plane 3 byte
 
-        move.w  d6,d4                     ; d4 = plane 0 nibble A source
-        andi.w  #$F000,d4                 ; isolate plane 0 nibble A
-        lsr.w   #8,d4                     ; move nibble A to high output nibble
-        move.w  d7,d2                     ; d2 = plane 0 nibble B source
-        lsr.w   #8,d2                     ; shift high byte down
-        lsr.w   #4,d2                     ; move nibble B to low output nibble
-        or.w    d2,d4                     ; combine two cells for plane 0
-        move.b  d4,(a3)+                  ; write plane 0 byte
+        move.w  d1,d6                     ; pair 22: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 22: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 22: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 22: advance U to cell B
+        add.w   d3,d1                     ; pair 22: advance V to cell B
+        move.w  d1,d7                     ; pair 22: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 22: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 22: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 22: advance U to next pair
+        add.w   d3,d1                     ; pair 22: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 22: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 22: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 22: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 22: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 22: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 22: write plane 1 byte
+        addq.l  #1,a3                     ; pair 22: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 22: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 22: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 22: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 22: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 22: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 22: write plane 3 byte
 
-        move.w  d6,d4                     ; d4 = plane 1 nibble A source
-        andi.w  #$0F00,d4                 ; isolate plane 1 nibble A
-        lsr.w   #4,d4                     ; move nibble A to high output nibble
-        move.w  d7,d2                     ; d2 = plane 1 nibble B source
-        andi.w  #$0F00,d2                 ; isolate plane 1 nibble B
-        lsr.w   #8,d2                     ; move nibble B to low output nibble
-        or.w    d2,d4                     ; combine two cells for plane 1
-        move.b  d4,(a4)+                  ; write plane 1 byte
+        move.w  d1,d6                     ; pair 23: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 23: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 23: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 23: advance U to cell B
+        add.w   d3,d1                     ; pair 23: advance V to cell B
+        move.w  d1,d7                     ; pair 23: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 23: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 23: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 23: advance U to next pair
+        add.w   d3,d1                     ; pair 23: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 23: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 23: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 23: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 23: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 23: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 23: write plane 1 byte
+        addq.l  #1,a3                     ; pair 23: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 23: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 23: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 23: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 23: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 23: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 23: write plane 3 byte
 
-        move.w  d6,d4                     ; d4 = plane 2 nibble A source
-        andi.w  #$00F0,d4                 ; isolate plane 2 nibble A in high nibble
-        move.w  d7,d2                     ; d2 = plane 2 nibble B source
-        andi.w  #$00F0,d2                 ; isolate plane 2 nibble B
-        lsr.w   #4,d2                     ; move nibble B to low output nibble
-        or.w    d2,d4                     ; combine two cells for plane 2
-        move.b  d4,(a5)+                  ; write plane 2 byte
+        move.w  d1,d6                     ; pair 24: d6 = V fixed point for cell A
+        move.b  (a2,d0.w),d6              ; pair 24: add precomputed wrapped U byte
+        move.w  (a1,d6.w),d6              ; pair 24: d6 = RGB4 color index A
+        add.w   d2,d0                     ; pair 24: advance U to cell B
+        add.w   d3,d1                     ; pair 24: advance V to cell B
+        move.w  d1,d7                     ; pair 24: d7 = V fixed point for cell B
+        move.b  (a2,d0.w),d7              ; pair 24: add precomputed wrapped U byte
+        move.w  (a4,d7.w),d7              ; pair 24: d7 = RGB4 color index B
+        add.w   d2,d0                     ; pair 24: advance U to next pair
+        add.w   d3,d1                     ; pair 24: advance V to next pair
+        move.b  (a6,d6.w),d4              ; pair 24: d4 = plane 0 high nibble
+        or.b    (a6,d7.w),d4              ; pair 24: add plane 0 low nibble
+        move.b  d4,(a3)                   ; pair 24: write plane 0 byte
+        move.b  1(a6,d6.w),d4             ; pair 24: d4 = plane 1 high nibble
+        or.b    1(a6,d7.w),d4             ; pair 24: add plane 1 low nibble
+        move.b  d4,HAM_PLANE_BYTES(a3)    ; pair 24: write plane 1 byte
+        addq.l  #1,a3                     ; pair 24: advance plane 0 and plane 1
+        move.b  2(a6,d6.w),d4             ; pair 24: d4 = plane 2 high nibble
+        or.b    2(a6,d7.w),d4             ; pair 24: add plane 2 low nibble
+        move.b  d4,(a5)+                  ; pair 24: write plane 2 byte
+        move.b  3(a6,d6.w),d4             ; pair 24: d4 = plane 3 high nibble
+        or.b    3(a6,d7.w),d4             ; pair 24: add plane 3 low nibble
+        move.b  d4,(a0)+                  ; pair 24: write plane 3 byte
 
-        move.w  d6,d4                     ; d4 = plane 3 nibble A source
-        andi.w  #$000F,d4                 ; isolate plane 3 nibble A
-        lsl.w   #4,d4                     ; move nibble A to high output nibble
-        move.w  d7,d2                     ; d2 = plane 3 nibble B source
-        andi.w  #$000F,d2                 ; isolate plane 3 nibble B
-        or.w    d2,d4                     ; combine two cells for plane 3
-        move.b  d4,(a6)+                  ; write plane 3 byte
-
-        move.w  d1,d6                     ; d6 = V fixed point
-        andi.w  #$7F00,d6                 ; d6 = wrapped V row word offset
-        move.w  d0,d7                     ; d7 = U fixed point
-        lsr.w   #7,d7                     ; d7 = U integer * sizeof(word)
-        andi.w  #$00FE,d7                 ; wrap U to 128 columns
-        or.w    d7,d6                     ; d6 = texture word offset
-        move.w  (a1,d6.w),d6              ; d6 = packed HAM nibbles A
-
-        add.w   STACK_DUDX(sp),d0         ; advance U to sample B
-        add.w   d3,d1                     ; advance V to sample B
-
-        move.w  d1,d7                     ; d7 = V fixed point
-        andi.w  #$7F00,d7                 ; d7 = wrapped V row word offset
-        move.w  d0,d2                     ; d2 = U fixed point
-        lsr.w   #7,d2                     ; d2 = U integer * sizeof(word)
-        andi.w  #$00FE,d2                 ; wrap U to 128 columns
-        or.w    d2,d7                     ; d7 = texture word offset
-        move.w  (a1,d7.w),d7              ; d7 = packed HAM nibbles B
-
-        add.w   STACK_DUDX(sp),d0         ; advance U to next pair
-        add.w   d3,d1                     ; advance V to next pair
-
-        move.w  d6,d4                     ; d4 = plane 0 nibble A source
-        andi.w  #$F000,d4                 ; isolate plane 0 nibble A
-        lsr.w   #8,d4                     ; move nibble A to high output nibble
-        move.w  d7,d2                     ; d2 = plane 0 nibble B source
-        lsr.w   #8,d2                     ; shift high byte down
-        lsr.w   #4,d2                     ; move nibble B to low output nibble
-        or.w    d2,d4                     ; combine two cells for plane 0
-        move.b  d4,(a3)+                  ; write plane 0 byte
-
-        move.w  d6,d4                     ; d4 = plane 1 nibble A source
-        andi.w  #$0F00,d4                 ; isolate plane 1 nibble A
-        lsr.w   #4,d4                     ; move nibble A to high output nibble
-        move.w  d7,d2                     ; d2 = plane 1 nibble B source
-        andi.w  #$0F00,d2                 ; isolate plane 1 nibble B
-        lsr.w   #8,d2                     ; move nibble B to low output nibble
-        or.w    d2,d4                     ; combine two cells for plane 1
-        move.b  d4,(a4)+                  ; write plane 1 byte
-
-        move.w  d6,d4                     ; d4 = plane 2 nibble A source
-        andi.w  #$00F0,d4                 ; isolate plane 2 nibble A in high nibble
-        move.w  d7,d2                     ; d2 = plane 2 nibble B source
-        andi.w  #$00F0,d2                 ; isolate plane 2 nibble B
-        lsr.w   #4,d2                     ; move nibble B to low output nibble
-        or.w    d2,d4                     ; combine two cells for plane 2
-        move.b  d4,(a5)+                  ; write plane 2 byte
-
-        move.w  d6,d4                     ; d4 = plane 3 nibble A source
-        andi.w  #$000F,d4                 ; isolate plane 3 nibble A
-        lsl.w   #4,d4                     ; move nibble A to high output nibble
-        move.w  d7,d2                     ; d2 = plane 3 nibble B source
-        andi.w  #$000F,d2                 ; isolate plane 3 nibble B
-        or.w    d2,d4                     ; combine two cells for plane 3
-        move.b  d4,(a6)+                  ; write plane 3 byte
-
-        dbra    d5,.pair_loop             ; render next eight-cell group
-
-        move.w  STACK_DUDY(sp),d2         ; d2 = vertical U step
-        add.w   d2,STACK_ROWU(sp)          ; advance row U
-        move.w  STACK_DVDY(sp),d2         ; d2 = vertical V step
-        add.w   d2,STACK_ROWV(sp)          ; advance row V
-        lea     HAM_FETCH_BYTES(a0),a0    ; advance destination base to next row
-        subq.w  #1,STACK_DVDX(sp)         ; count rendered row
-        bne.w   .row_loop                 ; render next row
+        movea.l a3,a0                     ; use advanced plane 0 pointer as next row base
+        dbra    d5,.row_loop              ; render next row
 
         adda.w  #STACK_LOCAL_BYTES,sp     ; free local parameters
-        movea.l (sp)+,a6                  ; restore caller local pointer
-        rts                               ; return to caller
-
-        xdef    _RunHamMainLoopAsm
-ML_BUF0             equ     0
-ML_BUF1             equ     4
-ML_COP0             equ     8
-ML_COP1             equ     12
-ML_TEXTURE          equ     16
-ML_PARAMS           equ     20
-ML_FRAME            equ     24
-ML_DRAW             equ     26
-ML_LOCAL_BYTES      equ     28
-
-CIAA_PRA_ABS        equ     $00BFE001
-COP1LC_ABS          equ     $00DFF080
-VPOSR_ABS           equ     $00DFF004
-
-; void RunHamMainLoopAsm(a0=Buffer0, a1=Buffer1, a2=Copper0,
-;                        a3=Copper1, a4=TextureCells, d6=FrameParams)
-
-_RunHamMainLoopAsm::
-        movem.l d2-d7/a2-a6,-(sp)        ; save C registers
-        lea     -ML_LOCAL_BYTES(sp),sp    ; allocate local state
-        movea.l sp,a6                     ; a6 = stable local state pointer
-        move.l  a0,ML_BUF0(a6)            ; store buffer 0 pointer
-        move.l  a1,ML_BUF1(a6)            ; store buffer 1 pointer
-        move.l  a2,ML_COP0(a6)            ; store copperlist 0 pointer
-        move.l  a3,ML_COP1(a6)            ; store copperlist 1 pointer
-        move.l  a4,ML_TEXTURE(a6)         ; store texture cells pointer
-        move.l  d6,ML_PARAMS(a6)          ; store frame parameter table pointer
-        clr.w   ML_FRAME(a6)              ; start animation frame at 0
-        clr.w   ML_DRAW(a6)               ; start drawing into buffer 0
-
-.main_loop:
-        btst.b  #6,CIAA_PRA_ABS           ; test left mouse button
-        beq.s   .exit_loop                ; exit when button is pressed
-
-        moveq   #0,d0                     ; clear frame index
-        move.b  ML_FRAME+1(a6),d0         ; d0 = frame index
-        move.w  d0,d1                     ; d1 = frame index
-        lsl.w   #3,d0                     ; d0 = frame * 8
-        lsl.w   #2,d1                     ; d1 = frame * 4
-        add.w   d1,d0                     ; d0 = frame * 12
-        movea.l ML_PARAMS(a6),a3          ; a3 = frame parameter table
-        lea     (a3,d0.w),a3              ; a3 = current frame parameters
-
-        tst.w   ML_DRAW(a6)               ; test draw buffer
-        bne.s   .draw_buffer1             ; branch for buffer 1
-        movea.l ML_BUF0(a6),a0            ; a0 = buffer 0
-        bra.s   .draw_ready               ; skip buffer 1 path
-.draw_buffer1:
-        movea.l ML_BUF1(a6),a0            ; a0 = buffer 1
-.draw_ready:
-        movea.l ML_TEXTURE(a6),a1         ; a1 = texture cells pointer
-        move.w  (a3)+,d0                  ; d0 = RowU
-        move.w  (a3)+,d1                  ; d1 = RowV
-        move.w  (a3)+,d2                  ; d2 = DuDx
-        move.w  (a3)+,d3                  ; d3 = DvDx
-        move.w  (a3)+,d4                  ; d4 = DuDy
-        move.w  (a3)+,d5                  ; d5 = DvDy
-        bsr.w   RenderHamFrameCore        ; render frame
-
-        tst.w   ML_DRAW(a6)               ; reload copper pointer after render
-        bne.s   .show_buffer1             ; branch for buffer 1
-        movea.l ML_COP0(a6),a4            ; a4 = copperlist 0
-        bra.s   .show_ready               ; skip buffer 1 path
-.show_buffer1:
-        movea.l ML_COP1(a6),a4            ; a4 = copperlist 1
-.show_ready:
-.wait_high_main:
-        btst.b  #0,VPOSR_ABS+1            ; wait until vertical high bit is set
-        beq.s   .wait_high_main           ; keep waiting above visible area
-.wait_low_main:
-        cmp.b   #(303&$FF),VPOSR_ABS+2    ; wait for PAL bottom line
-        bne.s   .wait_low_main            ; keep waiting for frame boundary
-        move.l  a4,COP1LC_ABS             ; show rendered buffer
-        eori.w  #1,ML_DRAW(a6)            ; toggle draw buffer
-        addq.b  #1,ML_FRAME+1(a6)         ; advance animation frame
-        bra.w   .main_loop                ; process next frame
-
-.exit_loop:
-.wait_high_exit:
-        btst.b  #0,VPOSR_ABS+1            ; wait until vertical high bit is set
-        beq.s   .wait_high_exit           ; keep waiting above visible area
-.wait_low_exit:
-        cmp.b   #(303&$FF),VPOSR_ABS+2    ; wait for PAL bottom line
-        bne.s   .wait_low_exit            ; keep waiting for frame boundary
-        lea     ML_LOCAL_BYTES(sp),sp     ; free local state
-        movem.l (sp)+,d2-d7/a2-a6         ; restore C registers
+        movem.l (sp)+,d2-d7/a2-a6        ; restore used C registers
         rts                               ; return to C

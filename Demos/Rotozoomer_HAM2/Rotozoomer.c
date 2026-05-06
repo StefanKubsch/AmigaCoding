@@ -20,7 +20,7 @@
 // Debugging
 // ---------------------------------------------------------------------
 
-#define DEBUG 0
+#define DEBUG 1
 
 #if DEBUG
 #define DBG_COLOR(c) (*COLOR00 = (c))
@@ -37,8 +37,10 @@
 #define TEXTURE_SOURCE_HEIGHT   128
 #define TEXTURE_WIDTH           128
 #define TEXTURE_HEIGHT          128
-#define TEXTURE_CELL_BYTES      ((ULONG)TEXTURE_WIDTH * TEXTURE_HEIGHT * sizeof(UWORD))
-#define CELL_TABLE_BYTES        (4096 * sizeof(UWORD))
+#define TEXTURE_EXPANDED_HEIGHT 256
+#define TEXTURE_CELL_BYTES      ((ULONG)TEXTURE_WIDTH * TEXTURE_EXPANDED_HEIGHT * sizeof(UWORD))
+#define TEXTURE_DUAL_BYTES      (TEXTURE_CELL_BYTES * 2)
+#define PAIR_TABLE_BYTES        (4096 * 8)
 
 #define HAM_COLUMNS             48
 #define HAM_ROWS                48
@@ -105,33 +107,46 @@ const UBYTE SinTab256[256] =
 // ---------------------------------------------------------------------
 
 static UBYTE* SlowBlock = NULL;
-static UWORD* TextureCells = NULL;
-static UWORD* CellTable = NULL;
+static UWORD* TextureCellsLow = NULL;
+static UWORD* TextureCellsHigh = NULL;
+static UBYTE* PairTables = NULL;
 static UBYTE* HamBuffers[2] = { NULL, NULL };
 static UWORD* CopperLists[2] = { NULL, NULL };
+static UBYTE* ChipBlock = NULL;
+static ULONG ChipBlockBytes = 0;
+static ULONG CopperBytes = 0;
 static UWORD BasePalette[16];
 static const UBYTE ZeroPlaneRow[128] = { 0 };
 
 struct HamFrameParams
 {
-    WORD RowU;
-    WORD RowV;
-    WORD DuDx;
-    WORD DvDx;
-    WORD DuDy;
-    WORD DvDy;
+    WORD  DuDx;
+    WORD  DvDx;
+};
+
+struct HamRowStart
+{
+    UWORD RowU;
+    UWORD RowV;
 };
 
 static struct HamFrameParams* FrameParams = NULL;
+static struct HamRowStart* FrameRowStarts = NULL;
+static UBYTE* UOffsetTable = NULL;
+static UBYTE* UOffsetTableMid = NULL;
 #define FRAME_PARAMS_BYTES      (HAM_FRAME_COUNT * sizeof(struct HamFrameParams))
-#define SLOW_BLOCK_BYTES        (TEXTURE_CELL_BYTES + CELL_TABLE_BYTES + FRAME_PARAMS_BYTES)
+#define FRAME_ROW_START_BYTES   (HAM_FRAME_COUNT * HAM_ROWS * sizeof(struct HamRowStart))
+#define UOFFSET_TABLE_BYTES     65536
+#define SLOW_BLOCK_BYTES        (TEXTURE_DUAL_BYTES + PAIR_TABLE_BYTES + FRAME_PARAMS_BYTES + UOFFSET_TABLE_BYTES)
 
-void RunHamMainLoopAsm(__reg("a0") UBYTE* Buffer0,
-                       __reg("a1") UBYTE* Buffer1,
-                       __reg("a2") UWORD* Copper0,
-                       __reg("a3") UWORD* Copper1,
-                       __reg("a4") const UWORD* TextureCells,
-                       __reg("d6") const struct HamFrameParams* Params);
+void RenderHamFrameAsm(__reg("a0") UBYTE* Buffer,
+                       __reg("a1") const UWORD* TextureCellsHighMid,
+                       __reg("a2") const UBYTE* UOffsetTableMid,
+                       __reg("a3") const UBYTE* PairTables,
+                       __reg("d4") const struct HamRowStart* RowStarts,
+                       __reg("d5") const UWORD* TextureCellsLowMid,
+                       __reg("d0") WORD DuDx,
+                       __reg("d1") WORD DvDx);
 
 // ---------------------------------------------------------------------
 // Texture conversion
@@ -152,7 +167,10 @@ static void BuildTextureRGB4FromHAM(const struct lwmf_Image* Image)
         const ULONG PlaneRowOffset = (ULONG)Y * ImageRowBytes;
         const UBYTE* PlaneRows[8];
         UWORD CurrentRGB = BasePalette[0];
-        UWORD* Out = TextureCells + ((ULONG)Y * TEXTURE_WIDTH);
+        UWORD* OutLow = TextureCellsLow + ((ULONG)Y * TEXTURE_WIDTH);
+        UWORD* OutLowMirror = TextureCellsLow + (((ULONG)Y + TEXTURE_HEIGHT) * TEXTURE_WIDTH);
+        UWORD* OutHigh = TextureCellsHigh + ((ULONG)Y * TEXTURE_WIDTH);
+        UWORD* OutHighMirror = TextureCellsHigh + (((ULONG)Y + TEXTURE_HEIGHT) * TEXTURE_WIDTH);
 
         for (UWORD Plane = 0; Plane < TEXTURE_SOURCE_PLANES; ++Plane)
         {
@@ -217,42 +235,46 @@ static void BuildTextureRGB4FromHAM(const struct lwmf_Image* Image)
                 }
 
                 CurrentRGB = OutRGB;
-                *Out++ = OutRGB;
+                const UWORD LowIndex = (UWORD)((OutRGB << 2) + 16384);
+                const UWORD HighIndex = (UWORD)(OutRGB << 2);
+
+                *OutLow++ = LowIndex;
+                *OutLowMirror++ = LowIndex;
+                *OutHigh++ = HighIndex;
+                *OutHighMirror++ = HighIndex;
             }
         }
     }
 }
 
-static void BuildCellTable(void)
+static void BuildPairTables(void)
 {
     for (UWORD Color = 0; Color < 4096; ++Color)
     {
         const UBYTE R = (UBYTE)((Color >> 8) & 0x0F);
         const UBYTE G = (UBYTE)((Color >> 4) & 0x0F);
         const UBYTE B = (UBYTE)(Color & 0x0F);
-        UWORD Packed = 0;
 
         for (UBYTE Plane = 0; Plane < 4; ++Plane)
         {
-            const UWORD Nibble =
-                (((R >> Plane) & 1) << 2) |
-                (((G >> Plane) & 1) << 1) |
-                ((B >> Plane) & 1);
+            const UBYTE Nibble =
+                (UBYTE)((((R >> Plane) & 1) << 2) |
+                        (((G >> Plane) & 1) << 1) |
+                        ((B >> Plane) & 1));
 
-            Packed |= Nibble << ((3 - Plane) << 2);
+            const UWORD Offset = (UWORD)((Color << 2) + Plane);
+
+            PairTables[Offset] = (UBYTE)(Nibble << 4);
+            PairTables[16384 + Offset] = Nibble;
         }
-
-        CellTable[Color] = Packed;
     }
 }
 
-static void BuildTextureCells(void)
+static void BuildUOffsetTable(void)
 {
-    UWORD* Texture = TextureCells;
-
-    for (ULONG i = 0; i < (TEXTURE_WIDTH * TEXTURE_HEIGHT); ++i)
+    for (ULONG i = 0; i < UOFFSET_TABLE_BYTES; ++i)
     {
-        Texture[i] = CellTable[Texture[i]];
+        UOffsetTable[(UWORD)(i + 32768)] = (UBYTE)((i >> 7) & 0xFE);
     }
 }
 
@@ -270,17 +292,25 @@ static void BuildFrameParams(void)
         const WORD DvDy = DuDx;
         const WORD MoveU = (WORD)SinTab256[PHASE8(Frame)] - 32;
         const WORD MoveV = (WORD)SinTab256[PHASE8(Frame + 64)] - 32;
-        const WORD CenterU = HAM_CENTER_U + (MoveU << 8);
-        const WORD CenterV = HAM_CENTER_V + (MoveV << 8);
-        const WORD OffsetU = (HAM_HALF_COLUMNS * DuDx) + (HAM_HALF_ROWS * DuDy);
-        const WORD OffsetV = (HAM_HALF_COLUMNS * DvDx) + (HAM_HALF_ROWS * DvDy);
+        const LONG CenterU = HAM_CENTER_U + ((LONG)MoveU << 8);
+        const LONG CenterV = HAM_CENTER_V + ((LONG)MoveV << 8);
+        const LONG OffsetU = (HAM_HALF_COLUMNS * DuDx) + (HAM_HALF_ROWS * DuDy);
+        const LONG OffsetV = (HAM_HALF_COLUMNS * DvDx) + (HAM_HALF_ROWS * DvDy);
 
-        FrameParams[Frame].RowU = CenterU - OffsetU;
-        FrameParams[Frame].RowV = CenterV - OffsetV;
+        UWORD RowU = (UWORD)(CenterU - OffsetU);
+        UWORD RowV = (UWORD)(CenterV - OffsetV);
+        struct HamRowStart* RowStart = FrameRowStarts + ((ULONG)Frame * HAM_ROWS);
+
         FrameParams[Frame].DuDx = DuDx;
         FrameParams[Frame].DvDx = DvDx;
-        FrameParams[Frame].DuDy = DuDy;
-        FrameParams[Frame].DvDy = DvDy;
+
+        for (UWORD Row = 0; Row < HAM_ROWS; ++Row)
+        {
+            RowStart[Row].RowU = RowU;
+            RowStart[Row].RowV = RowV;
+            RowU += DuDy;
+            RowV += DvDy;
+        }
     }
 }
 
@@ -289,13 +319,18 @@ static void InitTexture(void)
     struct lwmf_Image* Image = lwmf_LoadImage(TEXTURE_FILENAME);
 
     SlowBlock = (UBYTE*)lwmf_AllocCpuMem(SLOW_BLOCK_BYTES, MEMF_CLEAR);
-    TextureCells = (UWORD*)SlowBlock;
-    CellTable = (UWORD*)(SlowBlock + TEXTURE_CELL_BYTES);
-    FrameParams = (struct HamFrameParams*)(SlowBlock + TEXTURE_CELL_BYTES + CELL_TABLE_BYTES);
+    FrameRowStarts = (struct HamRowStart*)lwmf_AllocCpuMem(FRAME_ROW_START_BYTES, MEMF_CLEAR);
+    TextureCellsLow = (UWORD*)SlowBlock;
+    TextureCellsHigh = (UWORD*)(SlowBlock + TEXTURE_CELL_BYTES);
+    PairTables = SlowBlock + TEXTURE_DUAL_BYTES;
+    FrameParams = (struct HamFrameParams*)(SlowBlock + TEXTURE_DUAL_BYTES + PAIR_TABLE_BYTES);
+    UOffsetTable = SlowBlock + TEXTURE_DUAL_BYTES + PAIR_TABLE_BYTES + FRAME_PARAMS_BYTES;
+    UOffsetTableMid = UOffsetTable + 32768;
     BuildTextureRGB4FromHAM(Image);
-    BuildCellTable();
-    BuildTextureCells();
+    BuildPairTables();
+    BuildUOffsetTable();
     BuildFrameParams();
+
     lwmf_DeleteImage(Image);
 }
 
@@ -344,14 +379,14 @@ static UWORD CountCopperWords(void)
             Count += 2; // wrap-wait pair
             WrapWaitInserted = 1;
         }
-        Count += 4; // WAIT + two MOD writes
+        Count += 6; // WAIT + two MOD writes
 
         if ((VPos2 > 0x00FF) && !WrapWaitInserted)
         {
             Count += 2;
             WrapWaitInserted = 1;
         }
-        Count += 4;
+        Count += 6;
     }
 
     Count += 2; // end-of-list WAIT
@@ -424,26 +459,21 @@ static void BuildCopperList(UWORD* List, UBYTE Buffer)
     List[Index++] = 0xFFFE;
 }
 
-static UWORD CopperListWords = 0;
-
 static void InitDisplay(void)
 {
-    CopperListWords = CountCopperWords();
-    const ULONG CopperBytes = (ULONG)CopperListWords * sizeof(UWORD);
+    const UWORD CopperListWords = CountCopperWords();
+    CopperBytes = (ULONG)CopperListWords * sizeof(UWORD);
+    ChipBlockBytes = (HAM_BITMAP_BYTES * 2) + (CopperBytes * 2);
 
-    for (UBYTE Buffer = 0; Buffer < 2; ++Buffer)
-    {
-        HamBuffers[Buffer] = (UBYTE*)AllocMem(HAM_BITMAP_BYTES, MEMF_CHIP | MEMF_CLEAR);
-        CopperLists[Buffer] = (UWORD*)AllocMem(CopperBytes, MEMF_CHIP | MEMF_CLEAR);
-        BuildCopperList(CopperLists[Buffer], Buffer);
-    }
+    ChipBlock = (UBYTE*)AllocMem(ChipBlockBytes, MEMF_CHIP | MEMF_CLEAR);
+    HamBuffers[0] = ChipBlock;
+    HamBuffers[1] = ChipBlock + HAM_BITMAP_BYTES;
+    CopperLists[0] = (UWORD*)(ChipBlock + (HAM_BITMAP_BYTES * 2));
+    CopperLists[1] = (UWORD*)((UBYTE*)CopperLists[0] + CopperBytes);
 
-    *COP1LC = (ULONG)CopperLists[0];
+    BuildCopperList(CopperLists[0], 0);
+    BuildCopperList(CopperLists[1], 1);
 }
-
-// ---------------------------------------------------------------------
-// Renderer
-// ---------------------------------------------------------------------
 
 // ---------------------------------------------------------------------
 // Cleanup
@@ -451,40 +481,18 @@ static void InitDisplay(void)
 
 static void Cleanup_All(void)
 {
-    // ReleaseOS FIRST: disables copper/bitplane DMA and restores the OS before
-    // freeing chip memory.  Calling FreeMem() while DMA is still active causes
-    // the copper to read the MemChunk header written by FreeMem() as copper
-    // instructions on the next VBlank, which can hang or crash the system.
-    lwmf_CleanupAll();
+    lwmf_ReleaseOS();
 
-    const ULONG CopperBytes = (ULONG)CopperListWords * sizeof(UWORD);
+    FreeMem(ChipBlock, ChipBlockBytes);
+    ChipBlock = NULL;
 
-    for (UBYTE Buffer = 0; Buffer < 2; ++Buffer)
-    {
-        if (CopperLists[Buffer])
-        {
-            FreeMem(CopperLists[Buffer], CopperBytes);
-            CopperLists[Buffer] = NULL;
-        }
-    }
+    FreeMem(FrameRowStarts, FRAME_ROW_START_BYTES);
+    FrameRowStarts = NULL;
 
-    for (UBYTE Buffer = 0; Buffer < 2; ++Buffer)
-    {
-        if (HamBuffers[Buffer])
-        {
-            FreeMem(HamBuffers[Buffer], HAM_BITMAP_BYTES);
-            HamBuffers[Buffer] = NULL;
-        }
-    }
+    FreeMem(SlowBlock, SLOW_BLOCK_BYTES);
+    SlowBlock = NULL;
 
-    if (SlowBlock)
-    {
-        FreeMem(SlowBlock, SLOW_BLOCK_BYTES);
-        SlowBlock = NULL;
-        TextureCells = NULL;
-        CellTable = NULL;
-        FrameParams = NULL;
-    }
+    lwmf_CloseLibraries();
 }
 
 // ---------------------------------------------------------------------
@@ -497,11 +505,29 @@ int main(void)
 
     InitTexture();
     InitDisplay();
-    lwmf_TakeOverOS();
 
-    RunHamMainLoopAsm(HamBuffers[0], HamBuffers[1], CopperLists[0], CopperLists[1], TextureCells, FrameParams);
+    lwmf_TakeOverOS();
+    *COP1LC = (ULONG)CopperLists[0];
+
+    UBYTE DrawBuffer = 1;
+    UBYTE Frame = 1;
+
+    while (*CIAA_PRA & 0x40)
+    {
+        const struct HamFrameParams* Params = &FrameParams[Frame];
+
+        RenderHamFrameAsm(HamBuffers[DrawBuffer], TextureCellsHigh + 16384, UOffsetTableMid, PairTables, FrameRowStarts + ((ULONG)Frame * HAM_ROWS), TextureCellsLow + 16384, Params->DuDx, Params->DvDx);
+
+        *COP1LC = (ULONG)CopperLists[DrawBuffer];
+
+        DBG_COLOR(0x00F);
+        lwmf_WaitVertBlank();
+        DBG_COLOR(0x000);
+
+        DrawBuffer ^= 1;
+        ++Frame;
+    }
 
     Cleanup_All();
-
     return 0;
 }
