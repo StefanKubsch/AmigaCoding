@@ -1,5 +1,5 @@
 //**********************************************************************
-//* 4x4 HAM7 BPLDAT Quirk Rotozoomer                         *
+//* 4x4 HAM7 BPLDAT Quirk Rotozoomer                                   *
 //*                                                                    *
 //* 4 DMA bitplanes carry HAM data nibbles. BPL5DAT/BPL6DAT provide    *
 //* fixed HAM control-bit patterns for a direct/red/green/blue cell.   *
@@ -20,7 +20,7 @@
 // Debugging
 // ---------------------------------------------------------------------
 
-#define DEBUG 0
+#define DEBUG 1
 
 #if DEBUG
 #define DBG_COLOR(c) (*COLOR00 = (c))
@@ -50,20 +50,20 @@
 #define HAM_PLANE_BYTES         (HAM_FETCH_BYTES * HAM_ROWS)
 #define HAM_BITMAP_BYTES        (HAM_PLANE_BYTES * 4)
 #define HAM_FRAME_COUNT         256
-#define HAM_TEMPORAL_ROW_START  27
-#define HAM_TEMPORAL_ROWS       8
-#define HAM_HALFRATE_ROW_START  35
-#define HAM_SLOW_ROW_START      40
-#define HAM_CACHED_ROW_START    43
+#define HAM_TEMPORAL_ROW_START  2
+#define HAM_TEMPORAL_ROWS       24
+#define HAM_HALFRATE_ROW_START  26
+#define HAM_SLOW_ROW_START      49
+#define HAM_CACHED_ROW_START    52
 #define HAM_SLOW_ROWS           3
 #define HAM_DYNAMIC_ROWS        (HAM_TEMPORAL_ROW_START + HAM_TEMPORAL_ROWS + HAM_SLOW_ROWS)
 #define HAM_DYNAMIC_PLANE_BYTES (HAM_FETCH_BYTES * HAM_DYNAMIC_ROWS)
 #define HAM_DYNAMIC_BITMAP_BYTES (HAM_DYNAMIC_PLANE_BYTES * 4)
-#define HAM_CACHED_ROWS         9
+#define HAM_CACHED_ROWS         0
 #define HAM_ROW_CACHE_PLANE_BYTES (HAM_FETCH_BYTES * HAM_CACHED_ROWS)
 #define HAM_ROW_CACHE_FRAME_BYTES (HAM_ROW_CACHE_PLANE_BYTES * 4)
 #define HAM_ROW_CACHE_BYTES     ((ULONG)HAM_ROW_CACHE_FRAME_BYTES * HAM_FRAME_COUNT)
-#define HAM_HALFRATE_ROWS       5
+#define HAM_HALFRATE_ROWS       23
 #define HAM_TEMPORAL_ROW_BYTES  (HAM_FETCH_BYTES * HAM_TEMPORAL_ROWS)
 #define HAM_HALFRATE_FRAME_COUNT (HAM_FRAME_COUNT / 2)
 #define HAM_HALFRATE_ROW_CACHE_PLANE_BYTES (HAM_FETCH_BYTES * HAM_HALFRATE_ROWS)
@@ -74,9 +74,9 @@
 #define HAM_SLOW_ROW_CACHE_BYTES ((ULONG)HAM_SLOW_ROW_CACHE_FRAME_BYTES * HAM_FRAME_COUNT)
 #define HAM_DYNAMIC_BUFFER_BYTES ((ULONG)HAM_DYNAMIC_BITMAP_BYTES * 2)
 #define HAM_COPPER_BPLPTR_WORD  23
-#define HAM_COPPER_HALFRATE_BPLPTR_WORD 481
-#define HAM_COPPER_DYNAMIC_SLOW_BPLPTR_WORD 547
-#define HAM_COPPER_CACHE_BPLPTR_WORD 589
+#define HAM_COPPER_HALFRATE_BPLPTR_WORD 373
+#define HAM_COPPER_DYNAMIC_SLOW_BPLPTR_WORD 657
+#define HAM_COPPER_CACHE_BPLPTR_WORD 0
 #define HAM_HALF_COLUMNS        (HAM_COLUMNS / 2)
 #define HAM_HALF_ROWS           (HAM_ROWS / 2)
 
@@ -87,7 +87,7 @@
 #define HAM_VPOS_START          (HAM_PAL_VPOS_TOP + ((HAM_SCREEN_HEIGHT - HAM_DISPLAY_HEIGHT) / 2))
 #define HAM_VPOS_STOP           (HAM_VPOS_START + HAM_DISPLAY_HEIGHT)
 #define HAM_COPPER_WRAP_ROW     (((0x0100 - HAM_VPOS_START) + HAM_PIXEL_SIZE - 1) / HAM_PIXEL_SIZE)
-#define HAM_COPPER_WORDS        704
+#define HAM_COPPER_WORDS        698
 #define HAM_COPPER_BYTES        (HAM_COPPER_WORDS * sizeof(UWORD))
 #define HAM_CHIP_BLOCK_BYTES    (HAM_ROW_CACHE_BYTES + HAM_HALFRATE_ROW_CACHE_BYTES + HAM_DYNAMIC_BUFFER_BYTES + (HAM_COPPER_BYTES * 2))
 #define HAM_DIWSTRT             ((UWORD)(((HAM_VPOS_START & 0xFF) << 8) | 0x0081))
@@ -138,7 +138,6 @@ const UBYTE SinTab256[256] =
 static UBYTE* SlowBlock = NULL;
 static UWORD* TextureCells = NULL;
 static UBYTE* PairTables = NULL;
-static UBYTE* RowCache = NULL;
 static UBYTE* HalfRowCache = NULL;
 static UBYTE* SlowRowCache = NULL;
 static UBYTE* HamBuffers[2] = { NULL, NULL };
@@ -159,7 +158,7 @@ static UBYTE* UOffsetTable = NULL;
 static UBYTE* UOffsetTableMid = NULL;
 #define FRAME_PARAMS_BYTES      (HAM_FRAME_COUNT * sizeof(struct HamFrameParams))
 #define UOFFSET_TABLE_BYTES     65536
-#define SLOW_BLOCK_BYTES        (TEXTURE_CELL_BYTES + PAIR_TABLE_BYTES + FRAME_PARAMS_BYTES + UOFFSET_TABLE_BYTES + HAM_SLOW_ROW_CACHE_BYTES)
+#define SLOW_BLOCK_BYTES        (TEXTURE_CELL_BYTES + PAIR_TABLE_BYTES + FRAME_PARAMS_BYTES + UOFFSET_TABLE_BYTES)
 
 void RenderHamLiveRowsAsm(__reg("a0") UBYTE* Buffer,
                           __reg("a1") const UWORD* TextureCellsMid,
@@ -170,26 +169,31 @@ void RenderHamLiveRowsAsm(__reg("a0") UBYTE* Buffer,
                           __reg("d4") UWORD RowU,
                           __reg("d5") UWORD RowV);
 
-void RenderHamTemporalRowsAsm(__reg("a0") UBYTE* Buffer,
-                              __reg("a1") const UWORD* TextureCellsMid,
-                              __reg("a2") const UBYTE* UOffsetTableMid,
-                              __reg("a3") const UBYTE* PairTables,
-                              __reg("d0") WORD DuDx,
-                              __reg("d1") WORD DvDx,
-                              __reg("d4") UWORD RowU,
-                              __reg("d5") UWORD RowV);
+void RenderHamTemporalUpperRowsAsm(__reg("a0") UBYTE* Buffer,
+                                   __reg("a1") const UWORD* TextureCellsMid,
+                                   __reg("a2") const UBYTE* UOffsetTableMid,
+                                   __reg("a3") const UBYTE* PairTables,
+                                   __reg("d0") WORD DuDx,
+                                   __reg("d1") WORD DvDx,
+                                   __reg("d4") UWORD RowU,
+                                   __reg("d5") UWORD RowV);
 
-void CopyHamTemporalRowsAsm(__reg("a0") UBYTE* Target,
-                            __reg("a1") const UBYTE* Source);
+void RenderHamTemporalLowerRowsAsm(__reg("a0") UBYTE* Buffer,
+                                   __reg("a1") const UWORD* TextureCellsMid,
+                                   __reg("a2") const UBYTE* UOffsetTableMid,
+                                   __reg("a3") const UBYTE* PairTables,
+                                   __reg("d0") WORD DuDx,
+                                   __reg("d1") WORD DvDx,
+                                   __reg("d4") UWORD RowU,
+                                   __reg("d5") UWORD RowV);
 
-void RenderHamCachedRowsAsm(__reg("a0") UBYTE* Buffer,
-                            __reg("a1") const UWORD* TextureCellsMid,
-                            __reg("a2") const UBYTE* UOffsetTableMid,
-                            __reg("a3") const UBYTE* PairTables,
-                            __reg("d0") WORD DuDx,
-                            __reg("d1") WORD DvDx,
-                            __reg("d4") UWORD RowU,
-                            __reg("d5") UWORD RowV);
+void CopyHamTemporalUpperRowsAsm(__reg("a0") UBYTE* Target,
+                                 __reg("a1") const UBYTE* Source);
+
+void CopyHamTemporalLowerRowsAsm(__reg("a0") UBYTE* Target,
+                                 __reg("a1") const UBYTE* Source);
+
+void WaitBlitterDoneAsm(void);
 
 void RenderHamHalfRowsAsm(__reg("a0") UBYTE* Buffer,
                           __reg("a1") const UWORD* TextureCellsMid,
@@ -212,7 +216,6 @@ void RenderHamSlowRowsAsm(__reg("a0") UBYTE* Buffer,
 void CopyHamSlowRowsAndUpdateCopperAsm(__reg("a0") UBYTE* Buffer,
                                        __reg("a1") const UBYTE* SlowRows,
                                        __reg("a2") UWORD* List,
-                                       __reg("a3") const UBYTE* CachedFrame,
                                        __reg("d0") const UBYTE* HalfFrame);
 
 void WaitHamLiveDoneAndSwitchCopperAsm(__reg("a0") UWORD* List);
@@ -308,18 +311,15 @@ static void BuildPairTables(void)
 
     for (UWORD Color = 0; Color < 4096; ++Color)
     {
-        const UBYTE R = (UBYTE)((Color >> 8) & 0x0F);
-        const UBYTE G = (UBYTE)((Color >> 4) & 0x0F);
-        const UBYTE B = (UBYTE)(Color & 0x0F);
+        const UBYTE R = (Color >> 8) & 0x0F;
+        const UBYTE G = (Color >> 4) & 0x0F;
+        const UBYTE B = Color & 0x0F;
         ULONG HighWord = 0;
         ULONG LowWord = 0;
 
         for (WORD Plane = 3; Plane >= 0; --Plane)
         {
-            const UBYTE Nibble =
-                (UBYTE)((((R >> Plane) & 1) << 2) |
-                        (((G >> Plane) & 1) << 1) |
-                        ((B >> Plane) & 1));
+            const UBYTE Nibble = (UBYTE)((((R >> Plane) & 1) << 2) | (((G >> Plane) & 1) << 1) | ((B >> Plane) & 1));
 
             HighWord = (HighWord << 8) | (UBYTE)(Nibble << 4);
             LowWord = (LowWord << 8) | Nibble;
@@ -373,14 +373,7 @@ static void BuildSlowRowCache(void)
     {
         const struct HamFrameParams* Params = FrameParams + Frame;
 
-        RenderHamSlowRowsAsm(Bitmap,
-                             TextureCellsMid,
-                             UOffsetMid,
-                             PairTablesBase,
-                             Params->DuDx,
-                             Params->DvDx,
-                             Params->RowU,
-                             Params->RowV);
+        RenderHamSlowRowsAsm(Bitmap, TextureCellsMid, UOffsetMid, PairTablesBase, Params->DuDx, Params->DvDx, Params->RowU, Params->RowV);
 
         Bitmap += HAM_SLOW_ROW_CACHE_FRAME_BYTES;
     }
@@ -397,14 +390,7 @@ static void BuildHalfRowCache(void)
     {
         const struct HamFrameParams* Params = FrameParams + Frame;
 
-        RenderHamHalfRowsAsm(Bitmap,
-                             TextureCellsMid,
-                             UOffsetMid,
-                             PairTablesBase,
-                             Params->DuDx,
-                             Params->DvDx,
-                             Params->RowU,
-                             Params->RowV);
+        RenderHamHalfRowsAsm(Bitmap, TextureCellsMid, UOffsetMid, PairTablesBase, Params->DuDx, Params->DvDx, Params->RowU, Params->RowV);
 
         Bitmap += HAM_HALFRATE_ROW_CACHE_FRAME_BYTES;
     }
@@ -419,8 +405,9 @@ static void InitTexture(void)
     PairTables = SlowBlock + TEXTURE_CELL_BYTES;
     FrameParams = (struct HamFrameParams*)(SlowBlock + TEXTURE_CELL_BYTES + PAIR_TABLE_BYTES);
     UOffsetTable = SlowBlock + TEXTURE_CELL_BYTES + PAIR_TABLE_BYTES + FRAME_PARAMS_BYTES;
-    SlowRowCache = UOffsetTable + UOFFSET_TABLE_BYTES;
     UOffsetTableMid = UOffsetTable + 32768;
+    SlowRowCache = (UBYTE*)AllocMem(HAM_SLOW_ROW_CACHE_BYTES, MEMF_CHIP);
+
     BuildTextureRGB4FromHAM(Image);
     lwmf_DeleteImage(Image);
 
@@ -504,9 +491,9 @@ static void BuildCopperList(UWORD* List)
         List[Index++] = 0x0000;
     }
 
-    /* The Copper uses four contiguous runs: dynamic rows 0-34 from the
-       prepared buffer, half-rate cached rows 35-39, slow-copied dynamic
-       rows 40-42, and full-rate cached rows 43-51. */
+    /* The Copper uses three contiguous runs: dynamic rows 0-25 from the
+       prepared buffer, half-rate cached rows 26-48, and slow-copied
+       dynamic rows 49-51. */
     for (UWORD Row = 0; Row < (HAM_HALFRATE_ROW_START - 1); ++Row)
     {
         CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + (Row * HAM_PIXEL_SIZE) + (HAM_PIXEL_SIZE - 1)), &WrapWaitInserted);
@@ -537,16 +524,6 @@ static void BuildCopperList(UWORD* List)
         CopperAppendModulo(List, &Index, HAM_REPEAT_MOD);
     }
 
-    CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + (HAM_CACHED_ROW_START * HAM_PIXEL_SIZE)), &WrapWaitInserted);
-    CopperAppendBitplanePointerSlots(List, &Index);
-
-    for (UWORD Row = HAM_CACHED_ROW_START; Row < (HAM_CACHED_ROW_START + HAM_CACHED_ROWS - 1); ++Row)
-    {
-        CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + (Row * HAM_PIXEL_SIZE) + (HAM_PIXEL_SIZE - 1)), &WrapWaitInserted);
-        CopperAppendModulo(List, &Index, HAM_ADVANCE_MOD);
-        CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + ((Row + 1) * HAM_PIXEL_SIZE)), &WrapWaitInserted);
-        CopperAppendModulo(List, &Index, HAM_REPEAT_MOD);
-    }
 
     List[Index++] = 0xFFFF;
     List[Index++] = 0xFFFE;
@@ -575,53 +552,15 @@ static void InitCopperDynamicPointers(UWORD* List, const UBYTE* DynamicFrame)
     CopperWriteBitplanePointers(List, HAM_COPPER_DYNAMIC_SLOW_BPLPTR_WORD, DynamicFrame + ((HAM_TEMPORAL_ROW_START + HAM_TEMPORAL_ROWS) * HAM_FETCH_BYTES), HAM_DYNAMIC_PLANE_BYTES);
 }
 
-static void BuildRowCache(void)
-{
-    UBYTE* Bitmap = RowCache;
-    const UWORD* const TextureCellsMid = TextureCells + 16384;
-    const UBYTE* const UOffsetMid = UOffsetTableMid;
-    const UBYTE* const PairTablesBase = PairTables;
-
-    for (UWORD Frame = 0; Frame < HAM_FRAME_COUNT; ++Frame)
-    {
-        const struct HamFrameParams* Params = FrameParams + Frame;
-
-        RenderHamCachedRowsAsm(Bitmap,
-                               TextureCellsMid,
-                               UOffsetMid,
-                               PairTablesBase,
-                               Params->DuDx,
-                               Params->DvDx,
-                               Params->RowU,
-                               Params->RowV);
-
-        Bitmap += HAM_ROW_CACHE_FRAME_BYTES;
-    }
-}
-
-static void ReleaseRuntimeBuildTables(void)
-{
-    FreeMem(SlowBlock, SLOW_BLOCK_BYTES);
-    SlowBlock = NULL;
-    SlowRowCache = NULL;
-    TextureCells = NULL;
-    PairTables = NULL;
-    FrameParams = NULL;
-    UOffsetTable = NULL;
-    UOffsetTableMid = NULL;
-}
-
 static void InitDisplay(void)
 {
     ChipBlock = (UBYTE*)AllocMem(HAM_CHIP_BLOCK_BYTES, MEMF_CHIP);
-    RowCache = ChipBlock;
-    HalfRowCache = RowCache + HAM_ROW_CACHE_BYTES;
+    HalfRowCache = ChipBlock;
     HamBuffers[0] = HalfRowCache + HAM_HALFRATE_ROW_CACHE_BYTES;
     HamBuffers[1] = HamBuffers[0] + HAM_DYNAMIC_BITMAP_BYTES;
     CopperLists[0] = (UWORD*)(HamBuffers[1] + HAM_DYNAMIC_BITMAP_BYTES);
     CopperLists[1] = (UWORD*)((UBYTE*)CopperLists[0] + HAM_COPPER_BYTES);
 
-    BuildRowCache();
     BuildHalfRowCache();
     BuildCopperList(CopperLists[0]);
     BuildCopperList(CopperLists[1]);
@@ -639,14 +578,22 @@ static void Cleanup_All(void)
 
     FreeMem(ChipBlock, HAM_CHIP_BLOCK_BYTES);
     ChipBlock = NULL;
-    RowCache = NULL;
     HalfRowCache = NULL;
     HamBuffers[0] = NULL;
     HamBuffers[1] = NULL;
     CopperLists[0] = NULL;
     CopperLists[1] = NULL;
 
-    ReleaseRuntimeBuildTables();
+    FreeMem(SlowBlock, SLOW_BLOCK_BYTES);
+    SlowBlock = NULL;
+    FreeMem(SlowRowCache, HAM_SLOW_ROW_CACHE_BYTES);
+    SlowRowCache = NULL;
+    TextureCells = NULL;
+    PairTables = NULL;
+    FrameParams = NULL;
+    UOffsetTable = NULL;
+    UOffsetTableMid = NULL;
+
     lwmf_CloseLibraries();
 }
 
@@ -665,69 +612,11 @@ int main(void)
     const UBYTE* const UOffsetMid = UOffsetTableMid;
     const UBYTE* const PairTablesBase = PairTables;
     const struct HamFrameParams* Params = FrameParams;
-    const UBYTE* CachedFrame = RowCache;
     const UBYTE* HalfFrame = HalfRowCache;
     const UBYTE* SlowFrame = SlowRowCache;
     UBYTE DisplayBuffer = 0;
     UBYTE ReadyBuffer = 1;
     UBYTE Frame = 0;
-
-    RenderHamLiveRowsAsm(HamBuffers[0],
-                         TextureCellsMid,
-                         UOffsetMid,
-                         PairTablesBase,
-                         Params->DuDx,
-                         Params->DvDx,
-                         Params->RowU,
-                         Params->RowV);
-    RenderHamTemporalRowsAsm(HamBuffers[0],
-                             TextureCellsMid,
-                             UOffsetMid,
-                             PairTablesBase,
-                             Params->DuDx,
-                             Params->DvDx,
-                             Params->RowU,
-                             Params->RowV);
-    CopyHamSlowRowsAndUpdateCopperAsm(HamBuffers[0],
-                                       SlowFrame,
-                                       CopperLists[0],
-                                       CachedFrame,
-                                       HalfFrame);
-
-    ++Params;
-    CachedFrame += HAM_ROW_CACHE_FRAME_BYTES;
-    SlowFrame += HAM_SLOW_ROW_CACHE_FRAME_BYTES;
-    ++Frame;
-
-    if ((Frame & 1) == 0)
-    {
-        HalfFrame += HAM_HALFRATE_ROW_CACHE_FRAME_BYTES;
-    }
-
-    RenderHamLiveRowsAsm(HamBuffers[1],
-                         TextureCellsMid,
-                         UOffsetMid,
-                         PairTablesBase,
-                         Params->DuDx,
-                         Params->DvDx,
-                         Params->RowU,
-                         Params->RowV);
-    CopyHamTemporalRowsAsm(HamBuffers[1], HamBuffers[0]);
-    CopyHamSlowRowsAndUpdateCopperAsm(HamBuffers[1],
-                                       SlowFrame,
-                                       CopperLists[1],
-                                       CachedFrame,
-                                       HalfFrame);
-
-    ++Params;
-    CachedFrame += HAM_ROW_CACHE_FRAME_BYTES;
-    SlowFrame += HAM_SLOW_ROW_CACHE_FRAME_BYTES;
-    ++Frame;
-
-    if ((Frame & 1) == 0)
-    {
-        HalfFrame += HAM_HALFRATE_ROW_CACHE_FRAME_BYTES;
-    }
 
     lwmf_TakeOverOS();
     *COP1LC = (ULONG)CopperLists[DisplayBuffer];
@@ -735,50 +624,33 @@ int main(void)
     while (*CIAA_PRA & 0x40)
     {
         WaitHamLiveDoneAndSwitchCopperAsm(CopperLists[ReadyBuffer]);
+        DBG_COLOR(0x000);
+        RenderHamLiveRowsAsm(HamBuffers[DisplayBuffer], TextureCellsMid, UOffsetMid, PairTablesBase, Params->DuDx, Params->DvDx, Params->RowU, Params->RowV);
 
-        DBG_COLOR(0x0F0);
-        RenderHamLiveRowsAsm(HamBuffers[DisplayBuffer],
-                             TextureCellsMid,
-                             UOffsetMid,
-                             PairTablesBase,
-                             Params->DuDx,
-                             Params->DvDx,
-                             Params->RowU,
-                             Params->RowV);
         if (Frame & 1)
         {
-            CopyHamTemporalRowsAsm(HamBuffers[DisplayBuffer], HamBuffers[ReadyBuffer]);
+            CopyHamTemporalUpperRowsAsm(HamBuffers[DisplayBuffer], HamBuffers[ReadyBuffer]);
+            RenderHamTemporalLowerRowsAsm(HamBuffers[DisplayBuffer], TextureCellsMid, UOffsetMid, PairTablesBase, Params->DuDx,Params->DvDx, Params->RowU, Params->RowV);
         }
         else
         {
-            RenderHamTemporalRowsAsm(HamBuffers[DisplayBuffer],
-                                     TextureCellsMid,
-                                     UOffsetMid,
-                                     PairTablesBase,
-                                     Params->DuDx,
-                                     Params->DvDx,
-                                     Params->RowU,
-                                     Params->RowV);
+            CopyHamTemporalLowerRowsAsm(HamBuffers[DisplayBuffer], HamBuffers[ReadyBuffer]);
+            RenderHamTemporalUpperRowsAsm(HamBuffers[DisplayBuffer], TextureCellsMid, UOffsetMid, PairTablesBase, Params->DuDx, Params->DvDx, Params->RowU, Params->RowV);
         }
-        DBG_COLOR(0x00F);
-        CopyHamSlowRowsAndUpdateCopperAsm(HamBuffers[DisplayBuffer],
-                                          SlowFrame,
-                                          CopperLists[DisplayBuffer],
-                                          CachedFrame,
-                                          HalfFrame);
-        DBG_COLOR(0x000);
+
+        WaitBlitterDoneAsm();
+        CopyHamSlowRowsAndUpdateCopperAsm(HamBuffers[DisplayBuffer], SlowFrame, CopperLists[DisplayBuffer], HalfFrame);
+        DBG_COLOR(0x0F0);
 
         DisplayBuffer ^= 1;
         ReadyBuffer ^= 1;
         ++Params;
-        CachedFrame += HAM_ROW_CACHE_FRAME_BYTES;
         SlowFrame += HAM_SLOW_ROW_CACHE_FRAME_BYTES;
         ++Frame;
 
         if (Frame == 0)
         {
             Params = FrameParams;
-            CachedFrame = RowCache;
             HalfFrame = HalfRowCache;
             SlowFrame = SlowRowCache;
         }

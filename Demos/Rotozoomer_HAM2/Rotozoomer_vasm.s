@@ -1,9 +1,9 @@
 ;**********************************************************************
 ;* 4x4 HAM7 BPLDAT Quirk Rotozoomer ASM Renderer                       *
 ;*                                                                    *
-;* 52x52 hybrid row cache renderer. Rows 43-51 are cached in Chip.    *
-;* Rows 35-39 use a half-rate Chip cache, rows 40-42 are Slow-copied. *
-;* Runtime draws rows 0-26 every frame and rows 27-34 at half rate.   *
+;* 52x52 hybrid row cache renderer. Rows 26-48 are cached at half-rate.    *
+;* Rows 49-51 are Slow-copied; runtime draws rows 0-1 and splits 2-25. *
+;* No full-rate bottom cache is used in this version.        *
 ;* BPL5DAT/BPL6DAT control words are handled by the Copperlist in C.  *
 ;**********************************************************************
 
@@ -11,35 +11,57 @@
 
 VPOSR               equ     $00DFF004 ; vertical beam position register
 COP1LC              equ     $00DFF080 ; copper list 1 pointer register
-HAM_CORE_DONE_LOW   equ     $B0       ; low byte after dynamic rows 0-26 are off-screen
-HAM_TEMPORAL_DONE_LOW equ   $D0       ; low byte after dynamic rows 27-34 are off-screen
-HAM_DYNAMIC_DONE_LOW equ    $F1       ; low byte after row-43 pointer fetch is safely past
+HAM_CORE_DONE_LOW   equ     $4C       ; low byte after dynamic rows 0-1 are off-screen
+HAM_TEMPORAL_UPPER_DONE_LOW equ $7C    ; low byte after temporal rows 2-13 are off-screen
+HAM_TEMPORAL_DONE_LOW equ   $AC       ; low byte after temporal rows 2-25 are off-screen
+HAM_DYNAMIC_DONE_LOW equ    $14       ; low byte after slow rows 49-51 are safely past
 
 HAM_ROWS            equ     52       ; number of displayed HAM cell rows
-HAM_LIVE_ROWS       equ     27       ; number of runtime-rendered core cell rows
+HAM_LIVE_ROWS       equ     2       ; number of runtime-rendered core cell rows
 HAM_SLOW_ROWS       equ     3        ; number of slow-copied rows per frame
-HAM_SLOW_START_ROW  equ     40       ; first slow-copied row
-HAM_CACHE_ROWS      equ     9       ; number of stored cached bottom rows per frame
-HAM_CACHE_START_ROW equ     43       ; first cached bottom row
-HAM_COPPER_HALFRATE_BPLPTR_WORD equ 481 ; value slot for half-rate row pointers
-HAM_COPPER_HALFRATE_BPLPTR_BYTES equ 962 ; byte slot for half-rate row pointers
-HAM_COPPER_CACHE_BPLPTR_WORD equ 589 ; value slot for cached run pointers
-HAM_COPPER_CACHE_BPLPTR_BYTES equ 1178 ; byte slot for cached run pointers
+HAM_SLOW_START_ROW  equ     49       ; first slow-copied row
+HAM_CACHE_ROWS      equ     0       ; no full-rate cached bottom rows
+HAM_CACHE_START_ROW equ     52       ; cache run disabled after display area
+HAM_COPPER_HALFRATE_BPLPTR_WORD equ 373 ; value slot for half-rate row pointers
+HAM_COPPER_HALFRATE_BPLPTR_BYTES equ 746 ; byte slot for half-rate row pointers
+HAM_COPPER_CACHE_BPLPTR_WORD equ 0 ; full-rate cache pointer slot unused
+HAM_COPPER_CACHE_BPLPTR_BYTES equ 0 ; full-rate cache pointer slot unused
 HAM_FETCH_BYTES     equ     26       ; bytes per rendered bitplane row
 HAM_PLANE_BYTES     equ     1352     ; bytes per displayed HAM bitplane
-HAM_DYNAMIC_PLANE_BYTES equ 988       ; bytes per compact runtime/copied dynamic bitplane
-HAM_CACHE_PLANE_BYTES equ   234      ; bytes per cached compact bitplane
-HAM_HALFRATE_ROWS   equ     5        ; number of half-rate rows per cached frame
-HAM_TEMPORAL_ROWS    equ     8        ; number of temporal dynamic rows
-HAM_TEMPORAL_START_ROW equ 27         ; first temporal dynamic row
-HAM_TEMPORAL_DEST_OFFSET equ 702      ; compact row 27 byte offset in dynamic planes
-HAM_TEMPORAL_PLANE_BYTES equ 208      ; bytes copied for temporal rows per plane
-HAM_TEMPORAL_NEXT_PLANE_SKIP equ 780  ; advance after temporal block to next plane
-HAM_HALFRATE_START_ROW equ  35       ; first half-rate cached row
-HAM_HALFRATE_PLANE_BYTES equ 130      ; bytes per half-rate compact bitplane
+HAM_DYNAMIC_PLANE_BYTES equ 754       ; bytes per compact runtime/copied dynamic bitplane
+HAM_CACHE_PLANE_BYTES equ   0        ; full-rate cache removed
+HAM_HALFRATE_ROWS   equ     23        ; number of half-rate rows per cached frame
+HAM_TEMPORAL_ROWS    equ     24       ; number of temporal dynamic rows
+HAM_TEMPORAL_HALF_ROWS equ     12       ; number of rows in one temporal half
+HAM_TEMPORAL_START_ROW equ 2         ; first temporal dynamic row
+HAM_TEMPORAL_UPPER_DEST_OFFSET equ 52 ; compact row 2 byte offset in dynamic planes
+HAM_TEMPORAL_LOWER_DEST_OFFSET equ 364 ; compact row 14 byte offset in dynamic planes
+HAM_TEMPORAL_HALF_PLANE_BYTES equ 312 ; bytes copied for one temporal half per plane
+HAM_TEMPORAL_HALF_NEXT_PLANE_SKIP equ 442 ; advance source after temporal half to next plane
+HAM_TEMPORAL_HALF_TARGET_PLANE_SKIP equ 494 ; advance target after final temporal block to next plane
+HAM_HALFRATE_START_ROW equ  26       ; first half-rate cached row
+HAM_HALFRATE_PLANE_BYTES equ 598      ; bytes per half-rate compact bitplane
 HAM_SLOW_PLANE_BYTES equ    78       ; bytes per slow compact bitplane
-HAM_SLOW_DEST_OFFSET equ    910      ; compact slow-row offset in dynamic planes
-HAM_SLOW_NEXT_PLANE_SKIP equ 910      ; advance after copied block to next plane
+HAM_SLOW_DEST_OFFSET equ    676      ; compact slow-row offset in dynamic planes
+HAM_SLOW_NEXT_PLANE_SKIP equ 676      ; advance after copied block to next plane
+
+CUSTOMREGS          equ     $00DFF000 ; custom chip register base
+BLTCON0             equ     $00DFF040 ; blitter control register 0
+BLTCON1             equ     $00DFF042 ; blitter control register 1
+BLTAFWM             equ     $00DFF044 ; blitter first word mask for source A
+BLTALWM             equ     $00DFF046 ; blitter last word mask for source A
+BLTAPTH             equ     $00DFF050 ; blitter source A pointer high
+BLTAPTL             equ     $00DFF052 ; blitter source A pointer low
+BLTDPTH             equ     $00DFF054 ; blitter destination D pointer high
+BLTDPTL             equ     $00DFF056 ; blitter destination D pointer low
+BLTSIZE             equ     $00DFF058 ; blitter start and size
+BLTAMOD             equ     $00DFF064 ; blitter modulo for source A
+BLTDMOD             equ     $00DFF066 ; blitter modulo for destination D
+DMACONR             equ     $00DFF002 ; DMA control read
+DMAB_BLITTER        equ     6         ; bit 6 of DMACONR high byte: 1=busy, 0=idle
+BLTCON0_COPY_A_TO_D equ     $09F0     ; A to D copy: USE_A|USE_D, LF=$F0
+BLIT_TEMPORAL_SIZE  equ     (12<<6)|13 ; 12 rows height, 13 words width per plane
+BLIT_SLOW_SIZE      equ     (3<<6)|13  ; 3 rows height, 13 words width per plane
 
 ; void WaitHamLiveDoneAndSwitchCopperAsm(a0=CopperList)
 
@@ -55,45 +77,20 @@ _WaitHamLiveDoneAndSwitchCopperAsm::
         move.l  a0,COP1LC                 ; prepare copper list for the next frame
         rts                               ; return to C
 
-; void UpdateCopperHalfAndCachedPointerAsm(a0=CopperList, a1=CachedFrame, d1=HalfFrame)
+; void UpdateCopperHalfPointerAsm(a0=CopperList, d0=HalfFrame)
 
-_UpdateCopperHalfAndCachedPointerAsm::
-        lea     HAM_COPPER_CACHE_BPLPTR_BYTES(a0),a0 ; get full-rate pointer value slot
-        move.l  a1,d0                    ; load cached plane 0 pointer
-        swap    d0                       ; select high word
-        move.w  d0,(a0)                  ; write plane 0 high word
-        swap    d0                       ; select low word
-        move.w  d0,4(a0)                ; write plane 0 low word
-        lea     HAM_CACHE_PLANE_BYTES(a1),a1 ; advance to cached plane 1
-        move.l  a1,d0                    ; load cached plane 1 pointer
-        swap    d0                       ; select high word
-        move.w  d0,8(a0)                ; write plane 1 high word
-        swap    d0                       ; select low word
-        move.w  d0,12(a0)                ; write plane 1 low word
-        lea     HAM_CACHE_PLANE_BYTES(a1),a1 ; advance to cached plane 2
-        move.l  a1,d0                    ; load cached plane 2 pointer
-        swap    d0                       ; select high word
-        move.w  d0,16(a0)                ; write plane 2 high word
-        swap    d0                       ; select low word
-        move.w  d0,20(a0)                ; write plane 2 low word
-        lea     HAM_CACHE_PLANE_BYTES(a1),a1 ; advance to cached plane 3
-        move.l  a1,d0                    ; load cached plane 3 pointer
-        swap    d0                       ; select high word
-        move.w  d0,24(a0)                ; write plane 3 high word
-        swap    d0                       ; select low word
-        move.w  d0,28(a0)                ; write plane 3 low word
-
-        movea.l d1,a1                    ; use half-rate frame pointer
-        lea     HAM_COPPER_HALFRATE_BPLPTR_BYTES-HAM_COPPER_CACHE_BPLPTR_BYTES(a0),a0 ; get half-rate pointer value slot
+_UpdateCopperHalfPointerAsm:
+        lea     HAM_COPPER_HALFRATE_BPLPTR_BYTES(a0),a0 ; get half-rate pointer value slot
+        movea.l d0,a1                    ; use half-rate frame pointer
         move.l  a1,d0                    ; load half-rate plane 0 pointer
         swap    d0                       ; select high word
         move.w  d0,(a0)                  ; write plane 0 high word
         swap    d0                       ; select low word
-        move.w  d0,4(a0)                ; write plane 0 low word
+        move.w  d0,4(a0)                 ; write plane 0 low word
         lea     HAM_HALFRATE_PLANE_BYTES(a1),a1 ; advance to half-rate plane 1
         move.l  a1,d0                    ; load half-rate plane 1 pointer
         swap    d0                       ; select high word
-        move.w  d0,8(a0)                ; write plane 1 high word
+        move.w  d0,8(a0)                 ; write plane 1 high word
         swap    d0                       ; select low word
         move.w  d0,12(a0)                ; write plane 1 low word
         lea     HAM_HALFRATE_PLANE_BYTES(a1),a1 ; advance to half-rate plane 2
@@ -108,155 +105,259 @@ _UpdateCopperHalfAndCachedPointerAsm::
         move.w  d0,24(a0)                ; write plane 3 high word
         swap    d0                       ; select low word
         move.w  d0,28(a0)                ; write plane 3 low word
-        rts                              ; return to C
+        rts                              ; return to caller
 
-; void CopyHamSlowRowsAndUpdateCopperAsm(a0=DynamicFrame, a1=SlowRows, a2=CopperList, a3=CachedFrame, d0=HalfFrame)
+; void CopyHamSlowRowsAndUpdateCopperAsm(a0=DynamicFrame, a1=SlowRows, a2=CopperList, d0=HalfFrame)
 _CopyHamSlowRowsAndUpdateCopperAsm::
         move.l  a0,-(sp)                 ; save dynamic frame pointer for the slow copy
         move.l  a1,-(sp)                 ; save slow row source pointer for the slow copy
         movea.l a2,a0                    ; use copper list pointer for early pointer patching
-        movea.l a3,a1                    ; use full-rate cached frame pointer for early patching
-        move.l  d0,d1                    ; keep half-rate frame pointer for the patcher
-        bsr.w   _UpdateCopperHalfAndCachedPointerAsm ; patch inactive copper list while beam catches up
+        bsr.w   _UpdateCopperHalfPointerAsm ; patch inactive copper list while beam catches up
         movea.l (sp)+,a1                 ; restore slow row source pointer
         movea.l (sp)+,a0                 ; restore dynamic frame pointer
         btst.b  #0,VPOSR+1                ; test PAL line bit 8 before touching dynamic slow rows
-        bne.s   .dynamic_safe             ; copying is safe in lower border/vblank
+        bne.s   .wait_dynamic_low         ; after line 255: only low-byte safety remains
         move.b  VPOSR+2,d1                ; read current low vertical beam byte
         cmp.b   #HAM_CORE_DONE_LOW,d1     ; detect wrap into the next frame
         blo.s   .dynamic_safe             ; copying is safe after the old frame wrapped away
-        cmp.b   #HAM_DYNAMIC_DONE_LOW,d1  ; check if slow rows are already off-screen
-        bhs.s   .dynamic_safe             ; copy immediately if dynamic rows are safe
-.wait_dynamic:
+.wait_dynamic_high:
+        btst.b  #0,VPOSR+1                ; wait for the row-49 slow area after line 255
+        beq.s   .wait_dynamic_high        ; stay while the beam is before the wrap line
+.wait_dynamic_low:
         cmp.b   #HAM_DYNAMIC_DONE_LOW,VPOSR+2 ; wait for first line below slow rows
-        blo.s   .wait_dynamic             ; stay while the beam still reads slow rows
+        blo.s   .wait_dynamic_low         ; stay while the beam still reads slow rows
 .dynamic_safe:
-        movem.l d2-d7/a2-a5,-(sp)        ; save copy registers
-        lea     HAM_SLOW_DEST_OFFSET(a0),a0 ; get compact slow rows in plane 0
+        lea     HAM_SLOW_DEST_OFFSET(a0),a0 ; dest: slow rows start in plane 0
+.bws0:  btst.b  #DMAB_BLITTER,DMACONR     ; wait for blitter idle (BBUSY=1=busy, 0=idle)
+        bne.s   .bws0                     ; loop while busy
+        move.w  #BLTCON0_COPY_A_TO_D,BLTCON0 ; A to D copy minterm
+        clr.w   BLTCON1                   ; no shift, no fill
+        move.w  #$FFFF,BLTAFWM            ; full first-word mask
+        move.w  #$FFFF,BLTALWM            ; full last-word mask
+        clr.w   BLTAMOD                   ; source rows contiguous within plane
+        clr.w   BLTDMOD                   ; dest rows contiguous within plane
+        move.l  a1,d0
+        swap    d0
+        move.w  d0,BLTAPTH                ; plane 0: source high word
+        swap    d0
+        move.w  d0,BLTAPTL                ; plane 0: source low word
+        move.l  a0,d0
+        swap    d0
+        move.w  d0,BLTDPTH                ; plane 0: dest high word
+        swap    d0
+        move.w  d0,BLTDPTL                ; plane 0: dest low word
+        move.w  #BLIT_SLOW_SIZE,BLTSIZE   ; fire plane 0; blitter starts
+        lea     HAM_SLOW_PLANE_BYTES(a1),a1 ; source advance to plane 1
+        lea     HAM_DYNAMIC_PLANE_BYTES(a0),a0 ; dest advance to plane 1
+.bws1:  btst.b  #DMAB_BLITTER,DMACONR     ; wait for plane 0 blit done
+        bne.s   .bws1
+        move.l  a1,d0
+        swap    d0
+        move.w  d0,BLTAPTH                ; plane 1: source high word
+        swap    d0
+        move.w  d0,BLTAPTL                ; plane 1: source low word
+        move.l  a0,d0
+        swap    d0
+        move.w  d0,BLTDPTH                ; plane 1: dest high word
+        swap    d0
+        move.w  d0,BLTDPTL                ; plane 1: dest low word
+        move.w  #BLIT_SLOW_SIZE,BLTSIZE   ; fire plane 1
+        lea     HAM_SLOW_PLANE_BYTES(a1),a1 ; source advance to plane 2
+        lea     HAM_DYNAMIC_PLANE_BYTES(a0),a0 ; dest advance to plane 2
+.bws2:  btst.b  #DMAB_BLITTER,DMACONR     ; wait for plane 1 blit done
+        bne.s   .bws2
+        move.l  a1,d0
+        swap    d0
+        move.w  d0,BLTAPTH                ; plane 2: source high word
+        swap    d0
+        move.w  d0,BLTAPTL                ; plane 2: source low word
+        move.l  a0,d0
+        swap    d0
+        move.w  d0,BLTDPTH                ; plane 2: dest high word
+        swap    d0
+        move.w  d0,BLTDPTL                ; plane 2: dest low word
+        move.w  #BLIT_SLOW_SIZE,BLTSIZE   ; fire plane 2
+        lea     HAM_SLOW_PLANE_BYTES(a1),a1 ; source advance to plane 3
+        lea     HAM_DYNAMIC_PLANE_BYTES(a0),a0 ; dest advance to plane 3
+.bws3:  btst.b  #DMAB_BLITTER,DMACONR     ; wait for plane 2 blit done
+        bne.s   .bws3
+        move.l  a1,d0
+        swap    d0
+        move.w  d0,BLTAPTH                ; plane 3: source high word
+        swap    d0
+        move.w  d0,BLTAPTL                ; plane 3: source low word
+        move.l  a0,d0
+        swap    d0
+        move.w  d0,BLTDPTH                ; plane 3: dest high word
+        swap    d0
+        move.w  d0,BLTDPTL                ; plane 3: dest low word
+        move.w  #BLIT_SLOW_SIZE,BLTSIZE   ; fire plane 3; return without waiting
+        rts                              ; plane 3 blit runs in parallel with CPU
 
-        movem.l (a1)+,d0-d7/a2-a5        ; plane 0: read first 48 bytes
-        movem.l d0-d7/a2-a5,(a0)         ; plane 0: write first 48 bytes
-        lea     48(a0),a0                ; plane 0: advance to second block
-        movem.l (a1)+,d0-d6              ; plane 0: read next 28 bytes
-        movem.l d0-d6,(a0)               ; plane 0: write next 28 bytes
-        lea     28(a0),a0                ; plane 0: advance to final word
-        move.w  (a1)+,(a0)+              ; plane 0: copy final 2 bytes
-        lea     HAM_SLOW_NEXT_PLANE_SKIP(a0),a0 ; advance to plane 1 slow rows
+; void CopyHamTemporalUpperRowsAsm(a0=TargetDynamicFrame, a1=SourceDynamicFrame)
+; Uses blitter for A->D copy of upper temporal half (rows 2-13), all 4 planes.
+; Returns immediately after firing plane 3; WaitBlitterDoneAsm must be called before
+; writing to the same region again.
+_CopyHamTemporalUpperRowsAsm::
+.bwu0:  btst.b  #DMAB_BLITTER,DMACONR     ; wait for blitter idle (BBUSY=1=busy, 0=idle)
+        bne.s   .bwu0                     ; loop while busy
+        move.w  #BLTCON0_COPY_A_TO_D,BLTCON0 ; A to D copy minterm
+        clr.w   BLTCON1                   ; no shift, no fill
+        move.w  #$FFFF,BLTAFWM            ; full first-word mask
+        move.w  #$FFFF,BLTALWM            ; full last-word mask
+        clr.w   BLTAMOD                   ; source rows contiguous within plane
+        clr.w   BLTDMOD                   ; dest rows contiguous within plane
+        lea     HAM_TEMPORAL_UPPER_DEST_OFFSET(a0),a0 ; dest plane 0 start
+        lea     HAM_TEMPORAL_UPPER_DEST_OFFSET(a1),a1 ; source plane 0 start
+        move.l  a1,d0
+        swap    d0
+        move.w  d0,BLTAPTH                ; plane 0: source high word
+        swap    d0
+        move.w  d0,BLTAPTL                ; plane 0: source low word
+        move.l  a0,d0
+        swap    d0
+        move.w  d0,BLTDPTH                ; plane 0: dest high word
+        swap    d0
+        move.w  d0,BLTDPTL                ; plane 0: dest low word
+        move.w  #BLIT_TEMPORAL_SIZE,BLTSIZE ; fire plane 0; blitter starts
+        lea     HAM_DYNAMIC_PLANE_BYTES(a0),a0 ; advance dest to plane 1
+        lea     HAM_DYNAMIC_PLANE_BYTES(a1),a1 ; advance source to plane 1
+.bwu1:  btst.b  #DMAB_BLITTER,DMACONR     ; wait for plane 0 blit done
+        bne.s   .bwu1
+        move.l  a1,d0
+        swap    d0
+        move.w  d0,BLTAPTH                ; plane 1: source high word
+        swap    d0
+        move.w  d0,BLTAPTL                ; plane 1: source low word
+        move.l  a0,d0
+        swap    d0
+        move.w  d0,BLTDPTH                ; plane 1: dest high word
+        swap    d0
+        move.w  d0,BLTDPTL                ; plane 1: dest low word
+        move.w  #BLIT_TEMPORAL_SIZE,BLTSIZE ; fire plane 1
+        lea     HAM_DYNAMIC_PLANE_BYTES(a0),a0 ; advance dest to plane 2
+        lea     HAM_DYNAMIC_PLANE_BYTES(a1),a1 ; advance source to plane 2
+.bwu2:  btst.b  #DMAB_BLITTER,DMACONR     ; wait for plane 1 blit done
+        bne.s   .bwu2
+        move.l  a1,d0
+        swap    d0
+        move.w  d0,BLTAPTH                ; plane 2: source high word
+        swap    d0
+        move.w  d0,BLTAPTL                ; plane 2: source low word
+        move.l  a0,d0
+        swap    d0
+        move.w  d0,BLTDPTH                ; plane 2: dest high word
+        swap    d0
+        move.w  d0,BLTDPTL                ; plane 2: dest low word
+        move.w  #BLIT_TEMPORAL_SIZE,BLTSIZE ; fire plane 2
+        lea     HAM_DYNAMIC_PLANE_BYTES(a0),a0 ; advance dest to plane 3
+        lea     HAM_DYNAMIC_PLANE_BYTES(a1),a1 ; advance source to plane 3
+.bwu3:  btst.b  #DMAB_BLITTER,DMACONR     ; wait for plane 2 blit done
+        bne.s   .bwu3
+        move.l  a1,d0
+        swap    d0
+        move.w  d0,BLTAPTH                ; plane 3: source high word
+        swap    d0
+        move.w  d0,BLTAPTL                ; plane 3: source low word
+        move.l  a0,d0
+        swap    d0
+        move.w  d0,BLTDPTH                ; plane 3: dest high word
+        swap    d0
+        move.w  d0,BLTDPTL                ; plane 3: dest low word
+        move.w  #BLIT_TEMPORAL_SIZE,BLTSIZE ; fire plane 3; return without waiting
+        rts                               ; plane 3 blit runs in parallel with CPU
 
-        movem.l (a1)+,d0-d7/a2-a5        ; plane 1: read first 48 bytes
-        movem.l d0-d7/a2-a5,(a0)         ; plane 1: write first 48 bytes
-        lea     48(a0),a0                ; plane 1: advance to second block
-        movem.l (a1)+,d0-d6              ; plane 1: read next 28 bytes
-        movem.l d0-d6,(a0)               ; plane 1: write next 28 bytes
-        lea     28(a0),a0                ; plane 1: advance to final word
-        move.w  (a1)+,(a0)+              ; plane 1: copy final 2 bytes
-        lea     HAM_SLOW_NEXT_PLANE_SKIP(a0),a0 ; advance to plane 2 slow rows
+; void CopyHamTemporalLowerRowsAsm(a0=TargetDynamicFrame, a1=SourceDynamicFrame)
+; Uses blitter for A->D copy of lower temporal half (rows 14-25), all 4 planes.
+; Returns immediately after firing plane 3; WaitBlitterDoneAsm must be called before
+; writing to the same region again.
+_CopyHamTemporalLowerRowsAsm::
+.bwl0:  btst.b  #DMAB_BLITTER,DMACONR     ; wait for blitter idle (BBUSY=1=busy, 0=idle)
+        bne.s   .bwl0                     ; loop while busy
+        move.w  #BLTCON0_COPY_A_TO_D,BLTCON0 ; A to D copy minterm
+        clr.w   BLTCON1                   ; no shift, no fill
+        move.w  #$FFFF,BLTAFWM            ; full first-word mask
+        move.w  #$FFFF,BLTALWM            ; full last-word mask
+        clr.w   BLTAMOD                   ; source rows contiguous within plane
+        clr.w   BLTDMOD                   ; dest rows contiguous within plane
+        lea     HAM_TEMPORAL_LOWER_DEST_OFFSET(a0),a0 ; dest plane 0 start
+        lea     HAM_TEMPORAL_LOWER_DEST_OFFSET(a1),a1 ; source plane 0 start
+        move.l  a1,d0
+        swap    d0
+        move.w  d0,BLTAPTH                ; plane 0: source high word
+        swap    d0
+        move.w  d0,BLTAPTL                ; plane 0: source low word
+        move.l  a0,d0
+        swap    d0
+        move.w  d0,BLTDPTH                ; plane 0: dest high word
+        swap    d0
+        move.w  d0,BLTDPTL                ; plane 0: dest low word
+        move.w  #BLIT_TEMPORAL_SIZE,BLTSIZE ; fire plane 0; blitter starts
+        lea     HAM_DYNAMIC_PLANE_BYTES(a0),a0 ; advance dest to plane 1
+        lea     HAM_DYNAMIC_PLANE_BYTES(a1),a1 ; advance source to plane 1
+.bwl1:  btst.b  #DMAB_BLITTER,DMACONR     ; wait for plane 0 blit done
+        bne.s   .bwl1
+        move.l  a1,d0
+        swap    d0
+        move.w  d0,BLTAPTH                ; plane 1: source high word
+        swap    d0
+        move.w  d0,BLTAPTL                ; plane 1: source low word
+        move.l  a0,d0
+        swap    d0
+        move.w  d0,BLTDPTH                ; plane 1: dest high word
+        swap    d0
+        move.w  d0,BLTDPTL                ; plane 1: dest low word
+        move.w  #BLIT_TEMPORAL_SIZE,BLTSIZE ; fire plane 1
+        lea     HAM_DYNAMIC_PLANE_BYTES(a0),a0 ; advance dest to plane 2
+        lea     HAM_DYNAMIC_PLANE_BYTES(a1),a1 ; advance source to plane 2
+.bwl2:  btst.b  #DMAB_BLITTER,DMACONR     ; wait for plane 1 blit done
+        bne.s   .bwl2
+        move.l  a1,d0
+        swap    d0
+        move.w  d0,BLTAPTH                ; plane 2: source high word
+        swap    d0
+        move.w  d0,BLTAPTL                ; plane 2: source low word
+        move.l  a0,d0
+        swap    d0
+        move.w  d0,BLTDPTH                ; plane 2: dest high word
+        swap    d0
+        move.w  d0,BLTDPTL                ; plane 2: dest low word
+        move.w  #BLIT_TEMPORAL_SIZE,BLTSIZE ; fire plane 2
+        lea     HAM_DYNAMIC_PLANE_BYTES(a0),a0 ; advance dest to plane 3
+        lea     HAM_DYNAMIC_PLANE_BYTES(a1),a1 ; advance source to plane 3
+.bwl3:  btst.b  #DMAB_BLITTER,DMACONR     ; wait for plane 2 blit done
+        bne.s   .bwl3
+        move.l  a1,d0
+        swap    d0
+        move.w  d0,BLTAPTH                ; plane 3: source high word
+        swap    d0
+        move.w  d0,BLTAPTL                ; plane 3: source low word
+        move.l  a0,d0
+        swap    d0
+        move.w  d0,BLTDPTH                ; plane 3: dest high word
+        swap    d0
+        move.w  d0,BLTDPTL                ; plane 3: dest low word
+        move.w  #BLIT_TEMPORAL_SIZE,BLTSIZE ; fire plane 3; return without waiting
+        rts                               ; plane 3 blit runs in parallel with CPU
 
-        movem.l (a1)+,d0-d7/a2-a5        ; plane 2: read first 48 bytes
-        movem.l d0-d7/a2-a5,(a0)         ; plane 2: write first 48 bytes
-        lea     48(a0),a0                ; plane 2: advance to second block
-        movem.l (a1)+,d0-d6              ; plane 2: read next 28 bytes
-        movem.l d0-d6,(a0)               ; plane 2: write next 28 bytes
-        lea     28(a0),a0                ; plane 2: advance to final word
-        move.w  (a1)+,(a0)+              ; plane 2: copy final 2 bytes
-        lea     HAM_SLOW_NEXT_PLANE_SKIP(a0),a0 ; advance to plane 3 slow rows
+; void WaitBlitterDoneAsm(void)
+_WaitBlitterDoneAsm::
+.wbd:   btst.b  #DMAB_BLITTER,DMACONR     ; test BBUSY (bit 6 of high byte = $DFF002)
+        bne.s   .wbd                      ; loop while busy (BBUSY=1)
+        rts                               ; return when idle (BBUSY=0)
 
-        movem.l (a1)+,d0-d7/a2-a5        ; plane 3: read first 48 bytes
-        movem.l d0-d7/a2-a5,(a0)         ; plane 3: write first 48 bytes
-        lea     48(a0),a0                ; plane 3: advance to second block
-        movem.l (a1)+,d0-d6              ; plane 3: read next 28 bytes
-        movem.l d0-d6,(a0)               ; plane 3: write next 28 bytes
-        lea     28(a0),a0                ; plane 3: advance to final word
-        move.w  (a1)+,(a0)+              ; plane 3: copy final 2 bytes
+; void RenderHamTemporalUpperRowsAsm(a0=Base, a1=TextureCellsMid, a2=UOffsetTableMid,
+;                                      a3=PairTables, d0=DuDx, d1=DvDx,
+;                                      d4=RowU, d5=RowV)
 
-        movem.l (sp)+,d2-d7/a2-a5        ; restore copy registers
-        rts                              ; return after the slow rows are copied
-
-; void CopyHamTemporalRowsAsm(a0=TargetDynamicFrame, a1=SourceDynamicFrame)
-_CopyHamTemporalRowsAsm::
-        btst.b  #0,VPOSR+1                ; test PAL line bit 8 before touching temporal rows
-        bne.s   .temporal_copy_safe       ; copying is safe in lower border/vblank
-        cmp.b   #HAM_TEMPORAL_DONE_LOW,VPOSR+2 ; check if temporal rows are already off-screen
-        bhs.s   .temporal_copy_safe       ; copy immediately when rows 27-34 are safe
-.wait_temporal_copy:
-        cmp.b   #HAM_TEMPORAL_DONE_LOW,VPOSR+2 ; wait for first line below temporal rows
-        blo.s   .wait_temporal_copy       ; stay while the beam still reads temporal rows
-.temporal_copy_safe:
-        movem.l d2-d7/a2-a6,-(sp)        ; save registers used by the block copy
-        lea     HAM_TEMPORAL_DEST_OFFSET(a0),a0 ; get target temporal row block in plane 0
-        lea     HAM_TEMPORAL_DEST_OFFSET(a1),a1 ; get source temporal row block in plane 0
-
-        movem.l (a1)+,d0-d7/a2-a6        ; plane 0: read first 52-byte block
-        movem.l d0-d7/a2-a6,(a0)         ; plane 0: write first 52-byte block
-        lea     52(a0),a0                ; plane 0: advance to next block
-        movem.l (a1)+,d0-d7/a2-a6        ; plane 0: read second 52-byte block
-        movem.l d0-d7/a2-a6,(a0)         ; plane 0: write second 52-byte block
-        lea     52(a0),a0                ; plane 0: advance to next block
-        movem.l (a1)+,d0-d7/a2-a6        ; plane 0: read third 52-byte block
-        movem.l d0-d7/a2-a6,(a0)         ; plane 0: write third 52-byte block
-        lea     52(a0),a0                ; plane 0: advance to next block
-        movem.l (a1)+,d0-d7/a2-a6        ; plane 0: read fourth 52-byte block
-        movem.l d0-d7/a2-a6,(a0)         ; plane 0: write fourth 52-byte block
-        lea     52(a0),a0                ; plane 0: advance past copied rows
-        lea     HAM_TEMPORAL_NEXT_PLANE_SKIP(a0),a0 ; advance to plane 1 temporal rows
-        lea     HAM_TEMPORAL_NEXT_PLANE_SKIP(a1),a1 ; advance source to plane 1 temporal rows
-
-        movem.l (a1)+,d0-d7/a2-a6        ; plane 1: read first 52-byte block
-        movem.l d0-d7/a2-a6,(a0)         ; plane 1: write first 52-byte block
-        lea     52(a0),a0                ; plane 1: advance to next block
-        movem.l (a1)+,d0-d7/a2-a6        ; plane 1: read second 52-byte block
-        movem.l d0-d7/a2-a6,(a0)         ; plane 1: write second 52-byte block
-        lea     52(a0),a0                ; plane 1: advance to next block
-        movem.l (a1)+,d0-d7/a2-a6        ; plane 1: read third 52-byte block
-        movem.l d0-d7/a2-a6,(a0)         ; plane 1: write third 52-byte block
-        lea     52(a0),a0                ; plane 1: advance to next block
-        movem.l (a1)+,d0-d7/a2-a6        ; plane 1: read fourth 52-byte block
-        movem.l d0-d7/a2-a6,(a0)         ; plane 1: write fourth 52-byte block
-        lea     52(a0),a0                ; plane 1: advance past copied rows
-        lea     HAM_TEMPORAL_NEXT_PLANE_SKIP(a0),a0 ; advance to plane 2 temporal rows
-        lea     HAM_TEMPORAL_NEXT_PLANE_SKIP(a1),a1 ; advance source to plane 2 temporal rows
-
-        movem.l (a1)+,d0-d7/a2-a6        ; plane 2: read first 52-byte block
-        movem.l d0-d7/a2-a6,(a0)         ; plane 2: write first 52-byte block
-        lea     52(a0),a0                ; plane 2: advance to next block
-        movem.l (a1)+,d0-d7/a2-a6        ; plane 2: read second 52-byte block
-        movem.l d0-d7/a2-a6,(a0)         ; plane 2: write second 52-byte block
-        lea     52(a0),a0                ; plane 2: advance to next block
-        movem.l (a1)+,d0-d7/a2-a6        ; plane 2: read third 52-byte block
-        movem.l d0-d7/a2-a6,(a0)         ; plane 2: write third 52-byte block
-        lea     52(a0),a0                ; plane 2: advance to next block
-        movem.l (a1)+,d0-d7/a2-a6        ; plane 2: read fourth 52-byte block
-        movem.l d0-d7/a2-a6,(a0)         ; plane 2: write fourth 52-byte block
-        lea     52(a0),a0                ; plane 2: advance past copied rows
-        lea     HAM_TEMPORAL_NEXT_PLANE_SKIP(a0),a0 ; advance to plane 3 temporal rows
-        lea     HAM_TEMPORAL_NEXT_PLANE_SKIP(a1),a1 ; advance source to plane 3 temporal rows
-
-        movem.l (a1)+,d0-d7/a2-a6        ; plane 3: read first 52-byte block
-        movem.l d0-d7/a2-a6,(a0)         ; plane 3: write first 52-byte block
-        lea     52(a0),a0                ; plane 3: advance to next block
-        movem.l (a1)+,d0-d7/a2-a6        ; plane 3: read second 52-byte block
-        movem.l d0-d7/a2-a6,(a0)         ; plane 3: write second 52-byte block
-        lea     52(a0),a0                ; plane 3: advance to next block
-        movem.l (a1)+,d0-d7/a2-a6        ; plane 3: read third 52-byte block
-        movem.l d0-d7/a2-a6,(a0)         ; plane 3: write third 52-byte block
-        lea     52(a0),a0                ; plane 3: advance to next block
-        movem.l (a1)+,d0-d7/a2-a6        ; plane 3: read fourth 52-byte block
-        movem.l d0-d7/a2-a6,(a0)         ; plane 3: write fourth 52-byte block
-        lea     52(a0),a0                ; plane 3: advance past copied rows
-        movem.l (sp)+,d2-d7/a2-a6        ; restore registers used by the block copy
-        rts                              ; return to C
-; void RenderHamTemporalRowsAsm(a0=Base, a1=TextureCellsMid, a2=UOffsetTableMid,
-;                               a3=PairTables, d0=DuDx, d1=DvDx,
-;                               d4=RowU, d5=RowV)
-
-_RenderHamTemporalRowsAsm::
+_RenderHamTemporalUpperRowsAsm::
         btst.b  #0,VPOSR+1                ; test PAL line bit 8 before touching temporal rows
         bne.s   .temporal_render_safe     ; rendering is safe in lower border/vblank
-        cmp.b   #HAM_TEMPORAL_DONE_LOW,VPOSR+2 ; check if temporal rows are already off-screen
-        bhs.s   .temporal_render_safe     ; render immediately when rows 27-34 are safe
+        cmp.b   #HAM_TEMPORAL_UPPER_DONE_LOW,VPOSR+2 ; check if this temporal half is already off-screen
+        bhs.s   .temporal_render_safe     ; render immediately when this temporal half is safe
 .wait_temporal_render:
-        cmp.b   #HAM_TEMPORAL_DONE_LOW,VPOSR+2 ; wait for first line below temporal rows
-        blo.s   .wait_temporal_render     ; stay while the beam still reads temporal rows
+        cmp.b   #HAM_TEMPORAL_UPPER_DONE_LOW,VPOSR+2 ; wait for first line below this temporal half
+        blo.s   .wait_temporal_render     ; stay while the beam still reads those rows
 .temporal_render_safe:
         movem.l d2-d7/a3-a6,-(sp)        ; save used C registers
 
@@ -267,20 +368,12 @@ _RenderHamTemporalRowsAsm::
         movea.l a3,a6                    ; a6 = interleaved pair table base
 
         move.w  d3,d6                    ; build temporal start U offset from DvDx
-        lsl.w   #5,d6                    ; d6 = DvDx * 32
-        move.w  d3,d7                    ; d7 = DvDx
-        lsl.w   #2,d7                    ; d7 = DvDx * 4
-        sub.w   d7,d6                    ; d6 = DvDx * 28
-        sub.w   d3,d6                    ; d6 = DvDx * 27
-        sub.w   d6,d0                    ; start U at temporal row 27
+        add.w   d6,d6                    ; d6 = DvDx * 2
+        sub.w   d6,d0                    ; start U at temporal row 2
 
         move.w  d2,d6                    ; build temporal start V offset from DuDx
-        lsl.w   #5,d6                    ; d6 = DuDx * 32
-        move.w  d2,d7                    ; d7 = DuDx
-        lsl.w   #2,d7                    ; d7 = DuDx * 4
-        sub.w   d7,d6                    ; d6 = DuDx * 28
-        sub.w   d2,d6                    ; d6 = DuDx * 27
-        add.w   d6,d1                    ; start V at temporal row 27
+        add.w   d6,d6                    ; d6 = DuDx * 2
+        add.w   d6,d1                    ; start V at temporal row 2
 
         move.w  d2,d6                    ; build temporal U delta from DuDx
         lsl.w   #4,d6                    ; d6 = DuDx * 16
@@ -293,7 +386,7 @@ _RenderHamTemporalRowsAsm::
         neg.w   d6                       ; d6 = -DuDx * 52
         sub.w   d3,d6                    ; d6 = -DuDx * 52 - DvDx
         add.w   d2,d6                    ; d6 = -DuDx * 51 - DvDx
-        lea     TemporalRowUDelta+2(pc),a5 ; get temporal U delta immediate
+        lea     RenderHamTemporalUpperRowsAsmRowUDelta+2(pc),a5 ; get temporal U delta immediate
         move.w  d6,(a5)                  ; patch temporal U delta
 
         move.w  d3,d6                    ; build temporal V delta from DvDx
@@ -307,21 +400,101 @@ _RenderHamTemporalRowsAsm::
         neg.w   d6                       ; d6 = -DvDx * 52
         add.w   d2,d6                    ; d6 = -DvDx * 52 + DuDx
         add.w   d3,d6                    ; d6 = -DvDx * 51 + DuDx
-        lea     TemporalRowVDelta+2(pc),a5 ; get temporal V delta immediate
+        lea     RenderHamTemporalUpperRowsAsmRowVDelta+2(pc),a5 ; get temporal V delta immediate
         move.w  d6,(a5)                  ; patch temporal V delta
 
-        moveq   #HAM_TEMPORAL_ROWS-2,d5  ; d5 = temporal row transition counter
-        lea     HAM_TEMPORAL_DEST_OFFSET(a0),a3 ; a3 = temporal plane 0 write pointer
+        moveq   #HAM_TEMPORAL_HALF_ROWS-2,d5        ; d5 = temporal half row transition counter
+        lea     HAM_TEMPORAL_UPPER_DEST_OFFSET(a0),a3 ; a3 = temporal plane 0 write pointer
         lea     HAM_DYNAMIC_PLANE_BYTES(a3),a4 ; a4 = temporal plane 1 write pointer
         lea     HAM_DYNAMIC_PLANE_BYTES(a4),a5 ; a5 = temporal plane 2 write pointer
         lea     HAM_DYNAMIC_PLANE_BYTES(a5),a0 ; a0 = temporal plane 3 write pointer
-TemporalRowLoop:
+RenderHamTemporalUpperRowsAsmRowLoop:
         bsr.w   RenderHamSharedRow        ; render temporal row and leave d0/d1 at row end
-TemporalRowUDelta:
+RenderHamTemporalUpperRowsAsmRowUDelta:
         add.w   #0,d0                    ; advance U to next temporal row
-TemporalRowVDelta:
+RenderHamTemporalUpperRowsAsmRowVDelta:
         add.w   #0,d1                    ; advance V to next temporal row
-        dbra    d5,TemporalRowLoop       ; render next temporal row with transition
+        dbra    d5,RenderHamTemporalUpperRowsAsmRowLoop         ; render next temporal row with transition
+        bsr.w   RenderHamSharedRow        ; render final temporal row without unused delta
+
+        movem.l (sp)+,d2-d7/a3-a6        ; restore used C registers
+        rts                              ; return to C
+
+; void RenderHamTemporalLowerRowsAsm(a0=Base, a1=TextureCellsMid, a2=UOffsetTableMid,
+;                                      a3=PairTables, d0=DuDx, d1=DvDx,
+;                                      d4=RowU, d5=RowV)
+
+_RenderHamTemporalLowerRowsAsm::
+        btst.b  #0,VPOSR+1                ; test PAL line bit 8 before touching temporal rows
+        bne.s   .temporal_render_safe     ; rendering is safe in lower border/vblank
+        cmp.b   #HAM_TEMPORAL_DONE_LOW,VPOSR+2 ; check if this temporal half is already off-screen
+        bhs.s   .temporal_render_safe     ; render immediately when this temporal half is safe
+.wait_temporal_render:
+        cmp.b   #HAM_TEMPORAL_DONE_LOW,VPOSR+2 ; wait for first line below this temporal half
+        blo.s   .wait_temporal_render     ; stay while the beam still reads those rows
+.temporal_render_safe:
+        movem.l d2-d7/a3-a6,-(sp)        ; save used C registers
+
+        move.w  d0,d2                    ; d2 = horizontal U step
+        move.w  d1,d3                    ; d3 = horizontal V step
+        move.w  d4,d0                    ; d0 = row 0 U
+        move.w  d5,d1                    ; d1 = row 0 V
+        movea.l a3,a6                    ; a6 = interleaved pair table base
+
+        move.w  d3,d6                    ; build temporal start U offset from DvDx
+        lsl.w   #4,d6                    ; d6 = DvDx * 16
+        move.w  d3,d7                    ; d7 = DvDx
+        add.w   d7,d7                    ; d7 = DvDx * 2
+        sub.w   d7,d6                    ; d6 = DvDx * 14
+        sub.w   d6,d0                    ; start U at temporal row 14
+
+        move.w  d2,d6                    ; build temporal start V offset from DuDx
+        lsl.w   #4,d6                    ; d6 = DuDx * 16
+        move.w  d2,d7                    ; d7 = DuDx
+        add.w   d7,d7                    ; d7 = DuDx * 2
+        sub.w   d7,d6                    ; d6 = DuDx * 14
+        add.w   d6,d1                    ; start V at temporal row 14
+
+        move.w  d2,d6                    ; build temporal U delta from DuDx
+        lsl.w   #4,d6                    ; d6 = DuDx * 16
+        move.w  d6,d7                    ; d7 = DuDx * 16
+        add.w   d6,d6                    ; d6 = DuDx * 32
+        add.w   d7,d6                    ; d6 = DuDx * 48
+        move.w  d2,d7                    ; d7 = DuDx
+        lsl.w   #2,d7                    ; d7 = DuDx * 4
+        add.w   d7,d6                    ; d6 = DuDx * 52
+        neg.w   d6                       ; d6 = -DuDx * 52
+        sub.w   d3,d6                    ; d6 = -DuDx * 52 - DvDx
+        add.w   d2,d6                    ; d6 = -DuDx * 51 - DvDx
+        lea     RenderHamTemporalLowerRowsAsmRowUDelta+2(pc),a5 ; get temporal U delta immediate
+        move.w  d6,(a5)                  ; patch temporal U delta
+
+        move.w  d3,d6                    ; build temporal V delta from DvDx
+        lsl.w   #4,d6                    ; d6 = DvDx * 16
+        move.w  d6,d7                    ; d7 = DvDx * 16
+        add.w   d6,d6                    ; d6 = DvDx * 32
+        add.w   d7,d6                    ; d6 = DvDx * 48
+        move.w  d3,d7                    ; d7 = DvDx
+        lsl.w   #2,d7                    ; d7 = DvDx * 4
+        add.w   d7,d6                    ; d6 = DvDx * 52
+        neg.w   d6                       ; d6 = -DvDx * 52
+        add.w   d2,d6                    ; d6 = -DvDx * 52 + DuDx
+        add.w   d3,d6                    ; d6 = -DvDx * 51 + DuDx
+        lea     RenderHamTemporalLowerRowsAsmRowVDelta+2(pc),a5 ; get temporal V delta immediate
+        move.w  d6,(a5)                  ; patch temporal V delta
+
+        moveq   #HAM_TEMPORAL_HALF_ROWS-2,d5        ; d5 = temporal half row transition counter
+        lea     HAM_TEMPORAL_LOWER_DEST_OFFSET(a0),a3 ; a3 = temporal plane 0 write pointer
+        lea     HAM_DYNAMIC_PLANE_BYTES(a3),a4 ; a4 = temporal plane 1 write pointer
+        lea     HAM_DYNAMIC_PLANE_BYTES(a4),a5 ; a5 = temporal plane 2 write pointer
+        lea     HAM_DYNAMIC_PLANE_BYTES(a5),a0 ; a0 = temporal plane 3 write pointer
+RenderHamTemporalLowerRowsAsmRowLoop:
+        bsr.w   RenderHamSharedRow        ; render temporal row and leave d0/d1 at row end
+RenderHamTemporalLowerRowsAsmRowUDelta:
+        add.w   #0,d0                    ; advance U to next temporal row
+RenderHamTemporalLowerRowsAsmRowVDelta:
+        add.w   #0,d1                    ; advance V to next temporal row
+        dbra    d5,RenderHamTemporalLowerRowsAsmRowLoop         ; render next temporal row with transition
         bsr.w   RenderHamSharedRow        ; render final temporal row without unused delta
 
         movem.l (sp)+,d2-d7/a3-a6        ; restore used C registers
@@ -917,18 +1090,22 @@ _RenderHamHalfRowsAsm::
         move.w  d3,d6                    ; build half-rate start U offset from DvDx
         lsl.w   #5,d6                    ; d6 = DvDx * 32
         move.w  d3,d7                    ; d7 = DvDx
+        lsl.w   #2,d7                    ; d7 = DvDx * 4
+        sub.w   d7,d6                    ; d6 = DvDx * 28
+        move.w  d3,d7                    ; d7 = DvDx
         add.w   d7,d7                    ; d7 = DvDx * 2
-        add.w   d7,d6                    ; d6 = DvDx * 34
-        add.w   d3,d6                    ; d6 = DvDx * 35
-        sub.w   d6,d0                    ; start U at half-rate row 35
+        sub.w   d7,d6                    ; d6 = DvDx * 26
+        sub.w   d6,d0                    ; start U at half-rate row 26
 
         move.w  d2,d6                    ; build half-rate start V offset from DuDx
         lsl.w   #5,d6                    ; d6 = DuDx * 32
         move.w  d2,d7                    ; d7 = DuDx
+        lsl.w   #2,d7                    ; d7 = DuDx * 4
+        sub.w   d7,d6                    ; d6 = DuDx * 28
+        move.w  d2,d7                    ; d7 = DuDx
         add.w   d7,d7                    ; d7 = DuDx * 2
-        add.w   d7,d6                    ; d6 = DuDx * 34
-        add.w   d2,d6                    ; d6 = DuDx * 35
-        add.w   d6,d1                    ; start V at half-rate row 35
+        sub.w   d7,d6                    ; d6 = DuDx * 26
+        add.w   d6,d1                    ; start V at half-rate row 26
 
         move.w  d2,d6                    ; build Half-rate U delta from DuDx
         lsl.w   #4,d6                    ; d6 = DuDx * 16
@@ -991,16 +1168,18 @@ _RenderHamSlowRowsAsm::
         move.w  d3,d6                    ; build slow-copy start U offset from DvDx
         lsl.w   #5,d6                    ; d6 = DvDx * 32
         move.w  d3,d7                    ; d7 = DvDx
-        lsl.w   #3,d7                    ; d7 = DvDx * 8
-        add.w   d7,d6                    ; d6 = DvDx * 40
-        sub.w   d6,d0                    ; start U at slow-copy row 40
+        lsl.w   #4,d7                    ; d7 = DvDx * 16
+        add.w   d7,d6                    ; d6 = DvDx * 48
+        add.w   d3,d6                    ; d6 = DvDx * 49
+        sub.w   d6,d0                    ; start U at slow-copy row 49
 
         move.w  d2,d6                    ; build slow-copy start V offset from DuDx
         lsl.w   #5,d6                    ; d6 = DuDx * 32
         move.w  d2,d7                    ; d7 = DuDx
-        lsl.w   #3,d7                    ; d7 = DuDx * 8
-        add.w   d7,d6                    ; d6 = DuDx * 40
-        add.w   d6,d1                    ; start V at slow-copy row 40
+        lsl.w   #4,d7                    ; d7 = DuDx * 16
+        add.w   d7,d6                    ; d6 = DuDx * 48
+        add.w   d2,d6                    ; d6 = DuDx * 49
+        add.w   d6,d1                    ; start V at slow-copy row 49
 
         move.w  d2,d6                    ; build Slow U delta from DuDx
         lsl.w   #4,d6                    ; d6 = DuDx * 16
@@ -1047,85 +1226,6 @@ SlowRowVDelta:
         movem.l (sp)+,d2-d7/a3-a6        ; restore used C registers
         rts                              ; return to C
 
-; void RenderHamCachedRowsAsm(a0=Base, a1=TextureCellsMid, a2=UOffsetTableMid,
-;                             a3=PairTables, d0=DuDx, d1=DvDx,
-;                             d4=RowU, d5=RowV)
-
-_RenderHamCachedRowsAsm::
-        movem.l d2-d7/a3-a6,-(sp)        ; save used C registers
-
-        move.w  d0,d2                    ; d2 = horizontal U step
-        move.w  d1,d3                    ; d3 = horizontal V step
-        move.w  d4,d0                    ; d0 = row 0 U
-        move.w  d5,d1                    ; d1 = row 0 V
-        movea.l a3,a6                    ; a6 = interleaved pair table base
-
-        move.w  d3,d6                    ; build cached start U offset from DvDx
-        lsl.w   #5,d6                    ; d6 = DvDx * 32
-        move.w  d3,d7                    ; d7 = DvDx
-        lsl.w   #3,d7                    ; d7 = DvDx * 8
-        add.w   d7,d6                    ; d6 = DvDx * 40
-        move.w  d3,d7                    ; d7 = DvDx
-        add.w   d7,d7                    ; d7 = DvDx * 2
-        add.w   d7,d6                    ; d6 = DvDx * 42
-        add.w   d3,d6                    ; d6 = DvDx * 43
-        sub.w   d6,d0                    ; start U at cached row 43
-
-        move.w  d2,d6                    ; build cached start V offset from DuDx
-        lsl.w   #5,d6                    ; d6 = DuDx * 32
-        move.w  d2,d7                    ; d7 = DuDx
-        lsl.w   #3,d7                    ; d7 = DuDx * 8
-        add.w   d7,d6                    ; d6 = DuDx * 40
-        move.w  d2,d7                    ; d7 = DuDx
-        add.w   d7,d7                    ; d7 = DuDx * 2
-        add.w   d7,d6                    ; d6 = DuDx * 42
-        add.w   d2,d6                    ; d6 = DuDx * 43
-        add.w   d6,d1                    ; start V at cached row 43
-
-        move.w  d2,d6                    ; build Cached U delta from DuDx
-        lsl.w   #4,d6                    ; d6 = DuDx * 16
-        move.w  d6,d7                    ; d7 = DuDx * 16
-        add.w   d6,d6                    ; d6 = DuDx * 32
-        add.w   d7,d6                    ; d6 = DuDx * 48
-        move.w  d2,d7                    ; d7 = DuDx
-        lsl.w   #2,d7                    ; d7 = DuDx * 4
-        add.w   d7,d6                    ; d6 = DuDx * 52
-        neg.w   d6                       ; d6 = -DuDx * 52
-        sub.w   d3,d6                    ; d6 = -DuDx * 52 - DvDx
-        add.w   d2,d6                    ; d6 = -DuDx * 51 - DvDx
-        lea     CachedRowUDelta+2(pc),a5 ; get cached U delta immediate
-        move.w  d6,(a5)                  ; patch cached U delta
-
-        move.w  d3,d6                    ; build Cached V delta from DvDx
-        lsl.w   #4,d6                    ; d6 = DvDx * 16
-        move.w  d6,d7                    ; d7 = DvDx * 16
-        add.w   d6,d6                    ; d6 = DvDx * 32
-        add.w   d7,d6                    ; d6 = DvDx * 48
-        move.w  d3,d7                    ; d7 = DvDx
-        lsl.w   #2,d7                    ; d7 = DvDx * 4
-        add.w   d7,d6                    ; d6 = DvDx * 52
-        neg.w   d6                       ; d6 = -DvDx * 52
-        add.w   d2,d6                    ; d6 = -DvDx * 52 + DuDx
-        add.w   d3,d6                    ; d6 = -DvDx * 51 + DuDx
-        lea     CachedRowVDelta+2(pc),a5 ; get cached V delta immediate
-        move.w  d6,(a5)                  ; patch cached V delta
-
-        moveq   #HAM_CACHE_ROWS-2,d5 ; d5 = cached row transition counter
-        movea.l a0,a3                    ; a3 = cached plane 0 write pointer
-        lea     HAM_CACHE_PLANE_BYTES(a3),a4      ; a4 = cached plane 1 write pointer
-        lea     HAM_CACHE_PLANE_BYTES(a4),a5      ; a5 = cached plane 2 write pointer
-        lea     HAM_CACHE_PLANE_BYTES(a5),a0      ; a0 = cached plane 3 write pointer
-CachedRowLoop:
-        bsr.w   RenderHamSharedRow        ; render cached row and leave d0/d1 at row end
-CachedRowUDelta:
-        add.w   #0,d0                    ; advance U to next cached row
-CachedRowVDelta:
-        add.w   #0,d1                    ; advance V to next cached row
-        dbra    d5,CachedRowLoop          ; render next cached row with transition
-        bsr.w   RenderHamSharedRow        ; render final cached row without unused delta
-
-        movem.l (sp)+,d2-d7/a3-a6        ; restore used C registers
-        rts                              ; return to C
 
 ; Shared one-row renderer. It leaves d0/d1 at the last cell of the row.
 
