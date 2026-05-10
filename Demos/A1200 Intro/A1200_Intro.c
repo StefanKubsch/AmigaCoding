@@ -482,9 +482,9 @@ static void AddSkyLine(UWORD **Copperlist, UWORD y)
 }
 
 // Copper list size:
-// Header: 100 words (DIWSTRT+DIWSTOP+DDFSTRT+DDFSTOP=8, BPLCON0..2+MODs=10, BPL1..3 PTH/PTL=12,
+// Header: 106 words (DIWSTRT+DIWSTOP+DDFSTRT+DDFSTOP=8, AGA cleanup=6, BPLCON0..2+MODs=10, BPL1..3 PTH/PTL=12,
 //                   COLOR00..07=16, section WAITs/MOVEs=36, footer VPOS-wrap+END=4, scroller colors=6, BPL pointers=6, BPLCON1 scroll=2)
-#define COPPERWORDS            100
+#define COPPERWORDS            106
 // Sky: 169 lines * 4 + 2 wrap entry
 #define SKY_LINES              (WHITE_LINE_1 + (SCREENHEIGHT - WHITE_LINE_2 - 1))
 // Shadow is now handled entirely via BPL2 pointer offset — no extra Copper words needed.
@@ -524,6 +524,14 @@ static BOOL Init_CopperList(void)
 	// DDFSTOP
 	CopperList[Index++] = 0x94;
 	CopperList[Index++] = 0x00D0;
+
+	// AGA cleanup: force OCS/ECS compatible fetch and default color bank
+	CopperList[Index++] = 0x106;
+	CopperList[Index++] = 0x0000;
+	CopperList[Index++] = 0x10C;
+	CopperList[Index++] = 0x0000;
+	CopperList[Index++] = 0x1FC;
+	CopperList[Index++] = 0x0000;
 
 	// BPLCON0 - 3 bitplanes + Color (logo region)
 	CopperList[Index++] = 0x100;
@@ -732,8 +740,6 @@ static BOOL Init_CopperList(void)
 	CopperList[Index++] = 0xFFFF;
 	CopperList[Index++] = 0xFFFE;
 
-	*COP1LC = (ULONG)CopperList;
-
 	return TRUE;
 }
 
@@ -924,16 +930,17 @@ int main()
 
 	Init_Plasma();
 
+	UBYTE CurrentBuffer = 1;
+	Update_BitplanePointers(0);
+
 	lwmf_TakeOverOS();
+	*COP1LC = (ULONG)CopperList;
 
 	// mt_install must happen AFTER TakeOverOS so ptplayer sets its INTENA bit
 	// after the OS interrupt handlers have been disabled — not before.
 	lwmf_InstallModPlayer(&MOD_Demosong);
 
 	lwmf_StartMODPlayer(&MOD_Demosong);
-
-	UBYTE CurrentBuffer = 1;
-	Update_BitplanePointers(0);
 
 	while (*CIAA_PRA & 0x40)
 	{
