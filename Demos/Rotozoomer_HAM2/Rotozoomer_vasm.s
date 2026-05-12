@@ -1,58 +1,17 @@
-;**********************************************************************
-;* 4x4 HAM7 BPLDAT Quirk Rotozoomer ASM Renderer                       *
-;*                                                                    *
-;* 52x52 hybrid row cache renderer. Rows 26-48 are cached at half-rate.    *
-;* Rows 49-51 are Slow-copied; runtime draws rows 0-1 and splits 2-25. *
-;* No full-rate bottom cache is used in this version.        *
-;* BPL5DAT/BPL6DAT control words are handled by the Copperlist in C.  *
-;**********************************************************************
+;*************************************************************************
+;* 4x4 HAM7 BPLDAT Quirk Rotozoomer ASM Renderer                         *
+;*                                                                       *
+;* 52x52 hybrid row cache renderer. Rows 26-48 are cached at half-rate.  *
+;* Rows 49-51 are Slow-copied; runtime draws rows 0-1 and splits 2-25.   *
+;* No full-rate bottom cache is used in this version.                    *
+;* BPL5DAT/BPL6DAT control words are handled by the Copperlist in C.     *
+;*************************************************************************
 
         machine 68000
 
 	include	"lwmf/lwmf_hardware_regs.i"
 
-HAM_CORE_DONE_LOW			equ	$4C								; low byte after dynamic rows 0-1 are off-screen
-HAM_TEMPORAL_UPPER_DONE_LOW		equ	$7C								; low byte after temporal rows 2-13 are off-screen
-HAM_TEMPORAL_DONE_LOW			equ	$AC								; low byte after temporal rows 2-25 are off-screen
-HAM_DYNAMIC_DONE_LOW			equ	$14								; low byte after slow rows 49-51 are safely past
-
-HAM_ROWS				equ	52								; number of displayed HAM cell rows
-HAM_LIVE_ROWS				equ	2								; number of runtime-rendered core cell rows
-HAM_SLOW_ROWS				equ	3								; number of slow-copied rows per frame
-HAM_SLOW_START_ROW			equ	49								; first slow-copied row
-HAM_CACHE_ROWS				equ	0								; no full-rate cached bottom rows
-HAM_CACHE_START_ROW			equ	52								; cache run disabled after display area
-HAM_COPPER_HALFRATE_BPLPTR_WORD		equ	373								; value slot for half-rate row pointers
-HAM_COPPER_HALFRATE_BPLPTR_BYTES	equ	746								; byte slot for half-rate row pointers
-HAM_COPPER_CACHE_BPLPTR_WORD		equ	0								; full-rate cache pointer slot unused
-HAM_COPPER_CACHE_BPLPTR_BYTES		equ	0								; full-rate cache pointer slot unused
-HAM_FETCH_BYTES				equ	26								; bytes per rendered bitplane row
-HAM_PLANE_BYTES				equ	1352								; bytes per displayed HAM bitplane
-HAM_DYNAMIC_PLANE_BYTES			equ	754								; bytes per compact runtime/copied dynamic bitplane
-HAM_CACHE_PLANE_BYTES			equ	0								; full-rate cache removed
-HAM_HALFRATE_ROWS			equ	23								; number of half-rate rows per cached frame
-HAM_TEMPORAL_ROWS			equ	24								; number of temporal dynamic rows
-HAM_TEMPORAL_HALF_ROWS			equ	12								; number of rows in one temporal half
-HAM_TEMPORAL_START_ROW			equ	2								; first temporal dynamic row
-HAM_TEMPORAL_UPPER_DEST_OFFSET		equ	52								; compact row 2 byte offset in dynamic planes
-HAM_TEMPORAL_LOWER_DEST_OFFSET		equ	364								; compact row 14 byte offset in dynamic planes
-HAM_HALFRATE_START_ROW			equ	26								; first half-rate cached row
-HAM_HALFRATE_PLANE_BYTES		equ	598								; bytes per half-rate compact bitplane
-HAM_SLOW_PLANE_BYTES			equ	78								; bytes per slow compact bitplane
-HAM_SLOW_DEST_OFFSET			equ	676								; compact slow-row offset in dynamic planes
-
-BLTPRI_SET				equ	$8400								; set blitter priority while CPU waits
-BLTPRI_CLR				equ	$0400								; clear blitter priority before CPU overlap
-BLIT_TEMPORAL_WIDE_SIZE			equ	(4<<6)|0							; 4 planes, 64-word chunk, width zero encodes 64
-BLIT_TEMPORAL_TAIL_SIZE			equ	(4<<6)|28							; 4 planes, 28-word tail chunk
-BLIT_TEMPORAL_WIDE_BYTES		equ	128								; byte count of one 64-word temporal chunk
-BLIT_TEMPORAL_TAIL_BYTES		equ	56								; byte count of the final temporal chunk
-BLIT_TEMPORAL_WIDE_MOD			equ	HAM_DYNAMIC_PLANE_BYTES-BLIT_TEMPORAL_WIDE_BYTES		; next plane after wide chunk
-BLIT_TEMPORAL_TAIL_MOD			equ	HAM_DYNAMIC_PLANE_BYTES-BLIT_TEMPORAL_TAIL_BYTES		; next plane after tail chunk
-BLIT_TEMPORAL_WIDE_MOD_LONG		equ	(BLIT_TEMPORAL_WIDE_MOD<<16)|BLIT_TEMPORAL_WIDE_MOD		; source and destination wide modulos
-BLIT_TEMPORAL_TAIL_MOD_LONG		equ	(BLIT_TEMPORAL_TAIL_MOD<<16)|BLIT_TEMPORAL_TAIL_MOD		; source and destination tail modulos
-BLIT_SLOW_SIZE				equ	(4<<6)|39							; 4 planes, 39 words width = 312 bytes total
-BLIT_SLOW_DMOD				equ	HAM_DYNAMIC_PLANE_BYTES-HAM_SLOW_PLANE_BYTES			; skip from slow block to next dynamic plane
+	include	"Rotozoomer_shared.i"
 
 ; void InitHamBlitterCopyModeAsm(void)
 ; Initializes the fixed A-to-D blitter mode and full source masks.

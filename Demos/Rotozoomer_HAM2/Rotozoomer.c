@@ -15,6 +15,7 @@
 //**********************************************************************
 
 #include "lwmf/lwmf.h"
+#include "Rotozoomer_shared.h"
 
 // ---------------------------------------------------------------------
 // Debugging
@@ -38,79 +39,10 @@
 #define TEXTURE_WIDTH           128
 #define TEXTURE_HEIGHT          128
 #define TEXTURE_EXPANDED_HEIGHT 256
+#define TEXTURE_SOURCE_PLANES   6
+
 #define TEXTURE_CELL_BYTES      ((ULONG)TEXTURE_WIDTH * TEXTURE_EXPANDED_HEIGHT * sizeof(UWORD))
 #define PAIR_TABLE_BYTES        (4096 * 8)
-
-#define HAM_COLUMNS             52
-#define HAM_ROWS                52
-#define HAM_PIXEL_SIZE          4
-#define HAM_DISPLAY_WIDTH       (HAM_COLUMNS * HAM_PIXEL_SIZE)
-#define HAM_DISPLAY_HEIGHT      (HAM_ROWS * HAM_PIXEL_SIZE)
-#define HAM_FETCH_BYTES         (HAM_DISPLAY_WIDTH >> 3)
-#define HAM_PLANE_BYTES         (HAM_FETCH_BYTES * HAM_ROWS)
-#define HAM_BITMAP_BYTES        (HAM_PLANE_BYTES * 4)
-#define HAM_FRAME_COUNT         256
-#define HAM_TEMPORAL_ROW_START  2
-#define HAM_TEMPORAL_ROWS       24
-#define HAM_HALFRATE_ROW_START  26
-#define HAM_SLOW_ROW_START      49
-#define HAM_CACHED_ROW_START    52
-#define HAM_SLOW_ROWS           3
-#define HAM_DYNAMIC_ROWS        (HAM_TEMPORAL_ROW_START + HAM_TEMPORAL_ROWS + HAM_SLOW_ROWS)
-#define HAM_DYNAMIC_PLANE_BYTES (HAM_FETCH_BYTES * HAM_DYNAMIC_ROWS)
-#define HAM_DYNAMIC_BITMAP_BYTES (HAM_DYNAMIC_PLANE_BYTES * 4)
-#define HAM_CACHED_ROWS         0
-#define HAM_ROW_CACHE_PLANE_BYTES (HAM_FETCH_BYTES * HAM_CACHED_ROWS)
-#define HAM_ROW_CACHE_FRAME_BYTES (HAM_ROW_CACHE_PLANE_BYTES * 4)
-#define HAM_ROW_CACHE_BYTES     ((ULONG)HAM_ROW_CACHE_FRAME_BYTES * HAM_FRAME_COUNT)
-#define HAM_HALFRATE_ROWS       23
-#define HAM_TEMPORAL_ROW_BYTES  (HAM_FETCH_BYTES * HAM_TEMPORAL_ROWS)
-#define HAM_HALFRATE_FRAME_COUNT (HAM_FRAME_COUNT / 2)
-#define HAM_HALFRATE_ROW_CACHE_PLANE_BYTES (HAM_FETCH_BYTES * HAM_HALFRATE_ROWS)
-#define HAM_HALFRATE_ROW_CACHE_FRAME_BYTES (HAM_HALFRATE_ROW_CACHE_PLANE_BYTES * 4)
-#define HAM_HALFRATE_ROW_CACHE_BYTES ((ULONG)HAM_HALFRATE_ROW_CACHE_FRAME_BYTES * HAM_HALFRATE_FRAME_COUNT)
-#define HAM_HALFRATE_POINTER_WORDS 8
-#define HAM_HALFRATE_POINTER_FRAME_BYTES (HAM_HALFRATE_POINTER_WORDS * sizeof(UWORD))
-#define HAM_HALFRATE_POINTER_BYTES ((ULONG)HAM_HALFRATE_POINTER_FRAME_BYTES * HAM_HALFRATE_FRAME_COUNT)
-#define HAM_SLOW_ROW_CACHE_PLANE_BYTES (HAM_FETCH_BYTES * HAM_SLOW_ROWS)
-#define HAM_SLOW_ROW_CACHE_FRAME_BYTES (HAM_SLOW_ROW_CACHE_PLANE_BYTES * 4)
-#define HAM_SLOW_ROW_CACHE_BYTES ((ULONG)HAM_SLOW_ROW_CACHE_FRAME_BYTES * HAM_FRAME_COUNT)
-#define HAM_DYNAMIC_BUFFER_BYTES ((ULONG)HAM_DYNAMIC_BITMAP_BYTES * 2)
-#define HAM_COPPER_BPLPTR_WORD  23
-#define HAM_COPPER_HALFRATE_BPLPTR_WORD 373
-#define HAM_COPPER_DYNAMIC_SLOW_BPLPTR_WORD 657
-#define HAM_COPPER_CACHE_BPLPTR_WORD 0
-#define HAM_HALF_COLUMNS        (HAM_COLUMNS / 2)
-#define HAM_HALF_ROWS           (HAM_ROWS / 2)
-
-#define HAM_SCREEN_WIDTH        320
-#define HAM_SCREEN_HEIGHT       256
-#define HAM_START_X             ((HAM_SCREEN_WIDTH - HAM_DISPLAY_WIDTH) / 2)
-#define HAM_PAL_VPOS_TOP        0x2C
-#define HAM_VPOS_START          (HAM_PAL_VPOS_TOP + ((HAM_SCREEN_HEIGHT - HAM_DISPLAY_HEIGHT) / 2))
-#define HAM_VPOS_STOP           (HAM_VPOS_START + HAM_DISPLAY_HEIGHT)
-#define HAM_COPPER_WRAP_ROW     (((0x0100 - HAM_VPOS_START) + HAM_PIXEL_SIZE - 1) / HAM_PIXEL_SIZE)
-#define HAM_COPPER_WORDS        698
-#define HAM_COPPER_BYTES        (HAM_COPPER_WORDS * sizeof(UWORD))
-#define HAM_CHIP_BLOCK_BYTES    (HAM_ROW_CACHE_BYTES + HAM_HALFRATE_ROW_CACHE_BYTES + HAM_DYNAMIC_BUFFER_BYTES + (HAM_COPPER_BYTES * 2))
-#define HAM_DIWSTRT             ((UWORD)(((HAM_VPOS_START & 0xFF) << 8) | 0x0081))
-#define HAM_DIWSTOP             ((UWORD)(((HAM_VPOS_STOP & 0xFF) << 8) | 0x00C1))
-#define HAM_DDF_SHIFT_BYTES     (HAM_START_X >> 3)
-#define HAM_DDFSTRT             (0x0038 + (HAM_DDF_SHIFT_BYTES * 4))
-#define HAM_DDFSTOP             (0x00D0 - (HAM_DDF_SHIFT_BYTES * 4))
-#define HAM_REPEAT_MOD          ((UWORD)(-(WORD)HAM_FETCH_BYTES))
-#define HAM_ADVANCE_MOD         0
-
-#define HAM_DISPLAY_BPU         7
-#define HAM_CONTROL_WORD_P5     0x3333
-#define HAM_CONTROL_WORD_P6     0x6666
-
-#define HAM_ZOOM_BASE           256
-#define HAM_ZOOM_AMPLITUDE      96
-#define HAM_ANGLE_PHASE_STEP    2
-#define HAM_CENTER_U            0x4000
-#define HAM_CENTER_V            0x4000
-#define TEXTURE_SOURCE_PLANES   6
 
 #define WORD_HI(v)              ((UWORD)((ULONG)(v) >> 16))
 #define WORD_LO(v)              ((UWORD)((ULONG)(v) & 0xFFFF))
@@ -379,8 +311,8 @@ static void BuildFrameParams(void)
         const LONG OffsetU = (HAM_HALF_COLUMNS * DuDx) - (HAM_HALF_ROWS * DvDx);
         const LONG OffsetV = (HAM_HALF_COLUMNS * DvDx) + (HAM_HALF_ROWS * DuDx);
 
-        const LONG RowUDelta = ((LONG)-51 * DuDx) - DvDx;
-        const LONG RowVDelta = DuDx - ((LONG)51 * DvDx);
+        const LONG RowUDelta = -((LONG)(HAM_COLUMNS - 1) * DuDx) - DvDx;
+        const LONG RowVDelta = DuDx - ((LONG)(HAM_COLUMNS - 1) * DvDx);
         const UWORD RowU = (UWORD)(CenterU - OffsetU);
         const UWORD RowV = (UWORD)(CenterV - OffsetV);
 
@@ -390,14 +322,14 @@ static void BuildFrameParams(void)
         FrameParams[Frame].RowVDelta = (WORD)RowVDelta;
         FrameParams[Frame].RowU = RowU;
         FrameParams[Frame].RowV = RowV;
-        FrameParams[Frame].TemporalUpperU = (UWORD)(RowU - ((LONG)2 * DvDx));
-        FrameParams[Frame].TemporalUpperV = (UWORD)(RowV + ((LONG)2 * DuDx));
-        FrameParams[Frame].TemporalLowerU = (UWORD)(RowU - ((LONG)14 * DvDx));
-        FrameParams[Frame].TemporalLowerV = (UWORD)(RowV + ((LONG)14 * DuDx));
-        FrameParams[Frame].HalfRowU = (UWORD)(RowU - ((LONG)26 * DvDx));
-        FrameParams[Frame].HalfRowV = (UWORD)(RowV + ((LONG)26 * DuDx));
-        FrameParams[Frame].SlowRowU = (UWORD)(RowU - ((LONG)49 * DvDx));
-        FrameParams[Frame].SlowRowV = (UWORD)(RowV + ((LONG)49 * DuDx));
+        FrameParams[Frame].TemporalUpperU = (UWORD)(RowU - ((LONG)HAM_TEMPORAL_START_ROW * DvDx));
+        FrameParams[Frame].TemporalUpperV = (UWORD)(RowV + ((LONG)HAM_TEMPORAL_START_ROW * DuDx));
+        FrameParams[Frame].TemporalLowerU = (UWORD)(RowU - ((LONG)(HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_HALF_ROWS) * DvDx));
+        FrameParams[Frame].TemporalLowerV = (UWORD)(RowV + ((LONG)(HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_HALF_ROWS) * DuDx));
+        FrameParams[Frame].HalfRowU = (UWORD)(RowU - ((LONG)HAM_HALFRATE_START_ROW * DvDx));
+        FrameParams[Frame].HalfRowV = (UWORD)(RowV + ((LONG)HAM_HALFRATE_START_ROW * DuDx));
+        FrameParams[Frame].SlowRowU = (UWORD)(RowU - ((LONG)HAM_SLOW_START_ROW * DvDx));
+        FrameParams[Frame].SlowRowV = (UWORD)(RowV + ((LONG)HAM_SLOW_START_ROW * DuDx));
     }
 }
 
@@ -548,7 +480,7 @@ static void BuildCopperList(UWORD* List)
     /* The Copper uses three contiguous runs: dynamic rows 0-25 from the
        prepared buffer, half-rate cached rows 26-48, and slow-copied
        dynamic rows 49-51. */
-    for (UWORD Row = 0; Row < (HAM_HALFRATE_ROW_START - 1); ++Row)
+    for (UWORD Row = 0; Row < (HAM_HALFRATE_START_ROW - 1); ++Row)
     {
         CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + (Row * HAM_PIXEL_SIZE) + (HAM_PIXEL_SIZE - 1)), &WrapWaitInserted);
         CopperAppendModulo(List, &Index, HAM_ADVANCE_MOD);
@@ -556,10 +488,10 @@ static void BuildCopperList(UWORD* List)
         CopperAppendModulo(List, &Index, HAM_REPEAT_MOD);
     }
 
-    CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + (HAM_HALFRATE_ROW_START * HAM_PIXEL_SIZE)), &WrapWaitInserted);
+    CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + (HAM_HALFRATE_START_ROW * HAM_PIXEL_SIZE)), &WrapWaitInserted);
     CopperAppendBitplanePointerSlots(List, &Index);
 
-    for (UWORD Row = HAM_HALFRATE_ROW_START; Row < (HAM_SLOW_ROW_START - 1); ++Row)
+    for (UWORD Row = HAM_HALFRATE_START_ROW; Row < (HAM_SLOW_START_ROW - 1); ++Row)
     {
         CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + (Row * HAM_PIXEL_SIZE) + (HAM_PIXEL_SIZE - 1)), &WrapWaitInserted);
         CopperAppendModulo(List, &Index, HAM_ADVANCE_MOD);
@@ -567,10 +499,10 @@ static void BuildCopperList(UWORD* List)
         CopperAppendModulo(List, &Index, HAM_REPEAT_MOD);
     }
 
-    CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + (HAM_SLOW_ROW_START * HAM_PIXEL_SIZE)), &WrapWaitInserted);
+    CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + (HAM_SLOW_START_ROW * HAM_PIXEL_SIZE)), &WrapWaitInserted);
     CopperAppendBitplanePointerSlots(List, &Index);
 
-    for (UWORD Row = HAM_SLOW_ROW_START; Row < (HAM_CACHED_ROW_START - 1); ++Row)
+    for (UWORD Row = HAM_SLOW_START_ROW; Row < (HAM_CACHE_START_ROW - 1); ++Row)
     {
         CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + (Row * HAM_PIXEL_SIZE) + (HAM_PIXEL_SIZE - 1)), &WrapWaitInserted);
         CopperAppendModulo(List, &Index, HAM_ADVANCE_MOD);
@@ -603,12 +535,24 @@ static void CopperWriteBitplanePointers(UWORD* List, UWORD Index, const UBYTE* R
 static void InitCopperDynamicPointers(UWORD* List, const UBYTE* DynamicFrame)
 {
     CopperWriteBitplanePointers(List, HAM_COPPER_BPLPTR_WORD, DynamicFrame, HAM_DYNAMIC_PLANE_BYTES);
-    CopperWriteBitplanePointers(List, HAM_COPPER_DYNAMIC_SLOW_BPLPTR_WORD, DynamicFrame + ((HAM_TEMPORAL_ROW_START + HAM_TEMPORAL_ROWS) * HAM_FETCH_BYTES), HAM_DYNAMIC_PLANE_BYTES);
+    CopperWriteBitplanePointers(List, HAM_COPPER_DYNAMIC_SLOW_BPLPTR_WORD, DynamicFrame + ((HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_ROWS) * HAM_FETCH_BYTES), HAM_DYNAMIC_PLANE_BYTES);
+}
+
+static void InitCopperHalfRatePointers(UWORD* List, const UWORD* HalfPointers)
+{
+    UWORD Index = HAM_COPPER_HALFRATE_BPLPTR_WORD;
+
+    for (UWORD Plane = 0; Plane < 4; ++Plane)
+    {
+        List[Index] = *HalfPointers++;
+        List[Index + 2] = *HalfPointers++;
+        Index += 4;
+    }
 }
 
 static void InitDisplay(void)
 {
-    ChipBlock = (UBYTE*)AllocMem(HAM_CHIP_BLOCK_BYTES, MEMF_CHIP);
+    ChipBlock = (UBYTE*)AllocMem(HAM_CHIP_BLOCK_BYTES, MEMF_CHIP | MEMF_CLEAR);
     HalfRowCache = ChipBlock;
     HamBuffers[0] = HalfRowCache + HAM_HALFRATE_ROW_CACHE_BYTES;
     HamBuffers[1] = HamBuffers[0] + HAM_DYNAMIC_BITMAP_BYTES;
@@ -620,6 +564,8 @@ static void InitDisplay(void)
     BuildCopperList(CopperLists[1]);
     InitCopperDynamicPointers(CopperLists[0], HamBuffers[0]);
     InitCopperDynamicPointers(CopperLists[1], HamBuffers[1]);
+    InitCopperHalfRatePointers(CopperLists[0], HalfPointerWords);
+    InitCopperHalfRatePointers(CopperLists[1], HalfPointerWords);
 }
 
 // ---------------------------------------------------------------------
