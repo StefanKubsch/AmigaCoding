@@ -169,10 +169,9 @@ void RenderHamSlowRowsAsm(__reg("a0") UBYTE* Buffer,
                           __reg("d6") WORD RowUDelta,
                           __reg("d7") WORD RowVDelta);
 
-void CopyHamSlowRowsAndUpdateCopperAsm(__reg("a0") UBYTE* Buffer,
-                                       __reg("a1") const UBYTE* SlowRows,
-                                       __reg("a2") UWORD* List,
-                                       __reg("a3") const UWORD* HalfPointers);
+void UpdateHamCachedPointersAsm(__reg("a0") UWORD* List,
+                                 __reg("a1") const UWORD* HalfPointers,
+                                 __reg("a2") const UBYTE* SlowRows);
 
 void WaitHamLiveDoneAndSwitchCopperAsm(__reg("a0") UWORD* List);
 
@@ -477,9 +476,9 @@ static void BuildCopperList(UWORD* List)
         List[Index++] = 0x0000;
     }
 
-    /* The Copper uses three contiguous runs: dynamic rows 0-25 from the
-       prepared buffer, half-rate cached rows 26-48, and slow-copied
-       dynamic rows 49-51. */
+    // The Copper uses three contiguous runs: dynamic rows 0-25 from the
+    // prepared buffer, half-rate cached rows 26-48, and direct slow-cache
+    // rows 49-51.
     for (UWORD Row = 0; Row < (HAM_HALFRATE_START_ROW - 1); ++Row)
     {
         CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + (Row * HAM_PIXEL_SIZE) + (HAM_PIXEL_SIZE - 1)), &WrapWaitInserted);
@@ -535,7 +534,11 @@ static void CopperWriteBitplanePointers(UWORD* List, UWORD Index, const UBYTE* R
 static void InitCopperDynamicPointers(UWORD* List, const UBYTE* DynamicFrame)
 {
     CopperWriteBitplanePointers(List, HAM_COPPER_BPLPTR_WORD, DynamicFrame, HAM_DYNAMIC_PLANE_BYTES);
-    CopperWriteBitplanePointers(List, HAM_COPPER_DYNAMIC_SLOW_BPLPTR_WORD, DynamicFrame + ((HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_ROWS) * HAM_FETCH_BYTES), HAM_DYNAMIC_PLANE_BYTES);
+}
+
+static void InitCopperSlowPointers(UWORD* List, const UBYTE* SlowFrame)
+{
+    CopperWriteBitplanePointers(List, HAM_COPPER_SLOW_BPLPTR_WORD, SlowFrame, HAM_SLOW_ROW_CACHE_PLANE_BYTES);
 }
 
 static void InitCopperHalfRatePointers(UWORD* List, const UWORD* HalfPointers)
@@ -566,6 +569,8 @@ static void InitDisplay(void)
     InitCopperDynamicPointers(CopperLists[1], HamBuffers[1]);
     InitCopperHalfRatePointers(CopperLists[0], HalfPointerWords);
     InitCopperHalfRatePointers(CopperLists[1], HalfPointerWords);
+    InitCopperSlowPointers(CopperLists[0], SlowRowCache);
+    InitCopperSlowPointers(CopperLists[1], SlowRowCache);
 }
 
 // ---------------------------------------------------------------------
@@ -637,7 +642,7 @@ int main(void)
         RenderHamLiveRowsAsm(Ham0, TextureCellsMid, UOffsetMid, PairTablesBase, Params->RowU, Params->RowV, DuDx, DvDx, RowUDelta, RowVDelta);
         CopyHamTemporalLowerRowsAsm(Ham0, Ham1);
         RenderHamTemporalUpperRowsAsm(Ham0, TextureCellsMid, UOffsetMid, PairTablesBase, Params->TemporalUpperU, Params->TemporalUpperV, DuDx, DvDx, RowUDelta, RowVDelta);
-        CopyHamSlowRowsAndUpdateCopperAsm(Ham0, SlowFrame, Copper0, HalfPointers);
+        UpdateHamCachedPointersAsm(Copper0, HalfPointers, SlowFrame);
         DBG_COLOR(0x0F0);
 
         ++Params;
@@ -654,7 +659,7 @@ int main(void)
             RenderHamLiveRowsAsm(Ham1, TextureCellsMid, UOffsetMid, PairTablesBase, Params->RowU, Params->RowV, DuDxOdd, DvDxOdd, RowUDeltaOdd, RowVDeltaOdd);
             CopyHamTemporalUpperRowsAsm(Ham1, Ham0);
             RenderHamTemporalLowerRowsAsm(Ham1, TextureCellsMid, UOffsetMid, PairTablesBase, Params->TemporalLowerU, Params->TemporalLowerV, DuDxOdd, DvDxOdd, RowUDeltaOdd, RowVDeltaOdd);
-            CopyHamSlowRowsAndUpdateCopperAsm(Ham1, SlowFrame, Copper1, HalfPointers);
+            UpdateHamCachedPointersAsm(Copper1, HalfPointers, SlowFrame);
             DBG_COLOR(0x0F0);
         }
 

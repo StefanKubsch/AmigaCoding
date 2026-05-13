@@ -14,13 +14,13 @@ HAM_TEMPORAL_START_ROW                   equ	2          ; first temporal dynamic
 HAM_TEMPORAL_ROWS                        equ	24         ; number of temporal dynamic rows
 HAM_TEMPORAL_HALF_ROWS                   equ	12         ; number of rows in one temporal half
 HAM_HALFRATE_START_ROW                   equ	26         ; first half-rate cached row
-HAM_SLOW_START_ROW                       equ	49         ; first slow-copied row
+HAM_SLOW_START_ROW                       equ	49         ; first direct slow-cache row
 HAM_CACHE_START_ROW                      equ	52         ; cache run disabled after display area
-HAM_SLOW_ROWS                            equ	3          ; number of slow-copied rows per frame
+HAM_SLOW_ROWS                            equ	3          ; number of direct slow-cache rows per frame
 HAM_CACHE_ROWS                           equ	0          ; no full-rate cached bottom rows
-HAM_DYNAMIC_ROWS                         equ	29         ; compact dynamic rows per frame
-HAM_DYNAMIC_PLANE_BYTES                  equ	754        ; bytes per compact dynamic bitplane
-HAM_DYNAMIC_BITMAP_BYTES                 equ	3016       ; bytes per compact dynamic bitmap
+HAM_DYNAMIC_ROWS                         equ	26         ; compact live and temporal rows per frame
+HAM_DYNAMIC_PLANE_BYTES                  equ	676        ; bytes per compact dynamic bitplane
+HAM_DYNAMIC_BITMAP_BYTES                 equ	2704       ; bytes per compact dynamic bitmap
 HAM_ROW_CACHE_PLANE_BYTES                equ	0          ; disabled full-rate cache plane bytes
 HAM_ROW_CACHE_FRAME_BYTES                equ	0          ; disabled full-rate cache frame bytes
 HAM_ROW_CACHE_BYTES                      equ	0          ; disabled full-rate cache bytes
@@ -38,20 +38,19 @@ HAM_SLOW_PLANE_BYTES                     equ	78         ; bytes per slow compact
 HAM_SLOW_ROW_CACHE_PLANE_BYTES           equ	78         ; bytes per slow cache bitplane
 HAM_SLOW_ROW_CACHE_FRAME_BYTES           equ	312        ; bytes per slow cache frame
 HAM_SLOW_ROW_CACHE_BYTES                 equ	79872      ; bytes for all slow cache frames
-HAM_DYNAMIC_BUFFER_BYTES                 equ	6032       ; bytes for both dynamic buffers
+HAM_DYNAMIC_BUFFER_BYTES                 equ	5408       ; bytes for both dynamic buffers
 HAM_TEMPORAL_UPPER_DEST_OFFSET           equ	52         ; compact row 2 byte offset in dynamic planes
 HAM_TEMPORAL_LOWER_DEST_OFFSET           equ	364        ; compact row 14 byte offset in dynamic planes
-HAM_SLOW_DEST_OFFSET                     equ	676        ; compact slow-row offset in dynamic planes
 HAM_COPPER_BPLPTR_WORD                   equ	23         ; value slot for initial dynamic row pointers
 HAM_COPPER_HALFRATE_BPLPTR_WORD          equ	373        ; value slot for half-rate row pointers
 HAM_COPPER_HALFRATE_BPLPTR_BYTES         equ	746        ; byte slot for half-rate row pointers
-HAM_COPPER_DYNAMIC_SLOW_BPLPTR_WORD      equ	657        ; value slot for dynamic slow row pointers
-HAM_COPPER_DYNAMIC_SLOW_BPLPTR_BYTES     equ	1314       ; byte slot for dynamic slow row pointers
+HAM_COPPER_SLOW_BPLPTR_WORD              equ	657        ; value slot for direct slow-cache row pointers
+HAM_COPPER_SLOW_BPLPTR_BYTES             equ	1314       ; byte slot for direct slow-cache row pointers
 HAM_COPPER_CACHE_BPLPTR_WORD             equ	0          ; full-rate cache pointer slot unused
 HAM_COPPER_CACHE_BPLPTR_BYTES            equ	0          ; full-rate cache pointer byte slot unused
 HAM_COPPER_WORDS                         equ	698        ; copper list words per buffer
 HAM_COPPER_BYTES                         equ	1396       ; copper list bytes per buffer
-HAM_CHIP_BLOCK_BYTES                     equ	315000     ; total chip block bytes
+HAM_CHIP_BLOCK_BYTES                     equ	314376     ; total chip block bytes
 HAM_HALF_COLUMNS                         equ	26         ; half of the HAM cell columns
 HAM_HALF_ROWS                            equ	26         ; half of the HAM cell rows
 HAM_SCREEN_WIDTH                         equ	320        ; target screen width
@@ -74,7 +73,7 @@ HAM_CONTROL_WORD_P6                      equ	$6666      ; BPL6DAT HAM control pa
 HAM_CORE_DONE_LOW                        equ	$4C        ; low byte after dynamic rows 0-1 are off-screen
 HAM_TEMPORAL_UPPER_DONE_LOW              equ	$7C        ; low byte after temporal rows 2-13 are off-screen
 HAM_TEMPORAL_DONE_LOW                    equ	$AC        ; low byte after temporal rows 2-25 are off-screen
-HAM_DYNAMIC_DONE_LOW                     equ	$14        ; low byte after slow rows 49-51 are safely past
+HAM_SLOW_DONE_LOW                        equ	$14        ; low byte after direct slow-cache rows are safely past
 HAM_ZOOM_BASE                            equ	256        ; base zoom factor
 HAM_ZOOM_AMPLITUDE                       equ	96         ; zoom sine amplitude
 HAM_ANGLE_PHASE_STEP                     equ	2          ; phase step per frame
@@ -86,9 +85,7 @@ BLIT_TEMPORAL_WIDE_SIZE                  equ	$0100      ; 4 planes, 64-word chun
 BLIT_TEMPORAL_TAIL_SIZE                  equ	$011C      ; 4 planes, 28-word tail chunk
 BLIT_TEMPORAL_WIDE_BYTES                 equ	128        ; byte count of one 64-word temporal chunk
 BLIT_TEMPORAL_TAIL_BYTES                 equ	56         ; byte count of the final temporal chunk
-BLIT_TEMPORAL_WIDE_MOD                   equ	626        ; next plane after wide chunk
-BLIT_TEMPORAL_TAIL_MOD                   equ	698        ; next plane after tail chunk
-BLIT_TEMPORAL_WIDE_MOD_LONG              equ	$02720272  ; source and destination wide modulos
-BLIT_TEMPORAL_TAIL_MOD_LONG              equ	$02BA02BA  ; source and destination tail modulos
-BLIT_SLOW_SIZE                           equ	$0127      ; 4 planes, 39 words width = 312 bytes total
-BLIT_SLOW_DMOD                           equ	676        ; skip from slow block to next dynamic plane
+BLIT_TEMPORAL_WIDE_MOD                   equ	548        ; next plane after wide chunk
+BLIT_TEMPORAL_TAIL_MOD                   equ	620        ; next plane after tail chunk
+BLIT_TEMPORAL_WIDE_MOD_LONG              equ	$02240224  ; source and destination wide modulos
+BLIT_TEMPORAL_TAIL_MOD_LONG              equ	$026C026C  ; source and destination tail modulos

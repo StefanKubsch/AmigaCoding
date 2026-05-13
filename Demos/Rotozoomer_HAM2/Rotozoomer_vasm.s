@@ -2,8 +2,8 @@
 ;* 4x4 HAM7 BPLDAT Quirk Rotozoomer ASM Renderer                         *
 ;*                                                                       *
 ;* 52x52 hybrid row cache renderer. Rows 26-48 are cached at half-rate.  *
-;* Rows 49-51 are Slow-copied; runtime draws rows 0-1 and splits 2-25.   *
-;* No full-rate bottom cache is used in this version.                    *
+;* Rows 49-51 are displayed directly from a slow-row cache via Copper.    *
+;* Runtime draws rows 0-1 and splits rows 2-25.                           *
 ;* BPL5DAT/BPL6DAT control words are handled by the Copperlist in C.     *
 ;*************************************************************************
 
@@ -38,43 +38,53 @@ _WaitHamLiveDoneAndSwitchCopperAsm::
 .done:
         rts                               ; return to C
 
-; void CopyHamSlowRowsAndUpdateCopperAsm(a0=DynamicFrame, a1=SlowRows, a2=CopperList, a3=HalfPointers)
-_CopyHamSlowRowsAndUpdateCopperAsm::
-        move.l  a0,d0                    ; keep dynamic-frame pointer in scratch data register
-        move.l  a1,d1                    ; keep slow-row source pointer in scratch data register
-        movea.l a2,a0                    ; use scratch address register for copper pointer updates
-        movea.l a3,a1                    ; use scratch address register for half-rate pointer table
-        lea     HAM_COPPER_HALFRATE_BPLPTR_BYTES(a0),a0 ; get half-rate pointer value slot
-        move.w  (a1),(a0)                ; write plane 0 high word from prebuilt table
-        move.w  2(a1),4(a0)              ; write plane 0 low word from prebuilt table
-        move.w  4(a1),8(a0)              ; write plane 1 high word from prebuilt table
-        move.w  6(a1),12(a0)             ; write plane 1 low word from prebuilt table
-        move.w  8(a1),16(a0)             ; write plane 2 high word from prebuilt table
-        move.w  10(a1),20(a0)            ; write plane 2 low word from prebuilt table
-        move.w  12(a1),24(a0)            ; write plane 3 high word from prebuilt table
-        move.w  14(a1),28(a0)            ; write plane 3 low word from prebuilt table
-        lea     CUSTOMREGS,a0             ; use custom base for beam and blitter access
-        btst.b  #0,(VPOSR+1-CUSTOMREGS,a0) ; test PAL line bit 8 before touching dynamic slow rows
-        bne.s   .wait_dynamic_low         ; after line 255: only low-byte safety remains
-        cmp.b   #HAM_CORE_DONE_LOW,(VPOSR+2-CUSTOMREGS,a0) ; detect wrap into the next frame
-        blo.s   .dynamic_safe             ; copying is safe after the old frame wrapped away
-.wait_dynamic_high:
-        btst.b  #0,(VPOSR+1-CUSTOMREGS,a0) ; wait for the row-49 slow area after line 255
-        beq.s   .wait_dynamic_high        ; stay while the beam is before the wrap line
-.wait_dynamic_low:
-        cmp.b   #HAM_DYNAMIC_DONE_LOW,(VPOSR+2-CUSTOMREGS,a0) ; wait for first line below slow rows
-        blo.s   .wait_dynamic_low         ; stay while the beam still reads slow rows
-.dynamic_safe:
-        move.w  #BLTPRI_SET,(DMACON-CUSTOMREGS,a0) ; give blitter priority while this routine waits
-        add.l   #HAM_SLOW_DEST_OFFSET,d0  ; d0 = destination slow-row address in dynamic frame
-.bws0:  btst.b  #DMAB_BLITTER,(DMACONR-CUSTOMREGS,a0) ; wait for any previous blit to finish
-        bne.s   .bws0                     ; loop while busy
-        move.l  #BLIT_SLOW_DMOD,(BLTAMOD-CUSTOMREGS,a0) ; source modulo 0, destination skips to next plane
-        move.l  d1,(BLTAPTH-CUSTOMREGS,a0) ; write source pointer for all slow planes
-        move.l  d0,(BLTDPTH-CUSTOMREGS,a0) ; write destination pointer for all slow planes
-        move.w  #BLTPRI_CLR,(DMACON-CUSTOMREGS,a0) ; let the slow copy overlap with CPU work
-        move.w  #BLIT_SLOW_SIZE,(BLTSIZE-CUSTOMREGS,a0) ; fire all four slow planes in one blit
-        rts                              ; slow-row blit runs in parallel with CPU
+; void UpdateHamCachedPointersAsm(a0=CopperList, a1=HalfPointers, a2=SlowRows)
+_UpdateHamCachedPointersAsm::
+	move.l	a0,d0					; keep copper-list base for the slow pointer slot
+	lea	HAM_COPPER_HALFRATE_BPLPTR_BYTES(a0),a0	; get half-rate pointer value slot
+	move.w	(a1),(a0)				; write plane 0 high word from prebuilt table
+	move.w	2(a1),4(a0)				; write plane 0 low word from prebuilt table
+	move.w	4(a1),8(a0)				; write plane 1 high word from prebuilt table
+	move.w	6(a1),12(a0)				; write plane 1 low word from prebuilt table
+	move.w	8(a1),16(a0)				; write plane 2 high word from prebuilt table
+	move.w	10(a1),20(a0)			; write plane 2 low word from prebuilt table
+	move.w	12(a1),24(a0)			; write plane 3 high word from prebuilt table
+	move.w	14(a1),28(a0)			; write plane 3 low word from prebuilt table
+	lea	CUSTOMREGS,a0				; use custom base for the slow-cache copper guard
+	btst.b	#0,(VPOSR+1-CUSTOMREGS,a0)	; test PAL line bit 8 before touching slow pointer slots
+	bne.s	.wait_slow_low			; after line 255: only low-byte safety remains
+	cmp.b	#HAM_CORE_DONE_LOW,(VPOSR+2-CUSTOMREGS,a0)	; detect wrap into the next frame
+	blo.s	.slow_cache_safe		; updating is safe after the old frame wrapped away
+.wait_slow_high:
+	btst.b	#0,(VPOSR+1-CUSTOMREGS,a0)	; wait for the row-49 slow area after line 255
+	beq.s	.wait_slow_high		; stay while the beam is before the wrap line
+.wait_slow_low:
+	cmp.b	#HAM_SLOW_DONE_LOW,(VPOSR+2-CUSTOMREGS,a0)	; wait for first line below slow rows
+	blo.s	.wait_slow_low		; stay while the beam still reads slow rows
+.slow_cache_safe:
+	movea.l	d0,a0					; restore copper-list base for slow cache pointers
+	lea	HAM_COPPER_SLOW_BPLPTR_BYTES(a0),a0	; get slow-cache pointer value slot
+	move.l	a2,d0					; d0 = slow plane 0 pointer
+	move.l	d0,d1					; copy pointer for high-word extraction
+	swap	d1					; put high word into low word
+	move.w	d1,(a0)				; write plane 0 high word
+	move.w	d0,4(a0)				; write plane 0 low word
+	add.l	#HAM_SLOW_ROW_CACHE_PLANE_BYTES,d0	; advance to slow plane 1
+	move.l	d0,d1					; copy pointer for high-word extraction
+	swap	d1					; put high word into low word
+	move.w	d1,8(a0)				; write plane 1 high word
+	move.w	d0,12(a0)				; write plane 1 low word
+	add.l	#HAM_SLOW_ROW_CACHE_PLANE_BYTES,d0	; advance to slow plane 2
+	move.l	d0,d1					; copy pointer for high-word extraction
+	swap	d1					; put high word into low word
+	move.w	d1,16(a0)				; write plane 2 high word
+	move.w	d0,20(a0)				; write plane 2 low word
+	add.l	#HAM_SLOW_ROW_CACHE_PLANE_BYTES,d0	; advance to slow plane 3
+	move.l	d0,d1					; copy pointer for high-word extraction
+	swap	d1					; put high word into low word
+	move.w	d1,24(a0)				; write plane 3 high word
+	move.w	d0,28(a0)				; write plane 3 low word
+	rts						; return without any slow-row blit
 
 ; void CopyHamTemporalUpperRowsAsm(a0=TargetDynamicFrame, a1=SourceDynamicFrame)
 ; Uses blitter for A->D copy of upper temporal half (rows 2-13), all 4 planes.
@@ -245,9 +255,9 @@ _RenderHamSlowRowsAsm::
         move.w  d7,(a5)                  ; patch row V delta from frame params
         moveq   #HAM_SLOW_ROWS-1,d5      ; d5 = slow rows remaining after current row
         movea.l a0,a3                    ; a3 = slow plane 0 write pointer
-        lea     HAM_SLOW_PLANE_BYTES(a3),a4 ; a4 = slow plane 1 write pointer
-        lea     HAM_SLOW_PLANE_BYTES(a4),a5 ; a5 = slow plane 2 write pointer
-        lea     HAM_SLOW_PLANE_BYTES(a5),a0 ; a0 = slow plane 3 write pointer
+        lea     HAM_SLOW_ROW_CACHE_PLANE_BYTES(a3),a4 ; a4 = slow plane 1 write pointer
+        lea     HAM_SLOW_ROW_CACHE_PLANE_BYTES(a4),a5 ; a5 = slow plane 2 write pointer
+        lea     HAM_SLOW_ROW_CACHE_PLANE_BYTES(a5),a0 ; a0 = slow plane 3 write pointer
         bra.w   RenderHamRowsCore         ; render rows through the shared inline core
 
 ; Shared multi-row renderer. It keeps the row body inline and uses d5 as row counter.

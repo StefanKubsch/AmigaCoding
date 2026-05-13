@@ -17,7 +17,7 @@ HAM_SLOW_START_ROW = 49
 HAM_CACHE_START_ROW = 52
 HAM_SLOW_ROWS = HAM_ROWS - HAM_SLOW_START_ROW
 HAM_CACHE_ROWS = 0
-HAM_DYNAMIC_ROWS = HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_ROWS + HAM_SLOW_ROWS
+HAM_DYNAMIC_ROWS = HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_ROWS
 HAM_HALFRATE_ROWS = HAM_SLOW_START_ROW - HAM_HALFRATE_START_ROW
 HAM_HALFRATE_FRAME_COUNT = HAM_FRAME_COUNT // 2
 HAM_SCREEN_WIDTH = 320
@@ -51,11 +51,9 @@ HAM_SLOW_ROW_CACHE_BYTES = HAM_SLOW_ROW_CACHE_FRAME_BYTES * HAM_FRAME_COUNT
 HAM_DYNAMIC_BUFFER_BYTES = HAM_DYNAMIC_BITMAP_BYTES * 2
 HAM_TEMPORAL_UPPER_DEST_OFFSET = HAM_TEMPORAL_START_ROW * HAM_FETCH_BYTES
 HAM_TEMPORAL_LOWER_DEST_OFFSET = (HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_HALF_ROWS) * HAM_FETCH_BYTES
-HAM_SLOW_DEST_OFFSET = (HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_ROWS) * HAM_FETCH_BYTES
-
 HAM_COPPER_BPLPTR_WORD = 23
 HAM_COPPER_HALFRATE_BPLPTR_WORD = 373
-HAM_COPPER_DYNAMIC_SLOW_BPLPTR_WORD = 657
+HAM_COPPER_SLOW_BPLPTR_WORD = 657
 HAM_COPPER_CACHE_BPLPTR_WORD = 0
 HAM_COPPER_WORDS = 698
 HAM_COPPER_BYTES = HAM_COPPER_WORDS * 2
@@ -75,11 +73,11 @@ DEFS = [
     ("HAM_TEMPORAL_ROWS", HAM_TEMPORAL_ROWS, "number of temporal dynamic rows", "dec"),
     ("HAM_TEMPORAL_HALF_ROWS", HAM_TEMPORAL_HALF_ROWS, "number of rows in one temporal half", "dec"),
     ("HAM_HALFRATE_START_ROW", HAM_HALFRATE_START_ROW, "first half-rate cached row", "dec"),
-    ("HAM_SLOW_START_ROW", HAM_SLOW_START_ROW, "first slow-copied row", "dec"),
+    ("HAM_SLOW_START_ROW", HAM_SLOW_START_ROW, "first direct slow-cache row", "dec"),
     ("HAM_CACHE_START_ROW", HAM_CACHE_START_ROW, "cache run disabled after display area", "dec"),
-    ("HAM_SLOW_ROWS", HAM_SLOW_ROWS, "number of slow-copied rows per frame", "dec"),
+    ("HAM_SLOW_ROWS", HAM_SLOW_ROWS, "number of direct slow-cache rows per frame", "dec"),
     ("HAM_CACHE_ROWS", HAM_CACHE_ROWS, "no full-rate cached bottom rows", "dec"),
-    ("HAM_DYNAMIC_ROWS", HAM_DYNAMIC_ROWS, "compact dynamic rows per frame", "dec"),
+    ("HAM_DYNAMIC_ROWS", HAM_DYNAMIC_ROWS, "compact live and temporal rows per frame", "dec"),
     ("HAM_DYNAMIC_PLANE_BYTES", HAM_DYNAMIC_PLANE_BYTES, "bytes per compact dynamic bitplane", "dec"),
     ("HAM_DYNAMIC_BITMAP_BYTES", HAM_DYNAMIC_BITMAP_BYTES, "bytes per compact dynamic bitmap", "dec"),
     ("HAM_ROW_CACHE_PLANE_BYTES", HAM_ROW_CACHE_PLANE_BYTES, "disabled full-rate cache plane bytes", "dec"),
@@ -102,12 +100,11 @@ DEFS = [
     ("HAM_DYNAMIC_BUFFER_BYTES", HAM_DYNAMIC_BUFFER_BYTES, "bytes for both dynamic buffers", "dec"),
     ("HAM_TEMPORAL_UPPER_DEST_OFFSET", HAM_TEMPORAL_UPPER_DEST_OFFSET, "compact row 2 byte offset in dynamic planes", "dec"),
     ("HAM_TEMPORAL_LOWER_DEST_OFFSET", HAM_TEMPORAL_LOWER_DEST_OFFSET, "compact row 14 byte offset in dynamic planes", "dec"),
-    ("HAM_SLOW_DEST_OFFSET", HAM_SLOW_DEST_OFFSET, "compact slow-row offset in dynamic planes", "dec"),
     ("HAM_COPPER_BPLPTR_WORD", HAM_COPPER_BPLPTR_WORD, "value slot for initial dynamic row pointers", "dec"),
     ("HAM_COPPER_HALFRATE_BPLPTR_WORD", HAM_COPPER_HALFRATE_BPLPTR_WORD, "value slot for half-rate row pointers", "dec"),
     ("HAM_COPPER_HALFRATE_BPLPTR_BYTES", HAM_COPPER_HALFRATE_BPLPTR_WORD * 2, "byte slot for half-rate row pointers", "dec"),
-    ("HAM_COPPER_DYNAMIC_SLOW_BPLPTR_WORD", HAM_COPPER_DYNAMIC_SLOW_BPLPTR_WORD, "value slot for dynamic slow row pointers", "dec"),
-    ("HAM_COPPER_DYNAMIC_SLOW_BPLPTR_BYTES", HAM_COPPER_DYNAMIC_SLOW_BPLPTR_WORD * 2, "byte slot for dynamic slow row pointers", "dec"),
+    ("HAM_COPPER_SLOW_BPLPTR_WORD", HAM_COPPER_SLOW_BPLPTR_WORD, "value slot for direct slow-cache row pointers", "dec"),
+    ("HAM_COPPER_SLOW_BPLPTR_BYTES", HAM_COPPER_SLOW_BPLPTR_WORD * 2, "byte slot for direct slow-cache row pointers", "dec"),
     ("HAM_COPPER_CACHE_BPLPTR_WORD", HAM_COPPER_CACHE_BPLPTR_WORD, "full-rate cache pointer slot unused", "dec"),
     ("HAM_COPPER_CACHE_BPLPTR_BYTES", HAM_COPPER_CACHE_BPLPTR_WORD * 2, "full-rate cache pointer byte slot unused", "dec"),
     ("HAM_COPPER_WORDS", HAM_COPPER_WORDS, "copper list words per buffer", "dec"),
@@ -135,7 +132,7 @@ DEFS = [
     ("HAM_CORE_DONE_LOW", (HAM_VPOS_START + (HAM_LIVE_ROWS * HAM_PIXEL_SIZE)) & 0xFF, "low byte after dynamic rows 0-1 are off-screen", "hex2"),
     ("HAM_TEMPORAL_UPPER_DONE_LOW", (HAM_VPOS_START + ((HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_HALF_ROWS) * HAM_PIXEL_SIZE)) & 0xFF, "low byte after temporal rows 2-13 are off-screen", "hex2"),
     ("HAM_TEMPORAL_DONE_LOW", (HAM_VPOS_START + ((HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_ROWS) * HAM_PIXEL_SIZE)) & 0xFF, "low byte after temporal rows 2-25 are off-screen", "hex2"),
-    ("HAM_DYNAMIC_DONE_LOW", (HAM_VPOS_START + (HAM_ROWS * HAM_PIXEL_SIZE)) & 0xFF, "low byte after slow rows 49-51 are safely past", "hex2"),
+    ("HAM_SLOW_DONE_LOW", (HAM_VPOS_START + (HAM_ROWS * HAM_PIXEL_SIZE)) & 0xFF, "low byte after direct slow-cache rows are safely past", "hex2"),
     ("HAM_ZOOM_BASE", 256, "base zoom factor", "dec"),
     ("HAM_ZOOM_AMPLITUDE", 96, "zoom sine amplitude", "dec"),
     ("HAM_ANGLE_PHASE_STEP", 2, "phase step per frame", "dec"),
@@ -151,8 +148,6 @@ DEFS = [
     ("BLIT_TEMPORAL_TAIL_MOD", HAM_DYNAMIC_PLANE_BYTES - 56, "next plane after tail chunk", "dec"),
     ("BLIT_TEMPORAL_WIDE_MOD_LONG", ((HAM_DYNAMIC_PLANE_BYTES - 128) << 16) | (HAM_DYNAMIC_PLANE_BYTES - 128), "source and destination wide modulos", "hex8"),
     ("BLIT_TEMPORAL_TAIL_MOD_LONG", ((HAM_DYNAMIC_PLANE_BYTES - 56) << 16) | (HAM_DYNAMIC_PLANE_BYTES - 56), "source and destination tail modulos", "hex8"),
-    ("BLIT_SLOW_SIZE", (4 << 6) | 39, "4 planes, 39 words width = 312 bytes total", "hex4"),
-    ("BLIT_SLOW_DMOD", HAM_DYNAMIC_PLANE_BYTES - HAM_SLOW_PLANE_BYTES, "skip from slow block to next dynamic plane", "dec"),
 ]
 
 
