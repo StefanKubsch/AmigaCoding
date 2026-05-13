@@ -99,6 +99,7 @@ Copy "cygwin1.dll" from "Development" to "C:\Windows"
 You´re done!
 
 All you need to test your programs is an editor or IDE (I prefer Visual Studio Code, https://code.visualstudio.com/), an emulator like WinUAE (https://www.winuae.net/), with a set up Amiga OS installation. Or transfer your programs to a "real" Amiga via CF Card, Network etc.
+
 There is some additional use of Python; the needed .py files are included, but are only used for Tooling (creation of files, Lookuptables etc).
 
 ---
