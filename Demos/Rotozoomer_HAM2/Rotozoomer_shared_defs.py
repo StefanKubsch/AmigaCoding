@@ -3,14 +3,14 @@
 
 from pathlib import Path
 
-HAM_COLUMNS = 52
+HAM_COLUMNS = 56
 HAM_ROWS = 52
 HAM_PIXEL_SIZE = 4
 HAM_FETCH_BYTES = (HAM_COLUMNS * HAM_PIXEL_SIZE) >> 3
 HAM_FRAME_COUNT = 256
 HAM_LIVE_ROWS = 2
 HAM_TEMPORAL_START_ROW = 2
-HAM_TEMPORAL_ROWS = 24
+HAM_TEMPORAL_ROWS = 26
 HAM_TEMPORAL_HALF_ROWS = HAM_TEMPORAL_ROWS // 2
 HAM_HALFRATE_START_ROW = HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_ROWS
 HAM_SLOW_START_ROW = 49
@@ -51,13 +51,76 @@ HAM_SLOW_ROW_CACHE_BYTES = HAM_SLOW_ROW_CACHE_FRAME_BYTES * HAM_FRAME_COUNT
 HAM_DYNAMIC_BUFFER_BYTES = HAM_DYNAMIC_BITMAP_BYTES * 2
 HAM_TEMPORAL_UPPER_DEST_OFFSET = HAM_TEMPORAL_START_ROW * HAM_FETCH_BYTES
 HAM_TEMPORAL_LOWER_DEST_OFFSET = (HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_HALF_ROWS) * HAM_FETCH_BYTES
-HAM_COPPER_BPLPTR_WORD = 23
-HAM_COPPER_HALFRATE_BPLPTR_WORD = 373
-HAM_COPPER_SLOW_BPLPTR_WORD = 657
+
+
+def copper_layout():
+    index = 0
+    wrapped = False
+
+    def append_wait(vpos):
+        nonlocal index, wrapped
+        if (vpos > 0x00FF) and not wrapped:
+            index += 2
+            wrapped = True
+        index += 2
+
+    def append_modulo():
+        nonlocal index
+        index += 4
+
+    def append_bplptr_slots():
+        nonlocal index
+        index += 16
+
+    index += 8                         # DIW/DDF registers
+    index += 10                        # BPLCON and modulo registers
+    index += 4                         # HAM control words
+
+    bplptr_word = index + 1
+    append_bplptr_slots()
+    index += 32                        # COLOR00-COLOR15
+
+    for row in range(HAM_HALFRATE_START_ROW - 1):
+        append_wait(HAM_VPOS_START + (row * HAM_PIXEL_SIZE) + (HAM_PIXEL_SIZE - 1))
+        append_modulo()
+        append_wait(HAM_VPOS_START + ((row + 1) * HAM_PIXEL_SIZE))
+        append_modulo()
+
+    append_wait(HAM_VPOS_START + (HAM_HALFRATE_START_ROW * HAM_PIXEL_SIZE))
+    halfrate_bplptr_word = index + 1
+    append_bplptr_slots()
+
+    for row in range(HAM_HALFRATE_START_ROW, HAM_SLOW_START_ROW - 1):
+        append_wait(HAM_VPOS_START + (row * HAM_PIXEL_SIZE) + (HAM_PIXEL_SIZE - 1))
+        append_modulo()
+        append_wait(HAM_VPOS_START + ((row + 1) * HAM_PIXEL_SIZE))
+        append_modulo()
+
+    append_wait(HAM_VPOS_START + (HAM_SLOW_START_ROW * HAM_PIXEL_SIZE))
+    slow_bplptr_word = index + 1
+    append_bplptr_slots()
+
+    for row in range(HAM_SLOW_START_ROW, HAM_CACHE_START_ROW - 1):
+        append_wait(HAM_VPOS_START + (row * HAM_PIXEL_SIZE) + (HAM_PIXEL_SIZE - 1))
+        append_modulo()
+        append_wait(HAM_VPOS_START + ((row + 1) * HAM_PIXEL_SIZE))
+        append_modulo()
+
+    index += 2                         # copper end marker
+    return bplptr_word, halfrate_bplptr_word, slow_bplptr_word, index
+
+
+HAM_COPPER_BPLPTR_WORD, HAM_COPPER_HALFRATE_BPLPTR_WORD, HAM_COPPER_SLOW_BPLPTR_WORD, HAM_COPPER_WORDS = copper_layout()
 HAM_COPPER_CACHE_BPLPTR_WORD = 0
-HAM_COPPER_WORDS = 698
 HAM_COPPER_BYTES = HAM_COPPER_WORDS * 2
-HAM_CHIP_BLOCK_BYTES = HAM_ROW_CACHE_BYTES + HAM_HALFRATE_ROW_CACHE_BYTES + HAM_DYNAMIC_BUFFER_BYTES + (HAM_COPPER_BYTES * 2)
+HAM_CHIP_BLOCK_BYTES = HAM_DYNAMIC_BUFFER_BYTES + (HAM_COPPER_BYTES * 2)
+HAM_TOTAL_CHIP_BYTES = HAM_HALFRATE_ROW_CACHE_BYTES + HAM_SLOW_ROW_CACHE_BYTES + HAM_CHIP_BLOCK_BYTES
+
+BLIT_TEMPORAL_WIDE_BYTES = 128
+BLIT_TEMPORAL_WIDE_WORDS = 0
+BLIT_TEMPORAL_HALF_BYTES = HAM_FETCH_BYTES * HAM_TEMPORAL_HALF_ROWS
+BLIT_TEMPORAL_TAIL_BYTES = BLIT_TEMPORAL_HALF_BYTES - (BLIT_TEMPORAL_WIDE_BYTES * 2)
+BLIT_TEMPORAL_TAIL_WORDS = BLIT_TEMPORAL_TAIL_BYTES // 2
 
 DEFS = [
     ("HAM_COLUMNS", HAM_COLUMNS, "number of HAM cells per row", "dec"),
@@ -99,7 +162,7 @@ DEFS = [
     ("HAM_SLOW_ROW_CACHE_BYTES", HAM_SLOW_ROW_CACHE_BYTES, "bytes for all slow cache frames", "dec"),
     ("HAM_DYNAMIC_BUFFER_BYTES", HAM_DYNAMIC_BUFFER_BYTES, "bytes for both dynamic buffers", "dec"),
     ("HAM_TEMPORAL_UPPER_DEST_OFFSET", HAM_TEMPORAL_UPPER_DEST_OFFSET, "compact row 2 byte offset in dynamic planes", "dec"),
-    ("HAM_TEMPORAL_LOWER_DEST_OFFSET", HAM_TEMPORAL_LOWER_DEST_OFFSET, "compact row 14 byte offset in dynamic planes", "dec"),
+    ("HAM_TEMPORAL_LOWER_DEST_OFFSET", HAM_TEMPORAL_LOWER_DEST_OFFSET, "compact lower temporal-half byte offset in dynamic planes", "dec"),
     ("HAM_COPPER_BPLPTR_WORD", HAM_COPPER_BPLPTR_WORD, "value slot for initial dynamic row pointers", "dec"),
     ("HAM_COPPER_HALFRATE_BPLPTR_WORD", HAM_COPPER_HALFRATE_BPLPTR_WORD, "value slot for half-rate row pointers", "dec"),
     ("HAM_COPPER_HALFRATE_BPLPTR_BYTES", HAM_COPPER_HALFRATE_BPLPTR_WORD * 2, "byte slot for half-rate row pointers", "dec"),
@@ -109,7 +172,8 @@ DEFS = [
     ("HAM_COPPER_CACHE_BPLPTR_BYTES", HAM_COPPER_CACHE_BPLPTR_WORD * 2, "full-rate cache pointer byte slot unused", "dec"),
     ("HAM_COPPER_WORDS", HAM_COPPER_WORDS, "copper list words per buffer", "dec"),
     ("HAM_COPPER_BYTES", HAM_COPPER_BYTES, "copper list bytes per buffer", "dec"),
-    ("HAM_CHIP_BLOCK_BYTES", HAM_CHIP_BLOCK_BYTES, "total chip block bytes", "dec"),
+    ("HAM_CHIP_BLOCK_BYTES", HAM_CHIP_BLOCK_BYTES, "dynamic buffers plus double copper list block bytes", "dec"),
+    ("HAM_TOTAL_CHIP_BYTES", HAM_TOTAL_CHIP_BYTES, "total chip bytes allocated by the effect", "dec"),
     ("HAM_HALF_COLUMNS", HAM_COLUMNS // 2, "half of the HAM cell columns", "dec"),
     ("HAM_HALF_ROWS", HAM_ROWS // 2, "half of the HAM cell rows", "dec"),
     ("HAM_SCREEN_WIDTH", HAM_SCREEN_WIDTH, "target screen width", "dec"),
@@ -130,8 +194,8 @@ DEFS = [
     ("HAM_CONTROL_WORD_P5", 0x3333, "BPL5DAT HAM control pattern", "hex4"),
     ("HAM_CONTROL_WORD_P6", 0x6666, "BPL6DAT HAM control pattern", "hex4"),
     ("HAM_CORE_DONE_LOW", (HAM_VPOS_START + (HAM_LIVE_ROWS * HAM_PIXEL_SIZE)) & 0xFF, "low byte after dynamic rows 0-1 are off-screen", "hex2"),
-    ("HAM_TEMPORAL_UPPER_DONE_LOW", (HAM_VPOS_START + ((HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_HALF_ROWS) * HAM_PIXEL_SIZE)) & 0xFF, "low byte after temporal rows 2-13 are off-screen", "hex2"),
-    ("HAM_TEMPORAL_DONE_LOW", (HAM_VPOS_START + ((HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_ROWS) * HAM_PIXEL_SIZE)) & 0xFF, "low byte after temporal rows 2-25 are off-screen", "hex2"),
+    ("HAM_TEMPORAL_UPPER_DONE_LOW", (HAM_VPOS_START + ((HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_HALF_ROWS) * HAM_PIXEL_SIZE)) & 0xFF, "low byte after upper temporal rows are off-screen", "hex2"),
+    ("HAM_TEMPORAL_DONE_LOW", (HAM_VPOS_START + ((HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_ROWS) * HAM_PIXEL_SIZE)) & 0xFF, "low byte after temporal rows are off-screen", "hex2"),
     ("HAM_SLOW_DONE_LOW", (HAM_VPOS_START + (HAM_ROWS * HAM_PIXEL_SIZE)) & 0xFF, "low byte after direct slow-cache rows are safely past", "hex2"),
     ("HAM_ZOOM_BASE", 256, "base zoom factor", "dec"),
     ("HAM_ZOOM_AMPLITUDE", 96, "zoom sine amplitude", "dec"),
@@ -140,14 +204,14 @@ DEFS = [
     ("HAM_CENTER_V", 0x4000, "texture center V", "hex4"),
     ("BLTPRI_SET", 0x8400, "set blitter priority while CPU waits", "hex4"),
     ("BLTPRI_CLR", 0x0400, "clear blitter priority before CPU overlap", "hex4"),
-    ("BLIT_TEMPORAL_WIDE_SIZE", (4 << 6) | 0, "4 planes, 64-word chunk, width zero encodes 64", "hex4"),
-    ("BLIT_TEMPORAL_TAIL_SIZE", (4 << 6) | 28, "4 planes, 28-word tail chunk", "hex4"),
-    ("BLIT_TEMPORAL_WIDE_BYTES", 128, "byte count of one 64-word temporal chunk", "dec"),
-    ("BLIT_TEMPORAL_TAIL_BYTES", 56, "byte count of the final temporal chunk", "dec"),
-    ("BLIT_TEMPORAL_WIDE_MOD", HAM_DYNAMIC_PLANE_BYTES - 128, "next plane after wide chunk", "dec"),
-    ("BLIT_TEMPORAL_TAIL_MOD", HAM_DYNAMIC_PLANE_BYTES - 56, "next plane after tail chunk", "dec"),
-    ("BLIT_TEMPORAL_WIDE_MOD_LONG", ((HAM_DYNAMIC_PLANE_BYTES - 128) << 16) | (HAM_DYNAMIC_PLANE_BYTES - 128), "source and destination wide modulos", "hex8"),
-    ("BLIT_TEMPORAL_TAIL_MOD_LONG", ((HAM_DYNAMIC_PLANE_BYTES - 56) << 16) | (HAM_DYNAMIC_PLANE_BYTES - 56), "source and destination tail modulos", "hex8"),
+    ("BLIT_TEMPORAL_WIDE_SIZE", (4 << 6) | BLIT_TEMPORAL_WIDE_WORDS, "4 planes, 64-word chunk, width zero encodes 64", "hex4"),
+    ("BLIT_TEMPORAL_TAIL_SIZE", (4 << 6) | BLIT_TEMPORAL_TAIL_WORDS, "4 planes, temporal tail chunk", "hex4"),
+    ("BLIT_TEMPORAL_WIDE_BYTES", BLIT_TEMPORAL_WIDE_BYTES, "byte count of one 64-word temporal chunk", "dec"),
+    ("BLIT_TEMPORAL_TAIL_BYTES", BLIT_TEMPORAL_TAIL_BYTES, "byte count of the final temporal chunk", "dec"),
+    ("BLIT_TEMPORAL_WIDE_MOD", HAM_DYNAMIC_PLANE_BYTES - BLIT_TEMPORAL_WIDE_BYTES, "next plane after wide chunk", "dec"),
+    ("BLIT_TEMPORAL_TAIL_MOD", HAM_DYNAMIC_PLANE_BYTES - BLIT_TEMPORAL_TAIL_BYTES, "next plane after tail chunk", "dec"),
+    ("BLIT_TEMPORAL_WIDE_MOD_LONG", ((HAM_DYNAMIC_PLANE_BYTES - BLIT_TEMPORAL_WIDE_BYTES) << 16) | (HAM_DYNAMIC_PLANE_BYTES - BLIT_TEMPORAL_WIDE_BYTES), "source and destination wide modulos", "hex8"),
+    ("BLIT_TEMPORAL_TAIL_MOD_LONG", ((HAM_DYNAMIC_PLANE_BYTES - BLIT_TEMPORAL_TAIL_BYTES) << 16) | (HAM_DYNAMIC_PLANE_BYTES - BLIT_TEMPORAL_TAIL_BYTES), "source and destination tail modulos", "hex8"),
 ]
 
 

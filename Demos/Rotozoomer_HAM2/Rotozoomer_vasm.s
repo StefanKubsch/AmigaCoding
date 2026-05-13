@@ -1,9 +1,9 @@
 ;*************************************************************************
 ;* 4x4 HAM7 BPLDAT Quirk Rotozoomer ASM Renderer                         *
 ;*                                                                       *
-;* 52x52 hybrid row cache renderer. Rows 26-48 are cached at half-rate.  *
-;* Rows 49-51 are displayed directly from a slow-row cache via Copper.    *
-;* Runtime draws rows 0-1 and splits rows 2-25.                           *
+;* 56x52 hybrid row cache renderer. Rows 28-48 are cached at half-rate.  *
+;* Rows 49-51 are displayed directly from a split slow-row cache.          *
+;* Runtime draws rows 0-1 and splits rows 2-27.                           *
 ;* BPL5DAT/BPL6DAT control words are handled by the Copperlist in C.     *
 ;*************************************************************************
 
@@ -87,7 +87,7 @@ _UpdateHamCachedPointersAsm::
 	rts						; return without any slow-row blit
 
 ; void CopyHamTemporalUpperRowsAsm(a0=TargetDynamicFrame, a1=SourceDynamicFrame)
-; Uses blitter for A->D copy of upper temporal half (rows 2-13), all 4 planes.
+; Uses blitter for A->D copy of upper temporal half (rows 2-14), all 4 planes.
 ; Returns immediately after firing the tail chunk; the next blitter user waits as needed.
 _CopyHamTemporalUpperRowsAsm::
         lea     HAM_TEMPORAL_UPPER_DEST_OFFSET(a0),a0 ; target will start at upper temporal rows
@@ -121,7 +121,7 @@ _CopyHamTemporalUpperRowsAsm::
         rts                              ; tail blit runs in parallel with CPU
 
 ; void CopyHamTemporalLowerRowsAsm(a0=TargetDynamicFrame, a1=SourceDynamicFrame)
-; Uses blitter for A->D copy of lower temporal half (rows 14-25), all 4 planes.
+; Uses blitter for A->D copy of lower temporal half (rows 15-27), all 4 planes.
 ; Returns immediately after firing the tail chunk; the next blitter user waits as needed.
 _CopyHamTemporalLowerRowsAsm::
         lea     HAM_TEMPORAL_LOWER_DEST_OFFSET(a0),a0 ; target will start at lower temporal rows
@@ -771,6 +771,8 @@ RenderHamRowsCore:
         move.w  d1,d7                     ; pair 26: copy V for cell B
         move.b  (a2,d0.w),d7              ; pair 26: merge wrapped U byte for cell B
         move.w  (a1,d7.w),d7              ; pair 26: load RGB4 table offset for cell B
+        add.w   d2,d0                     ; pair 26: advance U to next pair
+        add.w   d3,d1                     ; pair 26: advance V to next pair
         move.l  (a6,d6.w),d4              ; pair 26: load four high-nibble plane bytes
         or.l    4(a6,d7.w),d4             ; pair 26: merge four low-nibble plane bytes
         move.b  d4,(a3)+                  ; pair 26: write plane 0 byte and advance
@@ -780,6 +782,44 @@ RenderHamRowsCore:
         move.b  d4,(a5)+                  ; pair 26: write plane 2 byte
         lsr.w   #8,d4                     ; pair 26: select plane 3 byte
         move.b  d4,(a0)+                  ; pair 26: write plane 3 byte
+
+        move.w  d1,d6                     ; pair 27: copy V for cell A
+        move.b  (a2,d0.w),d6              ; pair 27: merge wrapped U byte for cell A
+        move.w  (a1,d6.w),d6              ; pair 27: load RGB4 table offset for cell A
+        add.w   d2,d0                     ; pair 27: advance U to cell B
+        add.w   d3,d1                     ; pair 27: advance V to cell B
+        move.w  d1,d7                     ; pair 27: copy V for cell B
+        move.b  (a2,d0.w),d7              ; pair 27: merge wrapped U byte for cell B
+        move.w  (a1,d7.w),d7              ; pair 27: load RGB4 table offset for cell B
+        add.w   d2,d0                     ; pair 27: advance U to next pair
+        add.w   d3,d1                     ; pair 27: advance V to next pair
+        move.l  (a6,d6.w),d4              ; pair 27: load four high-nibble plane bytes
+        or.l    4(a6,d7.w),d4             ; pair 27: merge four low-nibble plane bytes
+        move.b  d4,(a3)+                  ; pair 27: write plane 0 byte and advance
+        lsr.w   #8,d4                     ; pair 27: select plane 1 byte
+        move.b  d4,(a4)+                  ; pair 27: write plane 1 byte
+        swap    d4                        ; pair 27: select upper plane word
+        move.b  d4,(a5)+                  ; pair 27: write plane 2 byte
+        lsr.w   #8,d4                     ; pair 27: select plane 3 byte
+        move.b  d4,(a0)+                  ; pair 27: write plane 3 byte
+
+        move.w  d1,d6                     ; pair 28: copy V for cell A
+        move.b  (a2,d0.w),d6              ; pair 28: merge wrapped U byte for cell A
+        move.w  (a1,d6.w),d6              ; pair 28: load RGB4 table offset for cell A
+        add.w   d2,d0                     ; pair 28: advance U to cell B
+        add.w   d3,d1                     ; pair 28: advance V to cell B
+        move.w  d1,d7                     ; pair 28: copy V for cell B
+        move.b  (a2,d0.w),d7              ; pair 28: merge wrapped U byte for cell B
+        move.w  (a1,d7.w),d7              ; pair 28: load RGB4 table offset for cell B
+        move.l  (a6,d6.w),d4              ; pair 28: load four high-nibble plane bytes
+        or.l    4(a6,d7.w),d4             ; pair 28: merge four low-nibble plane bytes
+        move.b  d4,(a3)+                  ; pair 28: write plane 0 byte and advance
+        lsr.w   #8,d4                     ; pair 28: select plane 1 byte
+        move.b  d4,(a4)+                  ; pair 28: write plane 1 byte
+        swap    d4                        ; pair 28: select upper plane word
+        move.b  d4,(a5)+                  ; pair 28: write plane 2 byte
+        lsr.w   #8,d4                     ; pair 28: select plane 3 byte
+        move.b  d4,(a0)+                  ; pair 28: write plane 3 byte
         dbra    d5,RenderHamRowsCoreDelta ; branch when another row follows
         movem.l (sp)+,d4-d7/a3-a6        ; restore clobbered C registers only
         rts                              ; return to C
