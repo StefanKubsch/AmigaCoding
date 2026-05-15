@@ -1,4 +1,4 @@
-How to create a bootable ADF with "make" and "amitools/xdftool" under Windows
+How to use make to build the Programm and to create a bootable ADF with "make" and "amitools/xdftool" under Windows
 
 Prerequisites:
 
@@ -12,7 +12,8 @@ Prerequisites:
 2) Add Python Scriptfolder to Path-Variable
     for example: %AppData%\Local\Python\pythoncore-3.14-64\Scripts
 
-3) Modify the example "MakeADF.mak" file to your needs and drop it in your project folder
+3) Modify the example "Makefile.mak" file to your needs and drop it (and the cmd files) in your project Folder.
 
-4) Run make
-    make -f MakeADF.mak adf
+4) Run the appropriate cmd (build/adf)
+
+

@@ -246,17 +246,19 @@ static void BuildHalfRowCache(void)
     const UWORD* const TextureCellsMid = TextureCells + 16384;
     const UBYTE* const UOffsetMid = UOffsetTableMid;
     const UBYTE* const PairTablesBase = PairTables;
+    UBYTE Phase = 0;
 
-    for (UWORD Frame = 0; Frame < HAM_FRAME_COUNT; Frame += 2)
+    for (UWORD CacheFrame = 0; CacheFrame < (HAM_FRAME_COUNT >> 1); ++CacheFrame)
     {
-        UBYTE* Bitmap = HalfFrameCacheBlock + ((ULONG)(Frame >> 1) * HAM_HALFRATE_ROW_CACHE_FRAME_BYTES);
-        const struct HamFrameParams* Params = FrameParams + Frame;
+        UBYTE* Bitmap = HalfFrameCacheBlock + ((ULONG)CacheFrame * HAM_HALFRATE_ROW_CACHE_FRAME_BYTES);
+        const struct HamFrameParams* Params = FrameParams + Phase;
         const WORD RowUDelta = (WORD)(-((LONG)(HAM_COLUMNS - 1) * Params->DuDx) - Params->DvDx);
         const WORD RowVDelta = (WORD)(Params->DuDx - ((LONG)(HAM_COLUMNS - 1) * Params->DvDx));
         const UWORD HalfRowU = (UWORD)(Params->RowU - ((LONG)HAM_HALFRATE_START_ROW * Params->DvDx));
         const UWORD HalfRowV = (UWORD)(Params->RowV + ((LONG)HAM_HALFRATE_START_ROW * Params->DuDx));
 
         RenderHamHalfRowsAsm(Bitmap, TextureCellsMid, UOffsetMid, PairTablesBase, HalfRowU, HalfRowV, Params->DuDx, Params->DvDx, RowUDelta, RowVDelta);
+        Phase = PHASE8(Phase + (HAM_ANGLE_PHASE_STEP << 1));
     }
 }
 

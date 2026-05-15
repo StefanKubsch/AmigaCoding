@@ -17,11 +17,9 @@ HAM_DYNAMIC_ROWS                         equ	18         ; compact live and tempo
 HAM_DYNAMIC_PLANE_BYTES                  equ	504        ; bytes per compact dynamic bitplane
 HAM_DYNAMIC_BITMAP_BYTES                 equ	2016       ; bytes per compact dynamic bitmap
 HAM_HALFRATE_ROWS                        equ	34         ; number of half-rate rows per cached frame
-HAM_HALFRATE_FRAME_COUNT                 equ	128        ; number of cached half-rate frames
 HAM_HALFRATE_ROW_CACHE_PLANE_BYTES       equ	952        ; bytes per half-rate cache bitplane
 HAM_HALFRATE_ROW_CACHE_FRAME_BYTES       equ	3808       ; bytes per half-rate cache frame
 HAM_HALFRATE_ROW_CACHE_BYTES             equ	487424     ; bytes for all half-rate cache frames
-HAM_DYNAMIC_BUFFER_BYTES                 equ	4032       ; bytes for both dynamic buffers
 HAM_TEMPORAL_UPPER_DEST_OFFSET           equ	56         ; compact row 2 byte offset in dynamic planes
 HAM_TEMPORAL_LOWER_DEST_OFFSET           equ	280        ; compact lower temporal-half byte offset in dynamic planes
 HAM_COPPER_BPLPTR_WORD                   equ	23         ; value slot for initial dynamic row pointers
@@ -30,18 +28,11 @@ HAM_COPPER_HALFRATE_BPLPTR_BYTES         equ	554        ; byte slot for half-rat
 HAM_COPPER_WORDS                         equ	692        ; copper list words per buffer
 HAM_COPPER_BYTES                         equ	1384       ; copper list bytes per buffer
 HAM_CHIP_BLOCK_BYTES                     equ	6800       ; dynamic buffers plus double copper list block bytes
-HAM_TOTAL_CHIP_BYTES                     equ	494224     ; total chip bytes allocated by the effect
 HAM_HALF_COLUMNS                         equ	28         ; half of the HAM cell columns
 HAM_HALF_ROWS                            equ	26         ; half of the HAM cell rows
-HAM_SCREEN_WIDTH                         equ	320        ; target screen width
-HAM_SCREEN_HEIGHT                        equ	256        ; target screen height
-HAM_START_X                              equ	48         ; HAM display x position
-HAM_PAL_VPOS_TOP                         equ	$002C      ; PAL display top line
 HAM_VPOS_START                           equ	$0044      ; first visible HAM display line
-HAM_VPOS_STOP                            equ	$0114      ; first line after HAM display
 HAM_DIWSTRT                              equ	$4481      ; display window start register value
 HAM_DIWSTOP                              equ	$14C1      ; display window stop register value
-HAM_DDF_SHIFT_BYTES                      equ	6          ; display fetch byte shift
 HAM_DDFSTRT                              equ	$0050      ; data fetch start register value
 HAM_DDFSTOP                              equ	$00B8      ; data fetch stop register value
 HAM_REPEAT_MOD                           equ	$FFE4      ; modulo for repeating a 4-line cell row

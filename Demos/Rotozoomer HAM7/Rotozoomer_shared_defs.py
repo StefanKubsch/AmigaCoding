@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # Generates constants shared by the C and vasm parts of the Rotozoomer.
 
 from pathlib import Path
@@ -15,23 +14,22 @@ HAM_TEMPORAL_HALF_ROWS = HAM_TEMPORAL_ROWS // 2
 HAM_HALFRATE_START_ROW = HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_ROWS
 HAM_DYNAMIC_ROWS = HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_ROWS
 HAM_HALFRATE_ROWS = HAM_ROWS - HAM_HALFRATE_START_ROW
-HAM_HALFRATE_FRAME_COUNT = HAM_FRAME_COUNT // 2
-HAM_SCREEN_WIDTH = 320
-HAM_SCREEN_HEIGHT = 256
+HAM_ANGLE_PHASE_STEP = 1
 HAM_DISPLAY_WIDTH = HAM_COLUMNS * HAM_PIXEL_SIZE
 HAM_DISPLAY_HEIGHT = HAM_ROWS * HAM_PIXEL_SIZE
-HAM_START_X = (HAM_SCREEN_WIDTH - HAM_DISPLAY_WIDTH) // 2
-HAM_PAL_VPOS_TOP = 0x2C
-HAM_VPOS_START = HAM_PAL_VPOS_TOP + ((HAM_SCREEN_HEIGHT - HAM_DISPLAY_HEIGHT) // 2)
-HAM_VPOS_STOP = HAM_VPOS_START + HAM_DISPLAY_HEIGHT
-HAM_DDF_SHIFT_BYTES = HAM_START_X >> 3
+screen_width = 320
+screen_height = 256
+display_start_x = (screen_width - HAM_DISPLAY_WIDTH) // 2
+pal_vpos_top = 0x2C
+HAM_VPOS_START = pal_vpos_top + ((screen_height - HAM_DISPLAY_HEIGHT) // 2)
+display_stop_vpos = HAM_VPOS_START + HAM_DISPLAY_HEIGHT
+ddf_shift_bytes = display_start_x >> 3
 
 HAM_DYNAMIC_PLANE_BYTES = HAM_FETCH_BYTES * HAM_DYNAMIC_ROWS
 HAM_DYNAMIC_BITMAP_BYTES = HAM_DYNAMIC_PLANE_BYTES * 4
 HAM_HALFRATE_ROW_CACHE_PLANE_BYTES = HAM_FETCH_BYTES * HAM_HALFRATE_ROWS
 HAM_HALFRATE_ROW_CACHE_FRAME_BYTES = HAM_HALFRATE_ROW_CACHE_PLANE_BYTES * 4
-HAM_HALFRATE_ROW_CACHE_BYTES = HAM_HALFRATE_ROW_CACHE_FRAME_BYTES * HAM_HALFRATE_FRAME_COUNT
-HAM_DYNAMIC_BUFFER_BYTES = HAM_DYNAMIC_BITMAP_BYTES * 2
+HAM_HALFRATE_ROW_CACHE_BYTES = HAM_HALFRATE_ROW_CACHE_FRAME_BYTES * (HAM_FRAME_COUNT // 2)
 HAM_TEMPORAL_UPPER_DEST_OFFSET = HAM_TEMPORAL_START_ROW * HAM_FETCH_BYTES
 HAM_TEMPORAL_LOWER_DEST_OFFSET = (HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_HALF_ROWS) * HAM_FETCH_BYTES
 
@@ -85,8 +83,7 @@ def copper_layout():
 
 HAM_COPPER_BPLPTR_WORD, HAM_COPPER_HALFRATE_BPLPTR_WORD, HAM_COPPER_WORDS = copper_layout()
 HAM_COPPER_BYTES = HAM_COPPER_WORDS * 2
-HAM_CHIP_BLOCK_BYTES = HAM_DYNAMIC_BUFFER_BYTES + (HAM_COPPER_BYTES * 2)
-HAM_TOTAL_CHIP_BYTES = HAM_HALFRATE_ROW_CACHE_BYTES + HAM_CHIP_BLOCK_BYTES
+HAM_CHIP_BLOCK_BYTES = (HAM_DYNAMIC_BITMAP_BYTES * 2) + (HAM_COPPER_BYTES * 2)
 
 BLIT_TEMPORAL_WIDE_BYTES = 128
 BLIT_TEMPORAL_WIDE_WORDS = 0
@@ -111,11 +108,9 @@ DEFS = [
     ("HAM_DYNAMIC_PLANE_BYTES", HAM_DYNAMIC_PLANE_BYTES, "bytes per compact dynamic bitplane", "dec"),
     ("HAM_DYNAMIC_BITMAP_BYTES", HAM_DYNAMIC_BITMAP_BYTES, "bytes per compact dynamic bitmap", "dec"),
     ("HAM_HALFRATE_ROWS", HAM_HALFRATE_ROWS, "number of half-rate rows per cached frame", "dec"),
-    ("HAM_HALFRATE_FRAME_COUNT", HAM_HALFRATE_FRAME_COUNT, "number of cached half-rate frames", "dec"),
     ("HAM_HALFRATE_ROW_CACHE_PLANE_BYTES", HAM_HALFRATE_ROW_CACHE_PLANE_BYTES, "bytes per half-rate cache bitplane", "dec"),
     ("HAM_HALFRATE_ROW_CACHE_FRAME_BYTES", HAM_HALFRATE_ROW_CACHE_FRAME_BYTES, "bytes per half-rate cache frame", "dec"),
     ("HAM_HALFRATE_ROW_CACHE_BYTES", HAM_HALFRATE_ROW_CACHE_BYTES, "bytes for all half-rate cache frames", "dec"),
-    ("HAM_DYNAMIC_BUFFER_BYTES", HAM_DYNAMIC_BUFFER_BYTES, "bytes for both dynamic buffers", "dec"),
     ("HAM_TEMPORAL_UPPER_DEST_OFFSET", HAM_TEMPORAL_UPPER_DEST_OFFSET, "compact row 2 byte offset in dynamic planes", "dec"),
     ("HAM_TEMPORAL_LOWER_DEST_OFFSET", HAM_TEMPORAL_LOWER_DEST_OFFSET, "compact lower temporal-half byte offset in dynamic planes", "dec"),
     ("HAM_COPPER_BPLPTR_WORD", HAM_COPPER_BPLPTR_WORD, "value slot for initial dynamic row pointers", "dec"),
@@ -124,20 +119,13 @@ DEFS = [
     ("HAM_COPPER_WORDS", HAM_COPPER_WORDS, "copper list words per buffer", "dec"),
     ("HAM_COPPER_BYTES", HAM_COPPER_BYTES, "copper list bytes per buffer", "dec"),
     ("HAM_CHIP_BLOCK_BYTES", HAM_CHIP_BLOCK_BYTES, "dynamic buffers plus double copper list block bytes", "dec"),
-    ("HAM_TOTAL_CHIP_BYTES", HAM_TOTAL_CHIP_BYTES, "total chip bytes allocated by the effect", "dec"),
     ("HAM_HALF_COLUMNS", HAM_COLUMNS // 2, "half of the HAM cell columns", "dec"),
     ("HAM_HALF_ROWS", HAM_ROWS // 2, "half of the HAM cell rows", "dec"),
-    ("HAM_SCREEN_WIDTH", HAM_SCREEN_WIDTH, "target screen width", "dec"),
-    ("HAM_SCREEN_HEIGHT", HAM_SCREEN_HEIGHT, "target screen height", "dec"),
-    ("HAM_START_X", HAM_START_X, "HAM display x position", "dec"),
-    ("HAM_PAL_VPOS_TOP", HAM_PAL_VPOS_TOP, "PAL display top line", "hex4"),
     ("HAM_VPOS_START", HAM_VPOS_START, "first visible HAM display line", "hex4"),
-    ("HAM_VPOS_STOP", HAM_VPOS_STOP, "first line after HAM display", "hex4"),
     ("HAM_DIWSTRT", ((HAM_VPOS_START & 0xFF) << 8) | 0x0081, "display window start register value", "hex4"),
-    ("HAM_DIWSTOP", ((HAM_VPOS_STOP & 0xFF) << 8) | 0x00C1, "display window stop register value", "hex4"),
-    ("HAM_DDF_SHIFT_BYTES", HAM_DDF_SHIFT_BYTES, "display fetch byte shift", "dec"),
-    ("HAM_DDFSTRT", 0x0038 + (HAM_DDF_SHIFT_BYTES * 4), "data fetch start register value", "hex4"),
-    ("HAM_DDFSTOP", 0x00D0 - (HAM_DDF_SHIFT_BYTES * 4), "data fetch stop register value", "hex4"),
+    ("HAM_DIWSTOP", ((display_stop_vpos & 0xFF) << 8) | 0x00C1, "display window stop register value", "hex4"),
+    ("HAM_DDFSTRT", 0x0038 + (ddf_shift_bytes * 4), "data fetch start register value", "hex4"),
+    ("HAM_DDFSTOP", 0x00D0 - (ddf_shift_bytes * 4), "data fetch stop register value", "hex4"),
     ("HAM_REPEAT_MOD", (-HAM_FETCH_BYTES) & 0xFFFF, "modulo for repeating a 4-line cell row", "hex4"),
     ("HAM_ADVANCE_MOD", 0, "modulo for advancing to the next cell row", "dec"),
     ("HAM_DISPLAY_BPU", 7, "bitplanes used by the HAM display", "dec"),
@@ -148,7 +136,7 @@ DEFS = [
     ("HAM_TEMPORAL_DONE_LOW", (HAM_VPOS_START + ((HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_ROWS) * HAM_PIXEL_SIZE)) & 0xFF, "low byte after temporal rows are off-screen", "hex2"),
     ("HAM_ZOOM_BASE", 256, "base zoom factor", "dec"),
     ("HAM_ZOOM_AMPLITUDE", 96, "zoom sine amplitude", "dec"),
-    ("HAM_ANGLE_PHASE_STEP", 1, "phase step per frame", "dec"),
+    ("HAM_ANGLE_PHASE_STEP", HAM_ANGLE_PHASE_STEP, "phase step per frame", "dec"),
     ("HAM_CENTER_U", 0x4000, "texture center U", "hex4"),
     ("HAM_CENTER_V", 0x4000, "texture center V", "hex4"),
     ("BLTPRI_SET", 0x8400, "set blitter priority while CPU waits", "hex4"),
