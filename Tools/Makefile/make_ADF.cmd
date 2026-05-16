@@ -1,2 +1,2 @@
 @echo off
-make -f Rotozoomer.mak adf
+make -f Makefile.mak adf

@@ -22,7 +22,6 @@
 // Effect constants
 // ---------------------------------------------------------------------
 
-#define TEXTURE_FILENAME        "gfx/128x128_ham.iff"
 #define TEXTURE_SOURCE_WIDTH    128
 #define TEXTURE_SOURCE_HEIGHT   128
 #define TEXTURE_WIDTH           128
@@ -264,7 +263,11 @@ static void BuildHalfRowCache(void)
 
 static void InitTexture(void)
 {
-    struct lwmf_Image* Image = lwmf_LoadImage(TEXTURE_FILENAME);
+    // External symbols provided by the linker from the included IFF file in Rotozoomer_Assets.s
+    extern UBYTE RotoImage[];
+    extern UBYTE RotoImage_end[];
+    struct lwmf_Image* Image = lwmf_LoadImageMem(RotoImage, (ULONG)(RotoImage_end - RotoImage));
+
     UBYTE* Base = (UBYTE*)lwmf_AllocCpuMem(SLOW_BLOCK_BYTES, 0);
 
     TextureCells = (UWORD*)Base;

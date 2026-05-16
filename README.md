@@ -54,6 +54,7 @@ Screen / Bitmaps / Doublebuffer
 Images
 
     struct lwmf_Image* lwmf_LoadImage(const char* Filename);
+    struct lwmf_Image* lwmf_LoadImageMem(const UBYTE* Data, ULONG Size)
     void lwmf_DeleteImage(struct lwmf_Image* Image);
 
 Math
@@ -101,6 +102,8 @@ You´re done!
 All you need to test your programs is an editor or IDE (I prefer Visual Studio Code, https://code.visualstudio.com/), an emulator like WinUAE (https://www.winuae.net/), with a set up Amiga OS installation. Or transfer your programs to a "real" Amiga via CF Card, Network etc.
 
 There is some additional use of Python; the needed .py files are included, but are only used for Tooling (creation of files, Lookuptables etc).
+
+Also used for compression of executables: shrinkler by Blueberry/Loonies (https://github.com/askeksa/Shrinkler)
 
 ---
 

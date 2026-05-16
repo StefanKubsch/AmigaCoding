@@ -280,6 +280,212 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 	return img;
 }
 
+struct lwmf_MemReader
+{
+	const UBYTE* Data;
+	ULONG        Size;
+	ULONG        Pos;
+};
+
+static ULONG lwmf_ReadMem(struct lwmf_MemReader* Reader, void* Dest, ULONG Size)
+{
+	if (Reader->Pos + Size > Reader->Size)
+	{
+		Size = Reader->Size - Reader->Pos;
+	}
+
+	CopyMem((APTR)(Reader->Data + Reader->Pos), Dest, Size);
+	Reader->Pos += Size;
+
+	return Size;
+}
+
+static void lwmf_SeekMem(struct lwmf_MemReader* Reader, LONG Offset)
+{
+	Reader->Pos += Offset;
+
+	if (Reader->Pos > Reader->Size)
+	{
+		Reader->Pos = Reader->Size;
+	}
+}
+
+struct lwmf_Image* lwmf_LoadImageMem(const UBYTE* Data, ULONG Size)
+{
+	struct lwmf_MemReader Reader;
+
+	Reader.Data = Data;
+	Reader.Size = Size;
+	Reader.Pos  = 0;
+
+	/* Read IFF FORM+ILBM header */
+	ULONG Header[3];
+	lwmf_ReadMem(&Reader, Header, 12);
+
+	if (Header[0] != MAKE_ID('F','O','R','M') || Header[2] != MAKE_ID('I','L','B','M'))
+	{
+		PutStr("Not an IFF ILBM file.\n");
+		return NULL;
+	}
+
+	UWORD bmhd_w           = 0;
+	UWORD bmhd_h           = 0;
+	UBYTE bmhd_nPlanes     = 0;
+	UBYTE bmhd_masking     = 0;
+	UBYTE bmhd_compression = 0;
+
+	ULONG*            cmap      = NULL;
+	UBYTE             numColors = 0;
+	BOOL              gotBMHD   = FALSE;
+	BOOL              gotBODY   = FALSE;
+	UBYTE*            planeData = NULL;
+	struct lwmf_Image* img      = NULL;
+
+	while (!gotBODY && Reader.Pos < Reader.Size)
+	{
+		ULONG chunkHdr[2];
+
+		if (lwmf_ReadMem(&Reader, chunkHdr, 8) != 8)
+		{
+			break;
+		}
+
+		const ULONG tag         = chunkHdr[0];
+		const ULONG chunkSize   = chunkHdr[1];
+		const ULONG alignedSize = (chunkSize + 1) & ~1UL;
+
+		if (tag == MAKE_ID('B','M','H','D'))
+		{
+			UBYTE raw[20];
+
+			lwmf_ReadMem(&Reader, raw, 20);
+
+			bmhd_w           = (UWORD)((raw[0] << 8) | raw[1]);
+			bmhd_h           = (UWORD)((raw[2] << 8) | raw[3]);
+			bmhd_nPlanes     = raw[8];
+			bmhd_masking     = raw[9];
+			bmhd_compression = raw[10];
+
+			if (alignedSize > 20)
+			{
+				lwmf_SeekMem(&Reader, (LONG)(alignedSize - 20));
+			}
+
+			gotBMHD = TRUE;
+		}
+		else if (tag == MAKE_ID('C','M','A','P'))
+		{
+			numColors = (UBYTE)(chunkSize / 3);
+
+			if ((cmap = (ULONG*)lwmf_AllocCpuMem((ULONG)numColors * sizeof(ULONG), MEMF_CLEAR)))
+			{
+				UBYTE cmapRaw[256 * 3];
+				const UBYTE* src;
+				UBYTE i;
+
+				lwmf_ReadMem(&Reader, cmapRaw, (ULONG)numColors * 3);
+
+				src = cmapRaw;
+
+				for (i = 0; i < numColors; ++i)
+				{
+					cmap[i] = (ULONG)(((src[0] & 0xF0) << 4) | (src[1] & 0xF0) | (src[2] >> 4));
+					src += 3;
+				}
+
+				if (chunkSize & 1)
+				{
+					lwmf_SeekMem(&Reader, 1);
+				}
+			}
+			else
+			{
+				lwmf_SeekMem(&Reader, (LONG)alignedSize);
+			}
+		}
+		else if (tag == MAKE_ID('B','O','D','Y'))
+		{
+			if (!gotBMHD)
+			{
+				return NULL;
+			}
+
+			const UWORD rowBytes  = (UWORD)(((bmhd_w + 15) / 16) * 2);
+			const ULONG rowStride = (ULONG)rowBytes * bmhd_nPlanes;
+			const ULONG dataSize  = rowStride * bmhd_h;
+
+			planeData = (UBYTE*)AllocMem(dataSize, MEMF_CHIP);
+			img       = (struct lwmf_Image*)lwmf_AllocCpuMem(sizeof(struct lwmf_Image), MEMF_CLEAR);
+
+			if (!planeData || !img)
+			{
+				if (planeData) FreeMem(planeData, dataSize);
+				if (img)       FreeMem(img, sizeof(struct lwmf_Image));
+				if (cmap)      FreeMem(cmap, (ULONG)numColors * sizeof(ULONG));
+
+				PutStr("Out of Chip RAM for image.\n");
+				return NULL;
+			}
+
+			lwmf_InitBitMap(&img->Image, bmhd_nPlanes, bmhd_w, bmhd_h);
+			img->Image.BytesPerRow = (UWORD)rowStride;
+
+			for (UBYTE p = 0; p < bmhd_nPlanes; ++p)
+			{
+				img->Image.Planes[p] = (PLANEPTR)(planeData + (ULONG)p * rowBytes);
+			}
+
+			if (bmhd_compression == 0)
+			{
+				lwmf_ReadMem(&Reader, planeData, dataSize);
+			}
+			else
+			{
+				const UBYTE* src     = Reader.Data + Reader.Pos;
+				UBYTE*       rowBase = planeData;
+
+				for (UWORD y = 0; y < bmhd_h; ++y)
+				{
+					for (UBYTE p = 0; p < bmhd_nPlanes; ++p)
+					{
+						src = iff_DecompressMem(src, rowBase + (ULONG)p * rowBytes, rowBytes);
+					}
+
+					if (bmhd_masking == 1)
+					{
+						UBYTE dummy[128];
+						src = iff_DecompressMem(src, dummy, rowBytes);
+					}
+
+					rowBase += rowStride;
+				}
+
+				Reader.Pos += chunkSize;
+			}
+
+			if (chunkSize & 1)
+			{
+				lwmf_SeekMem(&Reader, 1);
+			}
+
+			img->PlaneData      = planeData;
+			img->PlaneDataSize  = dataSize;
+			img->Width          = bmhd_w;
+			img->Height         = bmhd_h;
+			img->CRegs          = cmap;
+			img->NumberOfColors = numColors;
+
+			gotBODY = TRUE;
+		}
+		else
+		{
+			lwmf_SeekMem(&Reader, (LONG)alignedSize);
+		}
+	}
+
+	return img;
+}
+
 void lwmf_DeleteImage(struct lwmf_Image* Image)
 {
 	if (!Image)
