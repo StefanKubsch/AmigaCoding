@@ -13,11 +13,10 @@
 
 	include	"Rotozoomer_shared.i"
 
-HAM_LOOP_CTX_TEXTURE_CELLS_MID       equ     0
 HAM_LOOP_CTX_UOFFSET_MID             equ     4
 HAM_LOOP_CTX_PAIR_TABLES_BASE        equ     8
 HAM_LOOP_CTX_FRAME_PARAMS            equ     12
-HAM_LOOP_CTX_HALF_CACHE_BASE         equ     16
+HAM_LOOP_CTX_HALF_COPPER_WORDS       equ     16
 HAM_LOOP_CTX_HAM0                    equ     20
 HAM_LOOP_CTX_HAM1                    equ     24
 HAM_LOOP_CTX_COPPER0                 equ     28
@@ -27,8 +26,15 @@ HAM_FRAME_DUDX                       equ     0
 HAM_FRAME_DVDX                       equ     2
 HAM_FRAME_ROWU                       equ     4
 HAM_FRAME_ROWV                       equ     6
-HAM_FRAME_PARAMS_SIZE                equ     8
+HAM_FRAME_ROWUDELTA                 equ     8
+HAM_FRAME_ROWVDELTA                 equ     10
+HAM_FRAME_UPPER_ROWU                equ     12
+HAM_FRAME_UPPER_ROWV                equ     14
+HAM_FRAME_LOWER_ROWU                equ     16
+HAM_FRAME_LOWER_ROWV                equ     18
+HAM_FRAME_PHASE_STEP_BYTES          equ     HAM_ANGLE_PHASE_STEP*20
 HAM_LOOP_PHASE_STEP                  equ     HAM_ANGLE_PHASE_STEP+HAM_ANGLE_PHASE_STEP
+HAM_LOOP_PHASE_STEP_BYTES           equ     HAM_LOOP_PHASE_STEP*20
 
 CIAA_PRA                             equ     $00BFE001
 
@@ -47,11 +53,10 @@ _InitHamBlitterCopyModeAsm::
 _RunHamMainLoopAsm::
         movem.l d2-d7/a2-a6,-(sp)        ; preserve the full vbcc callee-saved register set before returning to C
         movea.l a0,a6                    ; a6 = immutable main-loop context
-        move.l  (a6),d6                 ; d6 = invariant texture lookup table pointer
         movea.l (HAM_LOOP_CTX_UOFFSET_MID,a6),a2 ; a2 = invariant wrapped-U lookup table
         movea.l (HAM_LOOP_CTX_PAIR_TABLES_BASE,a6),a3 ; a3 = invariant pair table base
-        movea.l (HAM_LOOP_CTX_FRAME_PARAMS,a6),a5 ; a5 = frame params base pointer
-        movea.l (HAM_LOOP_CTX_HALF_CACHE_BASE,a6),a4 ; a4 = current half-rate cache frame
+        movea.l (HAM_LOOP_CTX_FRAME_PARAMS,a6),a5 ; a5 = current even-frame params pointer
+        movea.l (HAM_LOOP_CTX_HALF_COPPER_WORDS,a6),a4 ; a4 = current cached half-rate copper words
         moveq   #0,d5                    ; d5.b = even-frame phase with natural 8-bit wrap
 .loop:
         btst.b  #6,CIAA_PRA              ; left mouse button exits when pressed
@@ -60,32 +65,21 @@ _RunHamMainLoopAsm::
         movea.l (HAM_LOOP_CTX_COPPER1,a6),a0 ; schedule copper list 1 for the even frame
         bsr     WaitHamLiveDoneAndSwitchCopper
 
-        moveq   #0,d0                    ; d0 = even-frame phase index
-        move.b  d5,d0                    ; use the configured phase step sequence
-        lsl.w   #3,d0                    ; scale phase index by frame param size
-        lea     (a5,d0.w),a1             ; a1 = even-frame params pointer
-        move.w  (a1),d4                 ; d4 = even-frame DuDx cached across both renders
-        move.w  (HAM_FRAME_DVDX,a1),d7  ; d7 = even-frame DvDx cached across both renders
-        moveq   #55,d0                  ; d0 = HAM_COLUMNS - 1 for row-delta synthesis
-        move.w  d4,d1                   ; d1 = DuDx
-        muls.w  d0,d1                   ; d1 = 55 * DuDx
-        neg.l   d1                      ; d1 = -(55 * DuDx)
-        sub.w   d7,d1                   ; d1 = row U delta
+        move.w  (a5),d4                 ; d4 = even-frame DuDx cached across both renders
+        move.w  (HAM_FRAME_DVDX,a5),d7  ; d7 = even-frame DvDx cached across both renders
+        move.w  (HAM_FRAME_ROWUDELTA,a5),d1 ; d1 = precomputed row U delta
         lea     RenderHamRowsCoreRowUDelta+2(pc),a0 ; patch row U delta once for both even-frame renders
         move.w  d1,(a0)
-        move.w  d7,d1                   ; d1 = DvDx
-        muls.w  d0,d1                   ; d1 = 55 * DvDx
-        neg.l   d1                      ; d1 = -(55 * DvDx)
-        add.w   d4,d1                   ; d1 = row V delta
+        move.w  (HAM_FRAME_ROWVDELTA,a5),d1 ; d1 = precomputed row V delta
         lea     RenderHamRowsCoreRowVDelta+2(pc),a0 ; patch row V delta once for both even-frame renders
         move.w  d1,(a0)
 
         movea.l (HAM_LOOP_CTX_HAM0,a6),a0 ; render live rows into dynamic buffer 0
-        move.w  (HAM_FRAME_ROWU,a1),d0
-        move.w  (HAM_FRAME_ROWV,a1),d1
+        move.w  (HAM_FRAME_ROWU,a5),d0
+        move.w  (HAM_FRAME_ROWV,a5),d1
         move.w  d4,d2
         move.w  d7,d3
-        movea.l d6,a1
+        movea.l (a6),a1
         bsr     RenderHamLiveRowsNoPatch
 
         movea.l (HAM_LOOP_CTX_HAM0,a6),a0 ; copy cached lower temporal rows from buffer 1 to buffer 0
@@ -93,19 +87,11 @@ _RunHamMainLoopAsm::
         bsr     CopyHamTemporalLowerRows
 
         movea.l (HAM_LOOP_CTX_HAM0,a6),a0 ; render upper temporal rows for the even frame
-        moveq   #0,d0                    ; d0 = even-frame phase index
-        move.b  d5,d0                    ; rebuild the same params pointer after render clobbers
-        lsl.w   #3,d0                    ; scale phase index by frame param size
-        lea     (a5,d0.w),a1             ; a1 = even-frame params pointer
-        move.w  (HAM_FRAME_ROWU,a1),d0
-        move.w  (HAM_FRAME_ROWV,a1),d1
-        sub.w   d7,d0
-        sub.w   d7,d0
-        add.w   d4,d1
-        add.w   d4,d1
+        move.w  (HAM_FRAME_UPPER_ROWU,a5),d0
+        move.w  (HAM_FRAME_UPPER_ROWV,a5),d1
         move.w  d4,d2
         move.w  d7,d3
-        movea.l d6,a1
+        movea.l (a6),a1
         bsr     RenderHamTemporalUpperRowsNoPatch
 
         movea.l (HAM_LOOP_CTX_COPPER0,a6),a0 ; update copper list 0 for the odd frame
@@ -114,38 +100,24 @@ _RunHamMainLoopAsm::
         movea.l (HAM_LOOP_CTX_COPPER0,a6),a0 ; schedule copper list 0 for the odd frame
         bsr     WaitHamLiveDoneAndSwitchCopper
 
-        moveq   #0,d0                    ; d0 = odd-frame phase index
-        move.b  d5,d0                    ; start from the even-frame phase
-        addi.b  #HAM_ANGLE_PHASE_STEP,d0 ; advance to the odd-frame phase
-        lsl.w   #3,d0                    ; scale phase index by frame param size
-        lea     (a5,d0.w),a1             ; a1 = odd-frame params pointer
+        lea     HAM_FRAME_PHASE_STEP_BYTES(a5),a1 ; a1 = odd-frame params pointer
+        move.l  a1,d6                    ; d6 = odd-frame params pointer cached across this half-frame
         move.w  (a1),d4                 ; d4 = odd-frame DuDx cached across both renders
         move.w  (HAM_FRAME_DVDX,a1),d7  ; d7 = odd-frame DvDx cached across both renders
-        moveq   #55,d0                  ; d0 = HAM_COLUMNS - 1 for row-delta synthesis
-        move.w  d4,d1                   ; d1 = DuDx
-        muls.w  d0,d1                   ; d1 = 55 * DuDx
-        neg.l   d1                      ; d1 = -(55 * DuDx)
-        sub.w   d7,d1                   ; d1 = row U delta
+        move.w  (HAM_FRAME_ROWUDELTA,a1),d1 ; d1 = precomputed row U delta
         lea     RenderHamRowsCoreRowUDelta+2(pc),a0 ; patch row U delta once for both odd-frame renders
         move.w  d1,(a0)
-        move.w  d7,d1                   ; d1 = DvDx
-        muls.w  d0,d1                   ; d1 = 55 * DvDx
-        neg.l   d1                      ; d1 = -(55 * DvDx)
-        add.w   d4,d1                   ; d1 = row V delta
+        move.w  (HAM_FRAME_ROWVDELTA,a1),d1 ; d1 = precomputed row V delta
         lea     RenderHamRowsCoreRowVDelta+2(pc),a0 ; patch row V delta once for both odd-frame renders
         move.w  d1,(a0)
 
         movea.l (HAM_LOOP_CTX_HAM1,a6),a0 ; render live rows into dynamic buffer 1
-        moveq   #0,d0                    ; d0 = odd-frame phase index
-        move.b  d5,d0                    ; rebuild the odd-frame params pointer after render clobbers
-        addi.b  #HAM_ANGLE_PHASE_STEP,d0 ; advance to the odd-frame phase
-        lsl.w   #3,d0                    ; scale phase index by frame param size
-        lea     (a5,d0.w),a1             ; a1 = odd-frame params pointer
+        movea.l d6,a1                    ; a1 = odd-frame params pointer
         move.w  (HAM_FRAME_ROWU,a1),d0
         move.w  (HAM_FRAME_ROWV,a1),d1
         move.w  d4,d2
         move.w  d7,d3
-        movea.l d6,a1
+        movea.l (a6),a1
         bsr     RenderHamLiveRowsNoPatch
 
         movea.l (HAM_LOOP_CTX_HAM1,a6),a0 ; copy cached upper temporal rows from buffer 0 to buffer 1
@@ -153,46 +125,25 @@ _RunHamMainLoopAsm::
         bsr     CopyHamTemporalUpperRows
 
         movea.l (HAM_LOOP_CTX_HAM1,a6),a0 ; render lower temporal rows for the odd frame
-        moveq   #0,d0                    ; d0 = odd-frame phase index
-        move.b  d5,d0                    ; rebuild the odd-frame params pointer after render clobbers
-        addi.b  #HAM_ANGLE_PHASE_STEP,d0 ; advance to the odd-frame phase
-        lsl.w   #3,d0                    ; scale phase index by frame param size
-        lea     (a5,d0.w),a1             ; a1 = odd-frame params pointer
-        move.w  (HAM_FRAME_ROWU,a1),d0
-        move.w  (HAM_FRAME_ROWV,a1),d1
-        sub.w   d7,d0
-        sub.w   d7,d0
-        sub.w   d7,d0
-        sub.w   d7,d0
-        sub.w   d7,d0
-        sub.w   d7,d0
-        sub.w   d7,d0
-        sub.w   d7,d0
-        sub.w   d7,d0
-        sub.w   d7,d0
-        add.w   d4,d1
-        add.w   d4,d1
-        add.w   d4,d1
-        add.w   d4,d1
-        add.w   d4,d1
-        add.w   d4,d1
-        add.w   d4,d1
-        add.w   d4,d1
-        add.w   d4,d1
-        add.w   d4,d1
+        movea.l d6,a1                    ; a1 = odd-frame params pointer
+        move.w  (HAM_FRAME_LOWER_ROWU,a1),d0
+        move.w  (HAM_FRAME_LOWER_ROWV,a1),d1
         move.w  d4,d2
         move.w  d7,d3
-        movea.l d6,a1
+        movea.l (a6),a1
         bsr     RenderHamTemporalLowerRowsNoPatch
 
         movea.l (HAM_LOOP_CTX_COPPER1,a6),a0 ; update copper list 1 for the next even frame
         bsr     UpdateHamCachedPointers
 
-        lea     HAM_HALFRATE_ROW_CACHE_FRAME_BYTES(a4),a4 ; advance to the next half-rate cache frame
         addi.b  #HAM_LOOP_PHASE_STEP,d5 ; advance to the next even-frame phase
-        bne     .loop                    ; continue until the 8-bit frame counter wraps
-
-        movea.l (HAM_LOOP_CTX_HALF_CACHE_BASE,a6),a4
+        beq.s   .wrap                    ; restart cyclic pointer streams on 8-bit phase wrap
+        lea     HAM_LOOP_PHASE_STEP_BYTES(a5),a5 ; advance to the next even-frame params
+        lea     16(a4),a4                ; advance to the next cached half-rate copper words
+        bra     .loop
+.wrap:
+        movea.l (HAM_LOOP_CTX_FRAME_PARAMS,a6),a5 ; restart the frame params stream on wrap
+        movea.l (HAM_LOOP_CTX_HALF_COPPER_WORDS,a6),a4
         bra     .loop
 .done:
         movem.l (sp)+,d2-d7/a2-a6        ; restore the full vbcc callee-saved register set for the C caller
@@ -214,30 +165,15 @@ WaitHamLiveDoneAndSwitchCopper:
 ; Internal half-rate pointer update helper.
 UpdateHamCachedPointers:
 	lea	HAM_COPPER_HALFRATE_BPLPTR_BYTES(a0),a0	; get half-rate pointer value slot
-        movea.l a4,a1                    ; a1 = current half-rate plane 0 pointer
-        move.l  a1,d0                    ; d0 = plane 0 pointer
-        swap    d0
-        move.w  d0,(a0)                  ; plane 0 high word
-        swap    d0
-        move.w  d0,4(a0)                 ; plane 0 low word
-        lea     HAM_HALFRATE_ROW_CACHE_PLANE_BYTES(a1),a1 ; plane 1 pointer
-        move.l  a1,d0                    ; d0 = plane 1 pointer
-        swap    d0
-        move.w  d0,8(a0)                 ; plane 1 high word
-        swap    d0
-        move.w  d0,12(a0)                ; plane 1 low word
-        lea     HAM_HALFRATE_ROW_CACHE_PLANE_BYTES(a1),a1 ; plane 2 pointer
-        move.l  a1,d0                    ; d0 = plane 2 pointer
-        swap    d0
-        move.w  d0,16(a0)                ; plane 2 high word
-        swap    d0
-        move.w  d0,20(a0)                ; plane 2 low word
-        lea     HAM_HALFRATE_ROW_CACHE_PLANE_BYTES(a1),a1 ; plane 3 pointer
-        move.l  a1,d0                    ; d0 = plane 3 pointer
-        swap    d0
-        move.w  d0,24(a0)                ; plane 3 high word
-        swap    d0
-        move.w  d0,28(a0)                ; plane 3 low word
+        movea.l a4,a1                    ; a1 = cached high/low words for this half-rate frame
+        move.w  (a1)+,(a0)               ; plane 0 high word
+        move.w  (a1)+,4(a0)              ; plane 0 low word
+        move.w  (a1)+,8(a0)              ; plane 1 high word
+        move.w  (a1)+,12(a0)             ; plane 1 low word
+        move.w  (a1)+,16(a0)             ; plane 2 high word
+        move.w  (a1)+,20(a0)             ; plane 2 low word
+        move.w  (a1)+,24(a0)             ; plane 3 high word
+        move.w  (a1)+,28(a0)             ; plane 3 low word
 	rts					; return without any slow-row blit
 
 ; Internal temporal upper-half copy helper.
@@ -312,7 +248,6 @@ _RenderHamHalfRowsAsm::
         movem.l d4-d7/a3-a6,-(sp)        ; save clobbered C registers only
         move.w  #HAM_HALFRATE_ROW_CACHE_PLANE_BYTES,d4 ; half-rate rows use the half-cache plane stride
         moveq   #HAM_HALFRATE_ROWS-1,d5  ; d5 = half-rate rows remaining after current row
-
 RenderHamRowsSetup:
         lea     RenderHamRowsCoreRowUDelta+2(pc),a5 ; get shared row U delta immediate
         move.w  d6,(a5)                  ; patch row U delta from frame params

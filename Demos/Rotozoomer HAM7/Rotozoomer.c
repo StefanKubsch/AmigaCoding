@@ -9,7 +9,7 @@
 //* Project for vbcc                                                   *
 //*                                                                    *
 //* Compile & link with:                                               *
-//* make_Rotozoomer.cmd                                                *
+//* make_Build.cmd / make_ADF.cmd                                      *
 //*                                                                    *
 //* Must be booted from ADF/Disk, since memory access is critical      *
 //* Quit with mouse click                                              *
@@ -61,6 +61,7 @@ const UBYTE SinTab256[256] =
 static UWORD* TextureCells = NULL;
 static UBYTE* PairTables = NULL;
 static UBYTE* HalfFrameCacheBlock = NULL;
+static UWORD* HalfFrameCopperWords = NULL;
 static UBYTE* HamBuffer0 = NULL;
 static UWORD* CopperList0 = NULL;
 
@@ -70,6 +71,12 @@ struct HamFrameParams
     WORD  DvDx;
     UWORD RowU;
     UWORD RowV;
+    WORD  RowUDelta;
+    WORD  RowVDelta;
+    UWORD UpperRowU;
+    UWORD UpperRowV;
+    UWORD LowerRowU;
+    UWORD LowerRowV;
 };
 
 struct HamMainLoopContext
@@ -78,7 +85,7 @@ struct HamMainLoopContext
     const UBYTE* UOffsetMid;
     const UBYTE* PairTablesBase;
     const struct HamFrameParams* FrameParams;
-    const UBYTE* HalfFrameCacheBase;
+    const UWORD* HalfFrameCopperWords;
     UBYTE* Ham0;
     UBYTE* Ham1;
     UWORD* Copper0;
@@ -88,14 +95,22 @@ struct HamMainLoopContext
 static struct HamFrameParams* FrameParams = NULL;
 static UBYTE* UOffsetTable = NULL;
 static UBYTE* UOffsetTableMid = NULL;
+#define HALF_FRAME_COPPER_WORDS_PER_FRAME 8
+#define HALF_FRAME_COPPER_WORDS_BYTES ((HAM_FRAME_COUNT >> 1) * HALF_FRAME_COPPER_WORDS_PER_FRAME * sizeof(UWORD))
 #define FRAME_PARAMS_BYTES      (HAM_FRAME_COUNT * sizeof(struct HamFrameParams))
 #define UOFFSET_TABLE_BYTES     65536
-#define SLOW_BLOCK_BYTES        (TEXTURE_CELL_BYTES + PAIR_TABLE_BYTES + FRAME_PARAMS_BYTES + UOFFSET_TABLE_BYTES)
+#define SLOW_BLOCK_BYTES        (TEXTURE_CELL_BYTES + PAIR_TABLE_BYTES + FRAME_PARAMS_BYTES + UOFFSET_TABLE_BYTES + HALF_FRAME_COPPER_WORDS_BYTES)
 #define DISPLAY_BLOCK_BYTES     HAM_CHIP_BLOCK_BYTES
 
 void InitHamBlitterCopyModeAsm(void);
 void RenderHamHalfRowsAsm(__reg("a0") UBYTE* Buffer, __reg("a1") const UWORD* TextureCellsMid, __reg("a2") const UBYTE* UOffsetTableMid, __reg("a3") const UBYTE* PairTables, __reg("d0") UWORD RowU, __reg("d1") UWORD RowV, __reg("d2") WORD DuDx, __reg("d3") WORD DvDx, __reg("d6") WORD RowUDelta, __reg("d7") WORD RowVDelta);
 void RunHamMainLoopAsm(__reg("a0") const struct HamMainLoopContext* Context);
+
+static void GetDisplayFlipState(UBYTE** HamBuffer1, UWORD** CopperList1)
+{
+    *HamBuffer1 = HamBuffer0 + HAM_DYNAMIC_BITMAP_BYTES;
+    *CopperList1 = (UWORD*)((UBYTE*)CopperList0 + HAM_COPPER_BYTES);
+}
 
 // ---------------------------------------------------------------------
 // Texture conversion
@@ -229,14 +244,25 @@ static void BuildFrameParams(void)
         const LONG CenterV = HAM_CENTER_V + ((LONG)CosA << 8);
         const LONG OffsetU = (HAM_HALF_COLUMNS * DuDx) - (HAM_HALF_ROWS * DvDx);
         const LONG OffsetV = (HAM_HALF_COLUMNS * DvDx) + (HAM_HALF_ROWS * DuDx);
-
+        const WORD RowUDelta = (WORD)(-((LONG)(HAM_COLUMNS - 1) * DuDx) - DvDx);
+        const WORD RowVDelta = (WORD)(DuDx - ((LONG)(HAM_COLUMNS - 1) * DvDx));
         const UWORD RowU = (UWORD)(CenterU - OffsetU);
         const UWORD RowV = (UWORD)(CenterV - OffsetV);
+        const UWORD UpperRowU = (UWORD)(RowU - ((LONG)HAM_TEMPORAL_START_ROW * DvDx));
+        const UWORD UpperRowV = (UWORD)(RowV + ((LONG)HAM_TEMPORAL_START_ROW * DuDx));
+        const UWORD LowerRowU = (UWORD)(RowU - ((LONG)(HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_HALF_ROWS) * DvDx));
+        const UWORD LowerRowV = (UWORD)(RowV + ((LONG)(HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_HALF_ROWS) * DuDx));
 
         FrameParams[Frame].DuDx = DuDx;
         FrameParams[Frame].DvDx = DvDx;
         FrameParams[Frame].RowU = RowU;
         FrameParams[Frame].RowV = RowV;
+        FrameParams[Frame].RowUDelta = RowUDelta;
+        FrameParams[Frame].RowVDelta = RowVDelta;
+        FrameParams[Frame].UpperRowU = UpperRowU;
+        FrameParams[Frame].UpperRowV = UpperRowV;
+        FrameParams[Frame].LowerRowU = LowerRowU;
+        FrameParams[Frame].LowerRowV = LowerRowV;
     }
 }
 
@@ -251,13 +277,33 @@ static void BuildHalfRowCache(void)
     {
         UBYTE* Bitmap = HalfFrameCacheBlock + ((ULONG)CacheFrame * HAM_HALFRATE_ROW_CACHE_FRAME_BYTES);
         const struct HamFrameParams* Params = FrameParams + Phase;
-        const WORD RowUDelta = (WORD)(-((LONG)(HAM_COLUMNS - 1) * Params->DuDx) - Params->DvDx);
-        const WORD RowVDelta = (WORD)(Params->DuDx - ((LONG)(HAM_COLUMNS - 1) * Params->DvDx));
         const UWORD HalfRowU = (UWORD)(Params->RowU - ((LONG)HAM_HALFRATE_START_ROW * Params->DvDx));
         const UWORD HalfRowV = (UWORD)(Params->RowV + ((LONG)HAM_HALFRATE_START_ROW * Params->DuDx));
 
-        RenderHamHalfRowsAsm(Bitmap, TextureCellsMid, UOffsetMid, PairTablesBase, HalfRowU, HalfRowV, Params->DuDx, Params->DvDx, RowUDelta, RowVDelta);
+        RenderHamHalfRowsAsm(Bitmap, TextureCellsMid, UOffsetMid, PairTablesBase, HalfRowU, HalfRowV, Params->DuDx, Params->DvDx, Params->RowUDelta, Params->RowVDelta);
         Phase = PHASE8(Phase + (HAM_ANGLE_PHASE_STEP << 1));
+    }
+}
+
+static void BuildHalfFrameCopperWords(void)
+{
+    UWORD* Out = HalfFrameCopperWords;
+
+    for (UWORD CacheFrame = 0; CacheFrame < (HAM_FRAME_COUNT >> 1); ++CacheFrame)
+    {
+        ULONG Ptr = (ULONG)(HalfFrameCacheBlock + ((ULONG)CacheFrame * HAM_HALFRATE_ROW_CACHE_FRAME_BYTES));
+
+        *Out++ = WORD_HI(Ptr);
+        *Out++ = WORD_LO(Ptr);
+        Ptr += HAM_HALFRATE_ROW_CACHE_PLANE_BYTES;
+        *Out++ = WORD_HI(Ptr);
+        *Out++ = WORD_LO(Ptr);
+        Ptr += HAM_HALFRATE_ROW_CACHE_PLANE_BYTES;
+        *Out++ = WORD_HI(Ptr);
+        *Out++ = WORD_LO(Ptr);
+        Ptr += HAM_HALFRATE_ROW_CACHE_PLANE_BYTES;
+        *Out++ = WORD_HI(Ptr);
+        *Out++ = WORD_LO(Ptr);
     }
 }
 
@@ -274,6 +320,7 @@ static void InitTexture(void)
     PairTables = Base + TEXTURE_CELL_BYTES;
     FrameParams = (struct HamFrameParams*)(Base + TEXTURE_CELL_BYTES + PAIR_TABLE_BYTES);
     UOffsetTable = Base + TEXTURE_CELL_BYTES + PAIR_TABLE_BYTES + FRAME_PARAMS_BYTES;
+    HalfFrameCopperWords = (UWORD*)(Base + TEXTURE_CELL_BYTES + PAIR_TABLE_BYTES + FRAME_PARAMS_BYTES + UOFFSET_TABLE_BYTES);
     UOffsetTableMid = UOffsetTable + 32768;
     BuildTextureRGB4FromHAM(Image);
     lwmf_DeleteImage(Image);
@@ -428,12 +475,12 @@ static void InitDisplay(void)
 
     // The chip block is packed as: dynamic buffer 0, dynamic buffer 1, copper list 0,
     // copper list 1. This keeps all flip-related display state in one contiguous allocation.
-    HamBuffer1 = HamBuffer0 + HAM_DYNAMIC_BITMAP_BYTES;
-    CopperList0 = (UWORD*)(HamBuffer1 + HAM_DYNAMIC_BITMAP_BYTES);
-    CopperList1 = (UWORD*)((UBYTE*)CopperList0 + HAM_COPPER_BYTES);
+    CopperList0 = (UWORD*)(HamBuffer0 + HAM_DYNAMIC_BITMAP_BYTES + HAM_DYNAMIC_BITMAP_BYTES);
+    GetDisplayFlipState(&HamBuffer1, &CopperList1);
 
     // Build the cached lower-band bitmaps, then create two copper lists for buffer flipping.
     BuildHalfRowCache();
+    BuildHalfFrameCopperWords();
     BuildCopperList(CopperList0);
     BuildCopperList(CopperList1);
 
@@ -475,15 +522,14 @@ int main(void)
     lwmf_TakeOverOS();
     InitDisplay();
 
-    HamBuffer1 = HamBuffer0 + HAM_DYNAMIC_BITMAP_BYTES;
-    CopperList1 = (UWORD*)((UBYTE*)CopperList0 + HAM_COPPER_BYTES);
+    GetDisplayFlipState(&HamBuffer1, &CopperList1);
 
     struct HamMainLoopContext MainLoopContext;
     MainLoopContext.TextureCellsMid = TextureCells + 16384;
     MainLoopContext.UOffsetMid = UOffsetTableMid;
     MainLoopContext.PairTablesBase = PairTables;
     MainLoopContext.FrameParams = FrameParams;
-    MainLoopContext.HalfFrameCacheBase = HalfFrameCacheBlock;
+    MainLoopContext.HalfFrameCopperWords = HalfFrameCopperWords;
     MainLoopContext.Ham0 = HamBuffer0;
     MainLoopContext.Ham1 = HamBuffer1;
     MainLoopContext.Copper0 = CopperList0;

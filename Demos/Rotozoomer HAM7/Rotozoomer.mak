@@ -16,11 +16,15 @@ ASM_SRC=Rotozoomer_vasm.s
 ASM_OBJ=Rotozoomer_vasm.o
 C_SRC=Rotozoomer.c
 
-.PHONY: all build adf
+.PHONY: all build adf clean-objs
 
 all: build
 
-build: $(PROG)
+build: clean-objs $(PROG)
+
+clean-objs:
+	if exist *.o del /Q *.o
+	if exist .\lwmf\include\*.o del /Q .\lwmf\include\*.o
 
 $(SHARED_H) $(SHARED_I): $(SHARED_SCRIPT)
 	python $(SHARED_SCRIPT)
@@ -30,9 +34,6 @@ $(LWMF_HW_OBJ): $(LWMF_HW_SRC)
 
 $(LWMF_HW_DEFS): $(LWMF_HW_SRC)
 	vasmm68k_mot -Fcdef -o "$(LWMF_HW_DEFS)" "$(LWMF_HW_SRC)"
-
-$(ASM_OBJ): $(ASM_SRC) $(SHARED_I)
-	vasmm68k_mot -Fhunk -showopt -o "$(ASM_OBJ)" "$(ASM_SRC)"
 
 $(ASM_OBJ): $(ASM_SRC) $(SHARED_I)
 	vasmm68k_mot -Fhunk -showopt -o "$(ASM_OBJ)" "$(ASM_SRC)"
