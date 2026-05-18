@@ -1,11 +1,8 @@
 #ifndef LWMF_LIBRARIES_H
 #define LWMF_LIBRARIES_H
 
-#include <exec/exec.h>
-#include <clib/exec_protos.h>
-#include <graphics/gfx.h>
+#include <proto/exec.h>
 #include <proto/dos.h>
-#include <graphics/gfxbase.h>
 #include <proto/graphics.h>
 
 //

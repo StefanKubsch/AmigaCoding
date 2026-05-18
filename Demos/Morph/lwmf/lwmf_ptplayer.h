@@ -80,7 +80,6 @@ BOOL lwmf_InitModPlayer(struct MODFile *mod, const STRPTR Filename)
 	// Load MOD file into Chip RAM only (no hardware access - safe to call before TakeOverOS)
 	if (!(mod->File = lwmf_LoadMODFile(Filename, &mod->Size)))
 	{
-        PutStr("Could not load modfile.\n");
         return FALSE;
     }
 

@@ -77,7 +77,6 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 
 	if (!FileHandle)
 	{
-		PutStr("Could not open image file.\n");
 		return NULL;
 	}
 
@@ -88,7 +87,6 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 	if (Header[0] != MAKE_ID('F','O','R','M') || Header[2] != MAKE_ID('I','L','B','M'))
 	{
 		Close(FileHandle);
-		PutStr("Not an IFF ILBM file.\n");
 		return NULL;
 	}
 
@@ -187,7 +185,6 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 				if (img)       FreeMem(img, sizeof(struct lwmf_Image));
 				if (cmap)      FreeMem(cmap, (ULONG)numColors * sizeof(ULONG));
 				Close(FileHandle);
-				PutStr("Out of Chip RAM for image.\n");
 				return NULL;
 			}
 
@@ -324,7 +321,6 @@ struct lwmf_Image* lwmf_LoadImageMem(const UBYTE* Data, ULONG Size)
 
 	if (Header[0] != MAKE_ID('F','O','R','M') || Header[2] != MAKE_ID('I','L','B','M'))
 	{
-		PutStr("Not an IFF ILBM file.\n");
 		return NULL;
 	}
 
@@ -422,8 +418,6 @@ struct lwmf_Image* lwmf_LoadImageMem(const UBYTE* Data, ULONG Size)
 				if (planeData) FreeMem(planeData, dataSize);
 				if (img)       FreeMem(img, sizeof(struct lwmf_Image));
 				if (cmap)      FreeMem(cmap, (ULONG)numColors * sizeof(ULONG));
-
-				PutStr("Out of Chip RAM for image.\n");
 				return NULL;
 			}
 

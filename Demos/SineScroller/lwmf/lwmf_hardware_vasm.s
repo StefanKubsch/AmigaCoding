@@ -156,7 +156,7 @@ _lwmf_TakeOverOS::
 _lwmf_ReleaseOS::
 	move.l	a6,-(sp)                    ; save register on stack
 
-	bsr     _lwmf_WaitBlitter           ; wait for any in-progress blit before restoring DMA
+	bsr.s   _lwmf_WaitBlitter           ; wait for any in-progress blit before restoring DMA
 
 	move.w  #$7FFF,DMACON
 	move.w  olddma(pc),DMACON
