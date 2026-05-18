@@ -1,11 +1,11 @@
 //**********************************************************************
-//* Amiga morph effect                                                  *
-//* Amiga 500 OCS                                                       *
+//* Amiga morph effect                                                 *
+//* Amiga 500 OCS                                                      *
 //*                                                                    *
 //* (C) 2020-2026 by Stefan Kubsch                                     *
 //*                                                                    *
 //* Compile & link with:                                               *
-//* make_Morph.cmd                                                     *
+//* make_Build.cmd / make_ADF.cmd                                      *
 //*                                                                    *
 //* Quit with mouse click                                              *
 //**********************************************************************
