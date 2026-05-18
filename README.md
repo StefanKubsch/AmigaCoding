@@ -4,7 +4,7 @@ Coding for classic 68k Amigas in C99 and Assembler
 
 I uploaded some examples for oldschool demo scene effects, written in C99 and Assembler (vasm), targeted at classic Amiga 500 OCS (PAL) and up.
 
-Minimum requierements: Kickstart 2.04, 68000 CPU, 512KB Chip-RAM + 512KB Slow-RAM.
+Minimum requierements: Amiga 500, Kickstart 1.3, 512KB Chip-RAM + 512KB Slow-RAM.
 
 ---
 

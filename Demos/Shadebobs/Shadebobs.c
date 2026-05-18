@@ -5,7 +5,7 @@
 //* (C) 2026 by Stefan Kubsch / Deep4                                  *
 //*                                                                    *
 //* Compile & link with:                                               *
-//* make_Shadebobs.cmd                                                 *
+//* make_Build.cmd / make_ADF.cmd                                      *
 //*                                                                    *
 //* Quit with mouse click                                              *
 //**********************************************************************

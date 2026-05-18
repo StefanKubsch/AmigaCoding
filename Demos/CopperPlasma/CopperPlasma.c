@@ -6,7 +6,7 @@
 //* Project for vbcc                                                   *
 //*                                                                    *
 //* Compile & link with:                                               *
-//* make_CopperPlasma.cmd                                              *
+//* make_Build.cmd / make_ADF.cmd                                      *
 //*                                                                    *
 //* Quit with mouse click                                              *
 //**********************************************************************
