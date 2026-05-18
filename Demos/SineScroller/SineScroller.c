@@ -6,7 +6,7 @@
 //* Project for vbcc                                                   *
 //*                                                                    *
 //* Compile & link with:                                               *
-//* make_SineScroller.cmd                                              *
+//* make_Build.cmd / make_ADF.cmd                                      *
 //*                                                                    *
 //* Quit with mouse click                                              *
 //**********************************************************************
@@ -115,7 +115,10 @@ static BOOL Init_SineScroller(void)
 		ScrollBottomWordOffset[x] = (UWORD)(((SCROLLER_START_LINE + 16 + ((s * 14 + 16) >> 5)) + 15u) * INTERLEAVED_STRIDE + ((x >> 3u) & ~(UWORD)1u));
 	}
 
-	FontBitmap = lwmf_LoadImage("gfx/font16x16.ilbm");
+	extern UBYTE SineScroller[];
+    extern UBYTE SineScroller_end[];
+
+	FontBitmap = lwmf_LoadImageMem(SineScroller, (ULONG)(SineScroller_end - SineScroller));
 
 	const char *Text           	= "...HERE WE GO! THIS IS A SINE SCROLLER DEMO WITH RAINBOW COLORS, WRITTEN IN C AND ASM FOR THE AMIGA 500. ENJOY THE SHOW! (C) 2026 BY DEEP4...";
 	const char *CharMap         = "! #$%& ()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ ";

@@ -5,7 +5,7 @@
 //* (C) 2026 by Stefan Kubsch                                          *
 //*                                                                    *
 //* Compile & link with:                                               *
-//* make_VectorBalls.cmd                                               *
+//* make_Build.cmd /make_ADF.cmd                                       *
 //*                                                                    *
 //* Quit with mouse click                                              *
 //**********************************************************************
@@ -17,8 +17,6 @@ extern void DrawVectorBallsBlit(__reg("a0") UBYTE* DestPlane0, __reg("a1") const
 // ---------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------
-
-#define VECTORBALL_FILE      "gfx/Vecball16x16.iff"
 
 #define VB_NUM_BALLS         48
 #define VB_BALL_SIZE         16
@@ -375,7 +373,10 @@ static void Build_ZOrderLUT(void)
 
 static void Init_VectorBall(void)
 {
-	VectorBallImg = lwmf_LoadImage(VECTORBALL_FILE);
+	extern UBYTE Vectorballs[];
+    extern UBYTE Vectorballs_end[];
+
+	VectorBallImg = lwmf_LoadImageMem(Vectorballs, (ULONG)(Vectorballs_end - Vectorballs));
 
 	CopyPaletteFromImage(VectorBallImg);
 	Build_BobData();
