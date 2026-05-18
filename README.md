@@ -10,7 +10,7 @@ Minimum requierements: Amiga 500, Kickstart 1.3, 512KB Chip-RAM + 512KB Slow-RAM
 
 Included examples, coded for speed and memory, so there are no guards etc:
 
-- HAM Rotozoomer (4x4, 56 columns, runs only on OCS due to using the HAM7/4bitplanes quirk)
+- HAM Rotozoomer (4x4, 56 columns, runs only on OCS/Kickstart 2.04 due to using the HAM7/4bitplanes quirk)
 - Copper Plasma
 - Morphing dots
 - Shadebobs
