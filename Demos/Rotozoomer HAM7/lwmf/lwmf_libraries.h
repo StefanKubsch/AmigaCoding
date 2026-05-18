@@ -1,11 +1,11 @@
 #ifndef LWMF_LIBRARIES_H
 #define LWMF_LIBRARIES_H
 
-#include <exec/types.h>
-#include <exec/execbase.h>
-#include <graphics/gfxbase.h>
+#include <exec/exec.h>
+#include <clib/exec_protos.h>
+#include <graphics/gfx.h>
 #include <proto/dos.h>
-#include <proto/exec.h>
+#include <graphics/gfxbase.h>
 #include <proto/graphics.h>
 
 //
@@ -34,17 +34,5 @@ void lwmf_SetPixel1bpl(__reg("d0") WORD PosX, __reg("d1") WORD PosY, __reg("a0")
 //
 
 extern struct GfxBase *GfxBase;
-
-static void lwmf_PutStr(const char* Text)
-{
-	const char* Cursor = Text;
-
-	while (*Cursor)
-	{
-		++Cursor;
-	}
-
-	Write(Output(), Text, (LONG)(Cursor - Text));
-}
 
 #endif /* LWMF_LIBRARIES_H */
