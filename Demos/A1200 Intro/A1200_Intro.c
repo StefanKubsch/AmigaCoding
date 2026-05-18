@@ -6,7 +6,7 @@
 //* Project for vbcc                                                   *
 //*                                                                    *
 //* Compile & link with:                                               *
-//* make_A1200-Intro.cmd                                               *
+//* make_Build.cmd / male_ADF.cmd                                      *
 //*                                                                    *
 //* Quit with mouse click                                              *
 //**********************************************************************
@@ -46,9 +46,10 @@ static const UWORD LogoPalette[8] = {0x003, 0x368, 0x134, 0x012, 0x246,	0x146, 0
 
 #define LOGO_WIDTH  192
 #define LOGO_HEIGHT 46
+#define LOGO_STEPS  128
 
 // Lissajous X table: center=64, amplitude=60, range 4-124
-static const UBYTE LogoSinTabX[64] =
+static const UBYTE LogoSinTabSrcX[64] =
 {
 	64,70,76,82,87,93,98,103,107,111,114,117,120,122,123,124,124,123,122,121,119,116,113,109,105,100,95,90,84,78,72,66,
 	60,55,49,43,37,32,27,23,19,15,12,9,7,5,4,4,4,5,6,8,11,14,18,22,26,31,36,42,47,53,59,65
@@ -56,15 +57,75 @@ static const UBYTE LogoSinTabX[64] =
 
 // Lissajous Y table: center=19, amplitude=18, range 1-37
 // (logo region = lines 0-83, logo height 46 → max Y = 37)
-static const UBYTE LogoSinTabY[64] =
+static const UBYTE LogoSinTabSrcY[64] =
 {
 	19,23,26,29,32,34,36,37,37,37,35,34,31,28,25,22,18,14,11,8,5,3,2,1,1,2,3,5,8,11,14,18,
 	21,25,28,31,33,35,36,37,37,36,34,32,30,26,23,19,16,12,9,6,4,2,1,1,1,2,4,7,9,13,16,20
 };
 
+static UBYTE LogoSinTabX[LOGO_STEPS];
+static UBYTE LogoSinTabY[LOGO_STEPS];
+
+static void Init_TextLogoPath(void)
+{
+	UWORD cumulative[65];
+	UWORD totalLength = 0;
+	UWORD segment = 0;
+
+	cumulative[0] = 0;
+
+	for (UWORD i = 0; i < 64; ++i)
+	{
+		const UWORD next = (UWORD)((i + 1) & 63);
+		const WORD dx = (WORD)LogoSinTabSrcX[next] - (WORD)LogoSinTabSrcX[i];
+		const WORD dy = (WORD)LogoSinTabSrcY[next] - (WORD)LogoSinTabSrcY[i];
+		const UWORD absDx = (dx < 0) ? (UWORD)(-dx) : (UWORD)dx;
+		const UWORD absDy = (dy < 0) ? (UWORD)(-dy) : (UWORD)dy;
+		const UWORD segLen = absDx + absDy;
+
+		totalLength += segLen ? segLen : 1;
+		cumulative[i + 1] = totalLength;
+	}
+
+	for (UWORD i = 0; i < LOGO_STEPS; ++i)
+	{
+		const UWORD target = (UWORD)(((ULONG)i * totalLength) / LOGO_STEPS);
+
+		while (segment < 63 && cumulative[segment + 1] <= target)
+		{
+			++segment;
+		}
+
+		{
+			const UWORD next = (UWORD)((segment + 1) & 63);
+			const UWORD segStart = cumulative[segment];
+			const UWORD segLen = cumulative[segment + 1] - segStart;
+			const WORD dx = (WORD)LogoSinTabSrcX[next] - (WORD)LogoSinTabSrcX[segment];
+			const WORD dy = (WORD)LogoSinTabSrcY[next] - (WORD)LogoSinTabSrcY[segment];
+			const UWORD frac = target - segStart;
+
+			if (segLen)
+			{
+				LogoSinTabX[i] = (UBYTE)((WORD)LogoSinTabSrcX[segment] + (WORD)(((LONG)dx * frac + (segLen >> 1)) / segLen));
+				LogoSinTabY[i] = (UBYTE)((WORD)LogoSinTabSrcY[segment] + (WORD)(((LONG)dy * frac + (segLen >> 1)) / segLen));
+			}
+			else
+			{
+				LogoSinTabX[i] = LogoSinTabSrcX[segment];
+				LogoSinTabY[i] = LogoSinTabSrcY[segment];
+			}
+		}
+	}
+}
+
 static BOOL Init_TextLogo(void)
 {
-	if (!(LogoBitmap = lwmf_LoadImage("gfx/Logo.iff")))
+	extern UBYTE TextLogo[];
+    extern UBYTE TextLogo_end[];
+
+	Init_TextLogoPath();
+
+	if (!(LogoBitmap = lwmf_LoadImageMem(TextLogo, (ULONG)(TextLogo_end - TextLogo))))
 	{
 		return FALSE;
 	}
@@ -74,11 +135,11 @@ static BOOL Init_TextLogo(void)
 
 static void Draw_TextLogo(UBYTE Buffer)
 {
-	static UBYTE SinTabCount = 0;
+	static UWORD SinTabCount = 0;
 
 	BltBitMap(&LogoBitmap->Image, 0, 0, ScreenBitmap[Buffer], LogoSinTabX[SinTabCount], LogoSinTabY[SinTabCount], LOGO_WIDTH, LOGO_HEIGHT, 0xC0, 0xFF, NULL);
 
-	if (++SinTabCount >= 64)
+	if (++SinTabCount >= LOGO_STEPS)
 	{
 		SinTabCount = 0;
 	}
@@ -169,7 +230,10 @@ static BOOL Init_SineScroller(void)
 		RainbowTab[i] = (UWORD)((r << 8) | (g << 4) | b);
 	}
 
-	if (!(FontBitmap = lwmf_LoadImage("gfx/ScrollFont.bsh")))
+	extern UBYTE SineScroller[];
+    extern UBYTE SineScroller_end[];
+
+	if (!(FontBitmap = lwmf_LoadImageMem(SineScroller, (ULONG)(SineScroller_end - SineScroller))))
 	{
 		FreeMem(RainbowTab, RainbowTabSize);
 		RainbowTab = NULL;
@@ -898,7 +962,10 @@ int main()
 		return 20;
 	}
 
-	if (!lwmf_InitModPlayer(&MOD_Demosong, "sfx/beamsoflight.mod"))
+	extern UBYTE ModMusic[];
+    extern UBYTE ModMusic_end[];
+
+	if (!lwmf_InitModPlayerMem(&MOD_Demosong, ModMusic, (ULONG)(ModMusic_end - ModMusic)))
 	{
 		Cleanup_All();
 		return 20;

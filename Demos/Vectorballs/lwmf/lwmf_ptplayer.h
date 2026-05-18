@@ -75,6 +75,32 @@ static APTR lwmf_LoadMODFile(const STRPTR Filename, LONG *Size_Out)
     return Buffer;
 }
 
+static APTR lwmf_LoadMODFileMem(const APTR Data, LONG Size, LONG *Size_Out)
+{
+    APTR Buffer;
+
+    if (!Data || Size <= 0)
+    {
+        return NULL;
+    }
+
+    Buffer = AllocMem(Size, MEMF_CHIP | MEMF_CLEAR);
+
+    if (!Buffer)
+    {
+        return NULL;
+    }
+
+    CopyMem(Data, Buffer, Size);
+
+    if (Size_Out)
+    {
+        *Size_Out = Size;
+    }
+
+    return Buffer;
+}
+
 BOOL lwmf_InitModPlayer(struct MODFile *mod, const STRPTR Filename)
 {
 	// Load MOD file into Chip RAM only (no hardware access - safe to call before TakeOverOS)
@@ -84,6 +110,17 @@ BOOL lwmf_InitModPlayer(struct MODFile *mod, const STRPTR Filename)
     }
 
 	return TRUE;
+}
+
+BOOL lwmf_InitModPlayerMem(struct MODFile *mod, const APTR Data, LONG Size)
+{
+    // Copy MOD file from memory into Chip RAM only (no hardware access - safe to call before TakeOverOS)
+    if (!(mod->File = lwmf_LoadMODFileMem(Data, Size, &mod->Size)))
+    {
+        return FALSE;
+    }
+
+    return TRUE;
 }
 
 // Call this AFTER lwmf_TakeOverOS() so that mt_install sets up its INTENA bit

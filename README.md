@@ -73,7 +73,9 @@ Text
 MOD Support / ptplayer
 
     static APTR lwmf_LoadMODFile(const STRPTR Filename, LONG *Size_Out);
+    static APTR lwmf_LoadMODFileMem(const APTR Data, LONG Size, LONG *Size_Out)
     BOOL lwmf_InitModPlayer(struct MODFile *mod, const STRPTR Filename);
+    BOOL lwmf_InitModPlayerMem(struct MODFile *mod, const APTR Data, LONG Size)
     void lwmf_InstallModPlayer(struct MODFile *mod);
     void lwmf_StartMODPlayer(struct MODFile *mod);
     void lwmf_PauseMODPlayer(struct MODFile *mod);
