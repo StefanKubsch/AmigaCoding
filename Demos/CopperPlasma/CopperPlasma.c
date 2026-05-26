@@ -20,18 +20,20 @@
 static UWORD* CopperList = NULL;
 static ULONG CopperListSize = 0;
 static UWORD PlasmaStart = 0;
-static ULONG PlasmaColorLUT[256];
+static ULONG* PlasmaColorLUT = NULL;
+static ULONG* PlasmaLongStart = NULL;
 
-// Layout: 63 + 1 + 128 + 1 + 63 = 256
-#define WHITE_LINE_1        63
-#define PLASMA_START_LINE   64
-#define PLASMA_LINES        128
-#define WHITE_LINE_2        192
+// Layout: 53 + 1 + 148 + 1 + 53 = 256
+#define WHITE_LINE_1        53
+#define PLASMA_START_LINE   54
+#define PLASMA_LINES        148
+#define WHITE_LINE_2        202
 
 #define PLASMA_COLS             40
 #define PLASMA_COLS_PER_BLOCK   8
 #define PLASMA_BLOCKS           (PLASMA_COLS / PLASMA_COLS_PER_BLOCK)
 #define LINE_WORDS              (2 + 2 + 2 * PLASMA_COLS + 2)
+#define LINE_LONGS              (LINE_WORDS >> 1)
 
 // VPOS offset for PAL display (first visible Line = $2C = 44)
 #define VPOS_OFFSET     		0x2C
@@ -42,9 +44,8 @@ static ULONG PlasmaColorLUT[256];
 #define WHITE2_VPOS         	(VPOS_OFFSET + WHITE_LINE_2)
 
 // Copper list size:
-// COPPERWORDS: DIWSTRT+DIWSTOP+DDFSTRT+DDFSTOP+BPLCON0=10, COLOR00 pre-set=2, White1 WAIT+COLOR=4,
-//              Plasma-start WAIT+COLOR=4, White2 WAIT+COLOR=4, footer VPOS-wrap+END=4 => 28 words
-#define COPPERWORDS            28
+// COPPERWORDS: static setup/footer words outside the per-line plasma block
+#define COPPERWORDS            30
 
 static void Init_CopperList(void)
 {
@@ -96,6 +97,7 @@ static void Init_CopperList(void)
 	CopperList[Index++] = 0x000;
 
 	PlasmaStart = Index;
+	PlasmaLongStart = (ULONG*)(void*)&CopperList[PlasmaStart];
 
 	for (UWORD i = 0; i < PLASMA_LINES; ++i)
 	{
@@ -138,6 +140,10 @@ static void Init_CopperList(void)
 	CopperList[Index++] = 0xFFFF;
 	CopperList[Index++] = 0xFFFE;
 
+}
+
+static void Activate_CopperList(void)
+{
 	*COP1LC = (ULONG)CopperList;
 }
 
@@ -161,8 +167,10 @@ static const UBYTE SinTab256[256] =
 
 static void Init_Plasma(void)
 {
+	PlasmaColorLUT = (ULONG*)lwmf_AllocCpuMem(256 * sizeof(ULONG), MEMF_CLEAR);
+
 	// 2D RGB plasma: base table (64-entry period, doubled to 128)
-	const UBYTE CompBase[128] =
+	static const UBYTE CompBase[128] =
 	{
 		8, 8, 9,10,10,11,12,12,13,13,14,14,14,15,15,15,15,15,15,15,14,14,14,13,13,12,12,11,10,10, 9, 8,
 		8, 7, 6, 5, 5, 4, 3, 3, 2, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 7,
@@ -175,7 +183,7 @@ static void Init_Plasma(void)
 		const UBYTE r = CompBase[i & 127];
 		const UBYTE g = CompBase[(i + 43) & 127];
 		const UBYTE b = CompBase[(i + 85) & 127];
-		PlasmaColorLUT[i] = 0x01800000UL | ((ULONG)r << 8) | ((ULONG)g << 4) | b;
+		PlasmaColorLUT[i] = 0x01800000 | ((ULONG)r << 8) | ((ULONG)g << 4) | b;
 	}
 }
 
@@ -191,7 +199,7 @@ static void Update_Plasma(void)
 	// (RowToggle=0 → row 0, RowToggle=1 → row 1); since p = Phase1 + row
 	// in both cases this keeps the per-row color identical to the original.
 	UBYTE p = Phase1 + RowToggle;
-	UWORD *lineBase = &CopperList[PlasmaStart] + RowToggle * LINE_WORDS;
+	ULONG *lineBase = PlasmaLongStart + RowToggle * LINE_LONGS;
 
 	UBYTE count = PLASMA_LINES / 2;
 	do
@@ -199,14 +207,14 @@ static void Update_Plasma(void)
 		UBYTE Phase2_base = (UBYTE)(SinTab256[p] + SinTab256[(UBYTE)(p + 90)] + Phase1);
 
 		// Write pre-WAIT COLOR00 first — Copper reads this before the WAIT fires
-		*(ULONG *)(void *)lineBase = PlasmaColorLUT[Phase2_base];
+		*lineBase = PlasmaColorLUT[Phase2_base];
 
 		// Write column COLOR00 moves RIGHT TO LEFT (column 39 first, column 0 last).
 		// The Copper scans columns left to right; writing right-to-left means the CPU
 		// always writes a column before the Copper reads it, eliminating the race
 		// condition that causes black stripes on the right side of each plasma row.
 		// Phase2 values per column are identical to the left-to-right order — no visual change.
-		ULONG *lcop = (ULONG *)(void *)(lineBase + 4) + (PLASMA_COLS - 1);
+		ULONG *lcop = lineBase + 2 + (PLASMA_COLS - 1);
 		UBYTE ph = (UBYTE)(Phase2_base + PLASMA_COLS); // Phase2 value for rightmost column
 
 		UBYTE blocks = PLASMA_BLOCKS;
@@ -223,7 +231,7 @@ static void Update_Plasma(void)
 		} while (--blocks);
 
 		p        += 2;
-		lineBase += 2 * LINE_WORDS;
+		lineBase += 2 * LINE_LONGS;
 	} while (--count);
 
 	RowToggle ^= 1;
@@ -236,8 +244,9 @@ static void Update_Plasma(void)
 
 static void Cleanup_All(void)
 {
-	FreeMem(CopperList, CopperListSize);
 	lwmf_CleanupAll();
+	FreeMem(CopperList, CopperListSize);
+	FreeMem(PlasmaColorLUT, 256 * sizeof(ULONG));
 }
 
 int main()
@@ -247,6 +256,7 @@ int main()
 	Init_Plasma();
 
 	lwmf_TakeOverOS();
+	Activate_CopperList();
 
 	while (*CIAA_PRA & 0x40)
 	{
