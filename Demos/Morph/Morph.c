@@ -1,5 +1,14 @@
-// Amiga morph effect, Amiga 500 OCS, blurry points and wireframe.
-// Coded in 2020-2026 by Stefan Kubsch.
+//**********************************************************************
+//* Morph effect                                                   *
+//* Amiga 500 OCS                                                      *
+//*                                                                    *
+//* (C) 2026 by Stefan Kubsch / Deep4                                  *
+//*                                                                    *
+//* Compile & link with:                                               *
+//* make_Build.cmd / make_ADF.cmd                                      *
+//*                                                                    *
+//* Quit with mouse click                                              *
+//**********************************************************************
 
 #include "lwmf/lwmf.h"
 
@@ -43,12 +52,14 @@ extern void DrawBlitterLinesAsm(__reg("a0") UWORD* Plane, __reg("a1") const POIN
 #define SPHERE_RINGS             12
 #define POINTS_PER_RING          36
 #define SPHERE_POINT_COUNT       (SPHERE_RINGS * POINTS_PER_RING)
-#define OCTA_EDGE_COUNT          12
+#define ICOSA_VERTEX_COUNT       12
+#define ICOSA_EDGE_COUNT         30
 
 #define POINT_COUNT              SPHERE_POINT_COUNT
 
 #define ANGLE_MASK               255
 #define FP_SHIFT                  8
+#define FP_ONE                    (1 << FP_SHIFT)
 #define MORPH_FRAMES             40
 #define HOLD_FRAMES              160
 
@@ -58,7 +69,8 @@ extern void DrawBlitterLinesAsm(__reg("a0") UWORD* Plane, __reg("a1") const POIN
 #define Z_OFFSET                 440
 
 #define SPHERE_RADIUS             90
-#define OCTA_RADIUS               100
+#define ICOSA_SHORT               59
+#define ICOSA_LONG                95
 
 #define BASE_ANGLE_X              20
 #define BASE_ANGLE_Y              20
@@ -71,7 +83,7 @@ extern void DrawBlitterLinesAsm(__reg("a0") UWORD* Plane, __reg("a1") const POIN
 #define PHASE_STEP_COUNT        128
 #define ROTATION_SLOT_COUNT      58
 
-#define SRC_COORD_BIAS          100
+#define SRC_COORD_BIAS          128
 #define SRC_COORD_RANGE         ((SRC_COORD_BIAS * 2) + 1)
 #define PROJ_COORD_BIAS         140
 #define PROJ_COORD_RANGE        ((PROJ_COORD_BIAS * 2) + 1)
@@ -102,7 +114,7 @@ static UWORD PrevOffset[2][BLUR_PLANES][POINT_COUNT];
 static UWORD PrevWordCount[2][BLUR_PLANES];
 static UBYTE RockRotSlot[PHASE_STEP_COUNT];
 static UWORD WordMaskAccum[SCREEN_WORD_COUNT];
-static POINT2D WireVerts[6];
+static POINT2D WireVerts[ICOSA_VERTEX_COUNT];
 
 static UBYTE* ScreenBuffer[2];
 static UBYTE* ScreenPlane[2][BLUR_PLANES];
@@ -231,21 +243,33 @@ static void InitSpherePoints(void)
     }
 }
 
-static const POINT3D8 OctaVerts[6] =
+static const POINT3D8 IcosaVerts[ICOSA_VERTEX_COUNT] =
 {
-    {   0,  OCTA_RADIUS,   0 },
-    {   0, -OCTA_RADIUS,   0 },
-    { -OCTA_RADIUS, 0,     0 },
-    {  OCTA_RADIUS, 0,     0 },
-    {   0, 0, -OCTA_RADIUS },
-    {   0, 0,  OCTA_RADIUS }
+    { 0,            ICOSA_SHORT,  ICOSA_LONG  },
+    { 0,            ICOSA_SHORT, -ICOSA_LONG  },
+    { 0,           -ICOSA_SHORT,  ICOSA_LONG  },
+    { 0,           -ICOSA_SHORT, -ICOSA_LONG  },
+    { ICOSA_SHORT,  ICOSA_LONG,   0           },
+    { ICOSA_SHORT, -ICOSA_LONG,   0           },
+    {-ICOSA_SHORT,  ICOSA_LONG,   0           },
+    {-ICOSA_SHORT, -ICOSA_LONG,   0           },
+    { ICOSA_LONG,   0,            ICOSA_SHORT },
+    { ICOSA_LONG,   0,           -ICOSA_SHORT },
+    {-ICOSA_LONG,   0,            ICOSA_SHORT },
+    {-ICOSA_LONG,   0,           -ICOSA_SHORT }
 };
 
-static const EDGE OctaEdges[OCTA_EDGE_COUNT] =
+static const EDGE IcosaEdges[ICOSA_EDGE_COUNT] =
 {
-    { 0, 2 }, { 0, 3 }, { 0, 4 }, { 0, 5 },
-    { 1, 2 }, { 1, 3 }, { 1, 4 }, { 1, 5 },
-    { 2, 4 }, { 2, 5 }, { 3, 4 }, { 3, 5 }
+    { 0,  2 }, { 0,  4 }, { 0,  6 }, { 0,  8 }, { 0, 10 },
+    { 1,  3 }, { 1,  4 }, { 1,  6 }, { 1,  9 }, { 1, 11 },
+    { 2,  5 }, { 2,  7 }, { 2,  8 }, { 2, 10 },
+    { 3,  5 }, { 3,  7 }, { 3,  9 }, { 3, 11 },
+    { 4,  6 }, { 4,  8 }, { 4,  9 },
+    { 5,  7 }, { 5,  8 }, { 5,  9 },
+    { 6, 10 }, { 6, 11 },
+    { 7, 10 }, { 7, 11 },
+    { 8,  9 }, {10, 11 }
 };
 
 static void InitWireObject(UWORD ObjIndex, const POINT3D8* Verts, UWORD VertexCount, const EDGE* Edges, UWORD EdgeCount)
@@ -382,7 +406,7 @@ static const UWORD MorphMap[OBJECT_COUNT][POINT_COUNT] =
 static void InitObjects(void)
 {
     InitSpherePoints();
-    InitWireObject(1, OctaVerts,  sizeof(OctaVerts) / sizeof(OctaVerts[0]), OctaEdges,  sizeof(OctaEdges) / sizeof(OctaEdges[0]));
+    InitWireObject(1, IcosaVerts, ICOSA_VERTEX_COUNT, IcosaEdges, ICOSA_EDGE_COUNT);
     ApplyBaseXTilt();
 }
 
@@ -402,13 +426,13 @@ static void InitMorphState(UWORD PairIndex)
     {
         const POINT3D8* Target = &Dst[Map[i]];
 
-        MorphCur[i].x = Src[i].x << FP_SHIFT;
-        MorphCur[i].y = Src[i].y << FP_SHIFT;
-        MorphCur[i].z = Src[i].z << FP_SHIFT;
+        MorphCur[i].x = (WORD)Src[i].x * FP_ONE;
+        MorphCur[i].y = (WORD)Src[i].y * FP_ONE;
+        MorphCur[i].z = (WORD)Src[i].z * FP_ONE;
 
-        MorphStep[i].x = ((Target->x - Src[i].x) << FP_SHIFT) / (MORPH_FRAMES - 1);
-        MorphStep[i].y = ((Target->y - Src[i].y) << FP_SHIFT) / (MORPH_FRAMES - 1);
-        MorphStep[i].z = ((Target->z - Src[i].z) << FP_SHIFT) / (MORPH_FRAMES - 1);
+        MorphStep[i].x = ((WORD)(Target->x - Src[i].x) * FP_ONE) / (MORPH_FRAMES - 1);
+        MorphStep[i].y = ((WORD)(Target->y - Src[i].y) * FP_ONE) / (MORPH_FRAMES - 1);
+        MorphStep[i].z = ((WORD)(Target->z - Src[i].z) * FP_ONE) / (MORPH_FRAMES - 1);
     }
 }
 
@@ -438,7 +462,7 @@ static void ProjectWireVerts(UBYTE RotSlot)
     const SBYTE* const RotC = RotCosPtr[RotSlot];
     const SBYTE* const RotS = RotSinPtr[RotSlot];
 
-    for (UWORD i = 0; i < 6; ++i)
+    for (UWORD i = 0; i < ICOSA_VERTEX_COUNT; ++i)
     {
         const POINT3D8* const P = &ObjectPoints[OBJECT_INDEX(1, i)];
         const WORD x = P->x;
@@ -475,7 +499,7 @@ static void RenderWireFrame(UBYTE Buffer, UBYTE RotSlot)
     ProjectWireVerts(RotSlot);
     BlitClearWireRectAsm((UWORD*)ScreenPlane[Buffer][TrailHead[Buffer]]);
     PrevWordCount[Buffer][TrailHead[Buffer]] = 0;
-    DrawBlitterLinesAsm((UWORD*)ScreenPlane[Buffer][TrailHead[Buffer]], WireVerts, OctaEdges);
+    DrawBlitterLinesAsm((UWORD*)ScreenPlane[Buffer][TrailHead[Buffer]], WireVerts, IcosaEdges);
 }
 
 static void ClearBuffer(UBYTE Buffer)
@@ -579,7 +603,7 @@ static UBYTE AddLayer(UBYTE Layer, UBYTE Add)
 {
     Layer += Add;
 
-    while (Layer >= BLUR_PLANES)
+    if (Layer >= BLUR_PLANES)
     {
         Layer -= BLUR_PLANES;
     }
@@ -598,12 +622,14 @@ static void Update_BitplanePointersBlur(UBYTE Buffer)
 
 static void Cleanup_All(void)
 {
+    lwmf_ReleaseOS();
+
     FreeMem(CopperList, CopperListSize);
     CopperList = NULL;
     CopperListSize = 0;
 
     CleanupScreenPlanes();
-    lwmf_CleanupAll();
+    lwmf_CloseLibraries();
 }
 
 int main(void)
