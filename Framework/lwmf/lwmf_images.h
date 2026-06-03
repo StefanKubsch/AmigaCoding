@@ -116,11 +116,11 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 
 		const ULONG tag         = chunkHdr[0];
 		const ULONG chunkSize   = chunkHdr[1];
-		const ULONG alignedSize = (chunkSize + 1) & ~1UL;
+		const ULONG alignedSize = (chunkSize + 1) & ~1;
 
 		if (tag == MAKE_ID('B','M','H','D'))
 		{
-			// BMHD is always 20 bytes — read in a single call
+			// BMHD is always 20 bytes - read in a single call
 			UBYTE raw[20];
 			Read(FileHandle, raw, 20);
 			bmhd_w           = (UWORD)((raw[0] << 8) | raw[1]);
@@ -206,7 +206,7 @@ struct lwmf_Image* lwmf_LoadImage(const char* Filename)
 			else
 			{
 				// Pre-read the entire compressed chunk into a temp buffer,
-				// then decompress from RAM — avoids one AmigaDOS syscall per byte
+				// then decompress from RAM - avoids one AmigaDOS syscall per byte
 				UBYTE* compBuf = (UBYTE*)lwmf_AllocCpuMem(chunkSize, MEMF_CLEAR);
 
 				if (compBuf)
@@ -315,7 +315,7 @@ struct lwmf_Image* lwmf_LoadImageMem(const UBYTE* Data, ULONG Size)
 	Reader.Size = Size;
 	Reader.Pos  = 0;
 
-	/* Read IFF FORM+ILBM header */
+	// Read IFF FORM+ILBM header
 	ULONG Header[3];
 	lwmf_ReadMem(&Reader, Header, 12);
 
@@ -348,7 +348,7 @@ struct lwmf_Image* lwmf_LoadImageMem(const UBYTE* Data, ULONG Size)
 
 		const ULONG tag         = chunkHdr[0];
 		const ULONG chunkSize   = chunkHdr[1];
-		const ULONG alignedSize = (chunkSize + 1) & ~1UL;
+		const ULONG alignedSize = (chunkSize + 1) & ~1;
 
 		if (tag == MAKE_ID('B','M','H','D'))
 		{
@@ -501,4 +501,4 @@ void lwmf_DeleteImage(struct lwmf_Image* Image)
 }
 
 
-#endif /* LWMF_IMAGES_H */
+#endif // LWMF_IMAGES_H
