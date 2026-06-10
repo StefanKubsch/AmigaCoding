@@ -32,4 +32,4 @@ void lwmf_SetPixel1bpl(__reg("d0") WORD PosX, __reg("d1") WORD PosY, __reg("a0")
 
 extern struct GfxBase *GfxBase;
 
-#endif /* LWMF_LIBRARIES_H */
+#endif // LWMF_LIBRARIES_H

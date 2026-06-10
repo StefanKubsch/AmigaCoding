@@ -27,7 +27,7 @@
 ; the label externally visible (refer to xdef).
 
 ; **************************************************************************
-; * System / Helperfunctions                                               *
+; * System / Helper functions                                               *
 ; **************************************************************************
 
 ;
@@ -35,26 +35,26 @@
 ;
 
 _lwmf_GetVBR::
-        movem.l a5-a6,-(sp)           ; save registers on stack
+	movem.l a5-a6,-(sp)                                 ; save registers on stack
 
-        move.l  SYSBASE.w,a6          ; get SysBase
-        btst    #0,ATTNFLAGS(a6)      ; check for 68010+ cpu
-        beq.s   .no_vbr               ; jump if not supported
+	move.l  SYSBASE.w,a6                                ; get SysBase
+	btst    #0,ATTNFLAGS(a6)                            ; check for 68010+ cpu
+	beq.s   .no_vbr                                     ; jump if not supported
 
-        lea     .supercode(pc),a5     ; load supervisor code address
-        jsr     LVOSupervisor(a6)     ; call supervisor function
-        bra.s   .done                 ; skip fallback return
+	lea     .supercode(pc),a5                           ; load supervisor code address
+	jsr     LVOSupervisor(a6)                           ; call supervisor function
+	bra.s   .done                                       ; skip fallback return
 
 .no_vbr:
-        moveq   #0,d0                 ; return 0
+	moveq   #0,d0                                       ; return 0
 
 .done:
-        movem.l (sp)+,a5-a6           ; restore registers
-        rts                           ; return
+	movem.l (sp)+,a5-a6                                 ; restore registers
+	rts                                                 ; return
 
 .supercode:
-        movec.l vbr,d0                ; get vbr
-        rte                           ; return from exception
+	movec.l vbr,d0                                      ; get vbr
+	rte                                                 ; return from exception
 
 ; **************************************************************************
 ; * Library handling                                                       *
@@ -65,24 +65,24 @@ _lwmf_GetVBR::
 ;
 
 _lwmf_LoadGraphicsLib::
-	move.l	a6,-(sp)                ; save register on stack
-	move.l	EXECBASE.w,a6           ; use exec base address
+	move.l	a6,-(sp)                                    ; save register on stack
+	move.l	EXECBASE.w,a6                               ; use exec base address
 
-	lea     gfxlib(pc),a1			; load graphics library name
-	moveq   #MINVERSION,d0			; set minimum library version
-	jsr     LVOOpenLibrary(a6)		; open graphics library
-	move.l  d0,_GfxBase				; store address of GfxBase in variable
-	beq.s   .error					; jump if library open failed
+	lea     gfxlib(pc),a1                               ; load graphics library name
+	moveq   #MINVERSION,d0                              ; set minimum library version
+	jsr     LVOOpenLibrary(a6)                          ; open graphics library
+	move.l  d0,_GfxBase                                 ; store address of GfxBase in variable
+	beq.s   .error                                      ; jump if library open failed
 
-	moveq   #0,d0					; return with success
+	moveq   #0,d0                                       ; return with success
 	bra.s   .exit
 
 .error
-	clr.l   _GfxBase				; clear GfxBase variable
-	moveq   #20,d0					; return with error
+	clr.l   _GfxBase                                    ; clear GfxBase variable
+	moveq   #20,d0                                      ; return with error
 
 .exit
-	move.l	(sp)+,a6				; restore register
+	move.l	(sp)+,a6                                    ; restore register
 	rts
 
 ;
@@ -90,16 +90,16 @@ _lwmf_LoadGraphicsLib::
 ;
 
 _lwmf_CloseLibraries::
-	move.l  a6,-(sp)                ; save register on stack
-	move.l  EXECBASE.w,a6           ; use exec base address
+	move.l  a6,-(sp)                                    ; save register on stack
+	move.l  EXECBASE.w,a6                               ; use exec base address
 
-	move.l  _GfxBase(pc),a1         ; load GfxBase
-	beq.s   .done                   ; skip if not open
-	jsr     LVOCloseLibrary(a6)     ; close graphics library
-	clr.l   _GfxBase                ; clear GfxBase variable
+	move.l  _GfxBase(pc),a1                             ; load GfxBase
+	beq.s   .done                                       ; skip if not open
+	jsr     LVOCloseLibrary(a6)                         ; close graphics library
+	clr.l   _GfxBase                                    ; clear GfxBase variable
 
 .done
-	move.l  (sp)+,a6                ; restore register
+	move.l  (sp)+,a6                                    ; restore register
 	rts
 
 ; **************************************************************************
@@ -111,9 +111,9 @@ _lwmf_CloseLibraries::
 ;
 
 _lwmf_TakeOverOS::
-	move.l	a6,-(sp)                	; save register on stack
+	move.l	a6,-(sp)                                    ; save register on stack
 
-	move.w  DMACONR,d0          		; store current CUSTOMREGS registers for later restore
+	move.w  DMACONR,d0                                  ; store current CUSTOMREGS registers for later restore
 	or.w    #$8000,d0
 	move.w  d0,olddma
 	move.w  INTENAR,d0
@@ -127,26 +127,26 @@ _lwmf_TakeOverOS::
 	move.w  d0,oldadkcon
 
 	move.l  _GfxBase(pc),a6
-	move.l  GFX_ACTIVIEW(a6),oldview    ; store current view
-	move.l  GFX_COPINIT(a6),oldcopper  	; store current copperlist
-	suba.l  a1,a1                   	; Set a1 to zero
-	jsr     LVOLoadView(a6)	        	; LoadView(NULL)
+	move.l  GFX_ACTIVIEW(a6),oldview                    ; store current view
+	move.l  GFX_COPINIT(a6),oldcopper                   ; store current copperlist
+	suba.l  a1,a1                                       ; set a1 to zero
+	jsr     LVOLoadView(a6)                             ; LoadView(NULL)
 	jsr     LVOWaitTOF(a6)
 	jsr     LVOWaitTOF(a6)
 
-	bsr     _lwmf_WaitBlitter        	; wait for any in-progress blit before killing DMA
+	bsr     _lwmf_WaitBlitter                           ; wait for any in-progress blit before killing DMA
 
-	move.w  #$7FFF,INTENA       		; disable ALL hardware interrupt enables
-	move.w  #$7FFF,INTREQ       		; clear all pending interrupt requests (write twice - hardware quirk)
+	move.w  #$7FFF,INTENA                               ; disable ALL hardware interrupt enables
+	move.w  #$7FFF,INTREQ                               ; clear all pending interrupt requests (write twice - hardware quirk)
 	move.w  #$7FFF,INTREQ
 
-	move.w  #$7FFF,DMACON       		; clear all DMA channels
-	move.w  #DMASET_DEMO,DMACON 		; re-enable bitplane/copper/blitter DMA
+	move.w  #$7FFF,DMACON                               ; clear all DMA channels
+	move.w  #DMASET_DEMO,DMACON                         ; re-enable bitplane/copper/blitter DMA
 
 	move.l	EXECBASE.w,a6
-	jsr     LVOForbid(a6)               ; prevent task switches when ptplayer later re-enables its INTENA bit
+	jsr     LVOForbid(a6)                               ; prevent task switches when ptplayer later re-enables its INTENA bit
 
-	move.l	(sp)+,a6                	; restore register
+	move.l	(sp)+,a6                                    ; restore register
 	rts
 
 ;
@@ -154,13 +154,13 @@ _lwmf_TakeOverOS::
 ;
 
 _lwmf_ReleaseOS::
-	move.l	a6,-(sp)                    ; save register on stack
+	move.l	a6,-(sp)                                    ; save register on stack
 
-	bsr.s   _lwmf_WaitBlitter           ; wait for any in-progress blit before restoring DMA
+	bsr.s   _lwmf_WaitBlitter                           ; wait for any in-progress blit before restoring DMA
 
 	move.w  #$7FFF,DMACON
 	move.w  olddma(pc),DMACON
-	move.w  #$7FFF,INTREQ               ; clear all pending interrupt requests (write twice - hardware quirk)
+	move.w  #$7FFF,INTREQ                               ; clear all pending interrupt requests (write twice - hardware quirk)
 	move.w  #$7FFF,INTREQ
 	; NOTE: oldintreq is intentionally NOT restored - INTREQ is a status register,
 	; not a mask. Writing back stale request bits would artificially re-trigger
@@ -169,19 +169,19 @@ _lwmf_ReleaseOS::
 	move.w  oldintena(pc),INTENA
 	move.w  #$7FFF,ADKCON
 	move.w  oldadkcon(pc),ADKCON
-	move.l  oldcopper(pc),COP1LCH		; restore system copperlist
+	move.l  oldcopper(pc),COP1LCH                       ; restore system copperlist
 
-	move.l  _GfxBase(pc),a6             ; use graphics.library base address
-	move.l  oldview(pc),a1              ; restore saved view
-	jsr     LVOLoadView(a6)             ; loadView(oldview)
+	move.l  _GfxBase(pc),a6                             ; use graphics.library base address
+	move.l  oldview(pc),a1                              ; restore saved view
+	jsr     LVOLoadView(a6)                             ; LoadView(oldview)
 	jsr     LVOWaitTOF(a6)
 	jsr     LVOWaitTOF(a6)
 
-	move.l  EXECBASE.w,a6               ; use exec base address
+	move.l  EXECBASE.w,a6                               ; use exec base address
 	jsr     LVOPermit(a6)
 
-	move.l	(sp)+,a6                    ; restore register
-   	rts
+	move.l	(sp)+,a6                                    ; restore register
+		rts
 
 ; **************************************************************************
 ; * Graphics functions                                                     *
@@ -191,38 +191,38 @@ _lwmf_ReleaseOS::
 ; void lwmf_OwnBlitter(void);
 ;
 ; Direct hardware: enable blitter-nasty mode (CPU yields bus to blitter).
-; No OS arbiter needed — lwmf_TakeOverOS has already called Forbid().
+; No OS arbiter needed - lwmf_TakeOverOS has already called Forbid().
 ;
 
 _lwmf_OwnBlitter::
-	move.w  #$8400,DMACON           ; set BLTPRI (blitter nasty)
-   	rts
+	move.w  #$8400,DMACON                               ; set BLTPRI (blitter nasty)
+		rts
 
 ;
 ; void lwmf_DisownBlitter(void);
 ;
 
 _lwmf_DisownBlitter::
-	move.w  #$0400,DMACON           ; clear BLTPRI (blitter nasty)
-   	rts
+	move.w  #$0400,DMACON                               ; clear BLTPRI (blitter nasty)
+		rts
 
 ;
 ; void lwmf_WaitBlitter(void);
 ;
 
 _lwmf_WaitBlitter::
-	move.l	a6,-(sp)                					; save register on stack
-	lea		CUSTOMREGS,a6								; a6 = CUSTOMREGS base for compact addressing
+	move.l	a6,-(sp)                                    ; save register on stack
+	lea		CUSTOMREGS,a6                               ; a6 = CUSTOMREGS base for compact addressing
 
 	btst.b  #DMAB_BLITTER,(DMACONR-CUSTOMREGS,a6)       ; already idle? skip nasty mode entirely
 	beq.s   .done
-	move.w	#$8400,(DMACON-CUSTOMREGS,a6)				; enable blitter nasty
+	move.w	#$8400,(DMACON-CUSTOMREGS,a6)               ; enable blitter nasty
 .loop
-	btst.b 	#DMAB_BLITTER,(DMACONR-CUSTOMREGS,a6) 		; check blitter busy flag
+	btst.b 	#DMAB_BLITTER,(DMACONR-CUSTOMREGS,a6)       ; check blitter busy flag
 	bne.s 	.loop
-	move.w	#$0400,(DMACON-CUSTOMREGS,a6)				; disable blitter nasty
+	move.w	#$0400,(DMACON-CUSTOMREGS,a6)               ; disable blitter nasty
 .done
-	move.l	(sp)+,a6       								; restore registers
+	move.l	(sp)+,a6                                    ; restore registers
 	rts
 
 ;
@@ -231,26 +231,26 @@ _lwmf_WaitBlitter::
 
 _lwmf_WaitVertBlank::
 .waithigh
-    btst.b  #0,VPOSR+1        		; wait until V8 = 1 (line 256+)
-    beq.s   .waithigh
+	btst.b  #0,VPOSR+1                                  ; wait until V8 = 1 (line 256+)
+	beq.s   .waithigh
 .waitlow
-    cmp.b   #(303&$FF),VPOSR+2		; wait until low byte = $2F
-    bne.s   .waitlow
-    rts
+	cmp.b   #(303&$FF),VPOSR+2                          ; wait until low byte = $2F
+	bne.s   .waitlow
+	rts
 ;
 ; void lwmf_ClearMemCPU(__reg("a1") long* StartAddress, __reg("d7") long NumberOfBytes);
 ;
 
 _lwmf_ClearMemCPU::
-	movem.l d2-d7/a2-a6,-(sp)       ; save all registers
+	movem.l d2-d7/a2-a6,-(sp)                           ; save all registers
 
-	adda.l  d7,a1                   ; we go top -> down
-	lsr.l   #2,d7                   ; divide by 4
-	moveq   #0,d0                   ; d0=0 (before lsr so CC is set by lsr, not moveq)
+	adda.l  d7,a1                                       ; we go top -> down
+	lsr.l   #2,d7                                       ; divide by 4
+	moveq   #0,d0                                       ; d0=0 (before lsr so CC is set by lsr, not moveq)
 	move.l  d7,d6
-	lsr.l   #7,d6                   ; get number of blocks of 128 long words
-	beq.s   .clear                  ; branch if we have no complete block
-	subq.l  #1,d6                   ; adjust count for dbra
+	lsr.l   #7,d6                                       ; get number of blocks of 128 long words
+	beq.s   .clear                                      ; branch if we have no complete block
+	subq.l  #1,d6                                       ; adjust count for dbra
 	; init zero registers via register-to-register moves
 	move.l  d0,d1
 	move.l  d0,d2
@@ -263,7 +263,7 @@ _lwmf_ClearMemCPU::
 	move.l  d0,a5
 	move.l  d0,a6
 .clearblock
-	movem.l d0-d5/a2-a6,-(a1)       ; 11 registers -> clear 44 bytes at once
+	movem.l d0-d5/a2-a6,-(a1)                           ; 11 registers -> clear 44 bytes at once
 	movem.l d0-d5/a2-a6,-(a1)
 	movem.l d0-d5/a2-a6,-(a1)
 	movem.l d0-d5/a2-a6,-(a1)
@@ -274,18 +274,18 @@ _lwmf_ClearMemCPU::
 	movem.l d0-d5/a2-a6,-(a1)
 	movem.l d0-d5/a2-a6,-(a1)
 	movem.l d0-d5/a2-a6,-(a1)
-	movem.l d0-d5/a2,-(a1)          ; 7 registers
+	movem.l d0-d5/a2,-(a1)                              ; 7 registers
 	dbra    d6,.clearblock
 .clear
-	and.l   #$7F,d7                 ; remainder after 128-longword blocks (7 bits)
+	and.l   #$7F,d7                                     ; remainder after 128-longword blocks (7 bits)
 	beq.s   .done
 	; d0 is always 0 (set unconditionally above)
 .setword
-	move.l  d0,-(a1)                ; clear memory by one long word at a time
+	move.l  d0,-(a1)                                    ; clear memory by one long word at a time
 	subq.l  #1,d7
 	bne.s   .setword
 .done
-	movem.l (sp)+,d2-d7/a2-a6       ; restore registers
+	movem.l (sp)+,d2-d7/a2-a6                           ; restore registers
 	rts
 
 ;
@@ -293,25 +293,25 @@ _lwmf_ClearMemCPU::
 ;
 
 _lwmf_ClearScreen::
-	movem.l d2-d7/a1-a6,-(sp)       						; save all registers
-	lea		CUSTOMREGS,a1									; a1 = CUSTOMREGS base for compact addressing
+	movem.l d2-d7/a1-a6,-(sp)                           ; save all registers
+	lea		CUSTOMREGS,a1                               ; a1 = CUSTOMREGS base for compact addressing
 
 	; Clear first half of screen with blitter
 	bsr     _lwmf_WaitBlitter
-	move.l  #$01000000,BLTCON0								; enable destination only (both BLTCON0 and BLTCON1 are written!)
-	clr.w   (BLTDMOD-CUSTOMREGS,a1)							; modulo = 0 (contiguous)
+	move.l  #$01000000,BLTCON0                          ; enable destination only (both BLTCON0 and BLTCON1 are written!)
+	clr.w   (BLTDMOD-CUSTOMREGS,a1)                     ; modulo = 0 (contiguous)
 	move.l  a0,(BLTDPTH-CUSTOMREGS,a1)
 	move.w  #SCREENCLRSIZEBLT,(BLTSIZE-CUSTOMREGS,a1)
 
 	; Clear rest of screen with cpu
 	move.l  #SCREENCLRSIZECPU,d7
-	adda.l  d7,a0	                  						; we go top -> down
-	lsr.l   #3,d7                   						; divide by 8, we only need to clear half of the screen...
-	moveq   #0,d0                   						; d0=0 (before lsr so CC is set by lsr, not moveq)
+	adda.l  d7,a0                                       ; we go top -> down
+	lsr.l   #3,d7                                       ; divide by 8, we only need to clear half of the screen...
+	moveq   #0,d0                                       ; d0=0 (before lsr so CC is set by lsr, not moveq)
 	move.l  d7,d6
-	lsr.l   #7,d6                   						; get number of blocks of 128 long words
-	beq.s   .clear                  						; branch if we have no complete block
-	subq.l  #1,d6                   						; adjust count for dbra
+	lsr.l   #7,d6                                       ; get number of blocks of 128 long words
+	beq.s   .clear                                      ; branch if we have no complete block
+	subq.l  #1,d6                                       ; adjust count for dbra
 	; init zero registers via register-to-register moves
 	move.l  d0,d1
 	move.l  d0,d2
@@ -324,7 +324,7 @@ _lwmf_ClearScreen::
 	move.l  d0,a5
 	move.l  d0,a6
 .clearblock
-	movem.l d0-d5/a2-a6,-(a0)       						; 11 registers -> clear 44 bytes at once
+	movem.l d0-d5/a2-a6,-(a0)                           ; 11 registers -> clear 44 bytes at once
 	movem.l d0-d5/a2-a6,-(a0)
 	movem.l d0-d5/a2-a6,-(a0)
 	movem.l d0-d5/a2-a6,-(a0)
@@ -335,102 +335,111 @@ _lwmf_ClearScreen::
 	movem.l d0-d5/a2-a6,-(a0)
 	movem.l d0-d5/a2-a6,-(a0)
 	movem.l d0-d5/a2-a6,-(a0)
-	movem.l d0-d5/a2,-(a0)          						; 7 registers
+	movem.l d0-d5/a2,-(a0)                              ; 7 registers
 	dbra    d6,.clearblock
 .clear
-	and.l   #$7F,d7                 						; remainder after 128-longword blocks (7 bits)
+	and.l   #$7F,d7                                     ; remainder after 128-longword blocks (7 bits)
 	beq.s   .done
 
 	; d0 is always 0 (set unconditionally above)
 .setword
-	move.l  d0,-(a0)                						; clear memory by one long word at a time
+	move.l  d0,-(a0)                                    ; clear memory by one long word at a time
 	subq.l  #1,d7
 	bne.s   .setword
 .done
-	movem.l (sp)+,d2-d7/a1-a6       						; restore registers
+	movem.l (sp)+,d2-d7/a1-a6                           ; restore registers
 	rts
 
 ;
-; void lwmf_BlitClearLines(__reg("d0") WORD StartLine, __reg("d1") WORD NumberOfLines, __reg("a0") long* Target);
+; void lwmf_BlitClearLines(__reg("d0") UWORD StartLine, __reg("d1") UWORD NumberOfLines, __reg("a0") long* Target);
 ;
 
 _lwmf_BlitClearLines::
-    movem.l d2-d4/a1,-(sp)							; save registers
-	lea		CUSTOMREGS,a1							; a1 = CUSTOMREGS base for compact addressing
+	movem.l	d2-d6,-(sp)                                 ; save registers
+	lea	CUSTOMREGS,a1                                   ; a1 = CUSTOMREGS base for compact addressing
 
-    moveq   #BYTESPERROW,d2
-    moveq   #NUMBEROFBITPLANES,d4
-    mulu    d4,d2            						; d2 = BYTESPERROW * NUMBEROFBITPLANES
+	tst.w	d1                                          ; no logical lines to clear?
+	beq.s	.done                                       ; skip zero-height BLTSIZE
 
-	move.l  d2,d4
-    lsr.l   #1,d4									; (BYTESPERROW * NUMBEROFBITPLANES) >> 1
+	move.w	#SCREENWIDTHTOTAL,d2                        ; d2 = full interleaved line stride in bytes
+	mulu.w	d0,d2                                       ; d2 = startLine * SCREENWIDTHTOTAL
+	add.l	a0,d2                                       ; d2 = target address for blitter
+	move.w	d1,d5                                       ; d5 = remaining logical screen lines
 
-	move.l  d1,d3
+.blitloop:
+	move.w	d5,d3                                       ; d3 = logical lines for this blit
+	cmp.w	#(1023/NUMBEROFBITPLANES),d3                ; keep BLTSIZE height below overflow
+	bls.s	.sizeok                                     ; skip clamp if one blit is enough
+	move.w	#(1023/NUMBEROFBITPLANES),d3                ; clamp to maximum logical line count
+.sizeok:
+	sub.w	d3,d5                                       ; update remaining logical lines
+	move.w	d3,d4                                       ; d4 = logical lines for address advance
+	move.w	#SCREENWIDTHTOTAL,d6                        ; d6 = full interleaved line stride in bytes
+	mulu.w	d6,d4                                       ; d4 = byte advance for next chunk
+	moveq	#NUMBEROFBITPLANES,d6                       ; d6 = number of interleaved bitplanes
+	mulu.w	d6,d3                                       ; d3 = blitter height in bitplane rows
+	lsl.w	#6,d3                                       ; move height into BLTSIZE high bits
+	or.w	#(BYTESPERROW/2),d3                         ; add blitter width in words
 
-    ; Calculate target adress
-    mulu    d0,d2            						; d2 = startLine * BYTESPERROW * NUMBEROFBITPLANES
-    add.l   a0,d2            						; d2 = Target address for blitter
+	bsr	_lwmf_WaitBlitter                               ; wait before writing blitter registers
+	move.l	#$01000000,(BLTCON0-CUSTOMREGS,a1)          ; enable destination only and clear BLTCON1
+	clr.w	(BLTDMOD-CUSTOMREGS,a1)                     ; modulo = 0 for contiguous interleaved rows
+	move.l	d2,(BLTDPTH-CUSTOMREGS,a1)                  ; set destination pointer
+	move.w	d3,(BLTSIZE-CUSTOMREGS,a1)                  ; start blit
 
-	bsr     _lwmf_WaitBlitter
+	add.l	d4,d2                                       ; advance to next logical line chunk
+	tst.w	d5                                          ; any logical lines left?
+	bne.s	.blitloop                                   ; process next chunk if needed
 
-    ; Set Blitter register
-	move.l  #$01000000,(BLTCON0-CUSTOMREGS,a1)		; enable destination only (both BLTCON0 and BLTCON1 are written!)
-    clr.w	(BLTDMOD-CUSTOMREGS,a1)   				; modulo = 0 (contiguous)
-    move.l  d2,(BLTDPTH-CUSTOMREGS,a1)     			; BLTDPTH = Targetadress
-
-    ; Blit
-    lsl.w   #6,d3
-    or.w    d4,d3
-    move.w  d3,(BLTSIZE-CUSTOMREGS,a1)
-
-    movem.l (sp)+,d2-d4/a1							; restore registers
-    rts
+.done:
+	movem.l	(sp)+,d2-d6                                 ; restore registers
+	rts                                                 ; return
 
 ;
 ; void lwmf_SetPixel(__reg("d0") WORD PosX, __reg("d1") WORD PosY,  __reg("d2") UBYTE Color,  __reg("a0") long* Target);
 ;
 
 _lwmf_SetPixel::
-    movem.l d2-d4,-(sp)				; save registers
+	movem.l d2-d4,-(sp)                                 ; save registers
 
-    muls.w  #SCREENWIDTHTOTAL,d1    ; PosY * stride
-    move.w  d0,d3
-    not.w   d3                      ; low 3 bits = 7-(x&7)
-    lsr.w   #3,d0                   ; byte offset instead of ASR
-    adda.l  d1,a0                   ; Move the destination address forward once
-    adda.w  d0,a0
+	muls.w  #SCREENWIDTHTOTAL,d1                        ; PosY * stride
+	move.w  d0,d3
+	not.w   d3                                          ; low 3 bits = 7-(x&7)
+	lsr.w   #3,d0                                       ; byte offset instead of ASR
+	adda.l  d1,a0                                       ; move the destination address forward once
+	adda.w  d0,a0
 
-    moveq   #NUMBEROFBITPLANES-1,d4
+	moveq   #NUMBEROFBITPLANES-1,d4
 .loop
-    lsr.b   #1,d2                   ; Plane-Bit -> Carry
-    bcc.s   .skip
-    bset    d3,(a0)
+	lsr.b   #1,d2                                       ; plane bit -> carry
+	bcc.s   .skip
+	bset    d3,(a0)
 .skip
-    lea     BYTESPERROW(a0),a0      ; next Bitplane
-    dbra    d4,.loop
+	lea     BYTESPERROW(a0),a0                          ; next bitplane
+	dbra    d4,.loop
 
-    movem.l (sp)+,d2-d4				; restore registers
-    rts
+	movem.l (sp)+,d2-d4                                 ; restore registers
+	rts
 
 ;
 ; void lwmf_SetPixel1bpl(__reg("d0") WORD PosX, __reg("d1") WORD PosY,  __reg("a0") long* Target);
 ;
 
 _lwmf_SetPixel1bpl::
-	mulu.w  #SCREENWIDTHTOTAL,d1 ; PosY * stride
-    adda.l  d1,a0                ; Destinationaddress = start of line
+	mulu.w  #SCREENWIDTHTOTAL,d1                        ; PosY * stride
+	adda.l  d1,a0                                       ; destination address = start of line
 
-    move.w  d0,d1                ; save x for Maskidex
-    lsr.w   #3,d0                ; byte offset instead of ASR
-    adda.w  d0,a0                ; Destinationbyte
+	move.w  d0,d1                                       ; save x for mask index
+	lsr.w   #3,d0                                       ; byte offset instead of ASR
+	adda.w  d0,a0                                       ; destination byte
 
-    and.w   #7,d1                ; x & 7
-    move.b  .bitmask(pc,d1.w),d0 ; get Bitmask
-    or.b    d0,(a0)              ; set Pixel
-    rts
+	and.w   #7,d1                                       ; x & 7
+	move.b  .bitmask(pc,d1.w),d0                        ; get bitmask
+	or.b    d0,(a0)                                     ; set pixel
+	rts
 
 .bitmask:
-        dc.b    $80,$40,$20,$10,$08,$04,$02,$01
+	dc.b    $80,$40,$20,$10,$08,$04,$02,$01
 
 ; ***************************************************************************************************
 ; * Variables                                                                                       *

@@ -166,4 +166,4 @@ void lwmf_Text(const char* Text, UWORD PosX, const UWORD PosY, const UBYTE Color
 }
 
 
-#endif /* LWMF_TEXT_H */
+#endif // LWMF_TEXT_H

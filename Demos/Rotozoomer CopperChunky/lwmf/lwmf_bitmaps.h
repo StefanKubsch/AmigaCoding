@@ -9,11 +9,11 @@ static struct BitMap  ScreenBitmapStruct[2];
 static UBYTE*         ScreenBitmapMem[2]    = { NULL, NULL };
 static struct BitMap* ScreenBitmap[2]       = { NULL, NULL };
 
-// Own replacement for graphics.library InitBitMap() — no library call needed.
+// Own replacement for graphics.library InitBitMap() - no library call needed.
 // struct BitMap layout: BytesPerRow, Rows, Flags, Depth, pad, Planes[8]
 static inline void lwmf_InitBitMap(struct BitMap* bm, UBYTE depth, UWORD w, UWORD h)
 {
-	bm->BytesPerRow = (UWORD)(((w + 15u) / 16u) * 2u);
+	bm->BytesPerRow = ((w + 15) / 16) * 2;
 	bm->Rows        = h;
 	bm->Flags       = 0;
 	bm->Depth       = depth;
@@ -60,4 +60,4 @@ static void lwmf_CleanupScreenBitmaps(void)
 	}
 }
 
-#endif /* LWMF_BITMAPS_H */
+#endif // LWMF_BITMAPS_H

@@ -8,4 +8,4 @@ void lwmf_CleanupAll(void)
 }
 
 
-#endif /* LWMF_CLEANUP_H */
+#endif // LWMF_CLEANUP_H

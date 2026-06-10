@@ -34,4 +34,4 @@ static UWORD lwmf_RGBLerp(UWORD c0, UWORD c1, UWORD t, UWORD tmax)
 		((UWORD)(b0 + (((b1 - b0) * f) >> 8)));
 }
 
-#endif /* LWMF_MATH_H */
+#endif // LWMF_MATH_H

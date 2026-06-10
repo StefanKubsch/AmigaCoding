@@ -12,4 +12,4 @@
 #include "lwmf_ptplayer.h"
 #include "lwmf_math.h"
 
-#endif /* LWMF_H */
+#endif // LWMF_H

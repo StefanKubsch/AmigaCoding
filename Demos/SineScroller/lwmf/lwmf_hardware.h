@@ -19,7 +19,7 @@ volatile UWORD* const COLOR00		= (volatile UWORD* const) 0xDFF180;
 extern struct ExecBase *SysBase;
 
 // Define a "blank" sprite for mouse pointer
-// "__chip" tells vbcc to store an array or variable in Chipmem!
+// "__chip" tells vbcc to store an array or variable in Chip RAM
 __chip UWORD BlankMousePointer[4] =
 {
 	0x0000, 0x0000,
@@ -27,4 +27,4 @@ __chip UWORD BlankMousePointer[4] =
 };
 
 
-#endif /* LWMF_HARDWARE_H */
+#endif // LWMF_HARDWARE_H

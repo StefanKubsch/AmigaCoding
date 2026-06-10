@@ -14,4 +14,4 @@ static APTR lwmf_AllocCpuMem(ULONG Size, ULONG Flags)
 }
 
 
-#endif /* LWMF_MEMORY_H */
+#endif // LWMF_MEMORY_H

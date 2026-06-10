@@ -14,15 +14,15 @@
 ;
 
 _lwmf_Random::
-	move.w	seed(PC),d0
-    mulu    #$4E35,d0
-	addq.w	#1,d0
-    move.w  d0,seed
-    rts
+	move.w	seed(PC),d0					; load current 16-bit seed
+	mulu.w	#$4E35,d0					; advance linear congruential state
+	addq.w	#1,d0						; add increment
+	move.w	d0,seed						; store new 16-bit seed
+	rts									; return random value in d0
 
 ; ***************************************************************************************************
 ; * Variables                                                                                       *
 ; ***************************************************************************************************
 
 seed:
-	dc.l    $12345678
+	dc.l	$12345678					; initial seed
