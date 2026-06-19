@@ -8,6 +8,8 @@ LWMF_HW_SRC=.\lwmf\lwmf_hardware_vasm.s
 LWMF_HW_OBJ=.\lwmf\include\lwmf_hardware_vasm.o
 LWMF_HW_DEFS=.\lwmf\lwmf_Defines.h
 
+ASM_SRC=Twister_vasm.s
+ASM_OBJ=Twister_vasm.o
 C_SRC=Twister.c
 
 .PHONY: all build adf clean-objs
@@ -26,8 +28,11 @@ $(LWMF_HW_OBJ): $(LWMF_HW_SRC)
 $(LWMF_HW_DEFS): $(LWMF_HW_SRC)
 	vasmm68k_mot -Fcdef -o "$(LWMF_HW_DEFS)" "$(LWMF_HW_SRC)"
 
-$(PROG): $(C_SRC) $(LWMF_HW_OBJ) $(LWMF_HW_DEFS)
-	vc $(VC_TARGET) $(VBCC_NDK_INCLUDE) -O4 -speed -final -sc -cpu=68000 $(C_SRC) "$(LWMF_HW_OBJ)" -o $(PROG) -lamiga
+$(ASM_OBJ): $(ASM_SRC)
+	vasmm68k_mot $(ASM_HUNK_FLAGS) -o "$(ASM_OBJ)" "$(ASM_SRC)"
+
+$(PROG): $(C_SRC) $(LWMF_HW_OBJ) $(LWMF_HW_DEFS) $(ASM_OBJ)
+	vc $(VC_TARGET) $(VBCC_NDK_INCLUDE) -O4 -speed -final -sc -cpu=68000 $(C_SRC) "$(LWMF_HW_OBJ)" "$(ASM_OBJ)" -o $(PROG) -lamiga
 
 shrink: $(PROG)
 	shrinkler -o "$(PROG)" "$(PROG)"

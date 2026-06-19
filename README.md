@@ -10,7 +10,7 @@ Minimum requierements: Amiga 500, Kickstart 1.3, 512KB Chip-RAM + 512KB Slow-RAM
 
 Included examples, coded for speed and memory, so there are no guards etc:
 
-- HAM Rotozoomer (4x4, 56 columns, runs only on OCS/Kickstart 2.04 due to using the HAM7/4bitplanes quirk)
+- HAM7 Rotozoomer (4x4, 56 columns, runs only on OCS/Kickstart 2.04 due to using the HAM7/4bitplanes quirk)
 - Copper Plasma
 - Morphing dots
 - Shadebobs
@@ -122,4 +122,3 @@ Useful links:
 68000 instructions overview - http://68k.hax.com/
 
 Amiga registers documentation - http://amigadev.elowar.com/read/ADCD_2.1/Hardware_Manual_guide/node0060.html
-
