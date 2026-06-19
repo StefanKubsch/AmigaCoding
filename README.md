@@ -15,6 +15,7 @@ Included examples, coded for speed and memory, so there are no guards etc:
 - Morphing dots
 - Shadebobs
 - Sinescroller
+- Textured Twister
 - Vectorballs
 
 A demo with proper errorhandling and full use of the framework is also included:
