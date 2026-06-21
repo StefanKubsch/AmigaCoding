@@ -16,9 +16,6 @@
 // Screen / Copper
 // =====================================================================
 
-#define COPPER_WORDS 6656
-#define COPPER_LIST_SIZE ((ULONG)sizeof(UWORD) * COPPER_WORDS)
-
 // VPOS offset for PAL display (first visible line = $2C = 44)
 #define VPOS_OFFSET 0x2C
 #define COPPER_WAIT_H 0x01
@@ -29,7 +26,9 @@
 #define COLUMN_DDFSTRT 0x0070
 #define COLUMN_DDFSTOP 0x0098
 
-#define POINTER_WORDS (NUMBEROFBITPLANES << 1)
+#define COLUMN_ACTIVE_BITPLANES 4
+#define DISPLAY_POINTER_WORDS (NUMBEROFBITPLANES << 1)
+#define COLUMN_POINTER_WORDS (COLUMN_ACTIVE_BITPLANES << 1)
 #define COLUMN_PALETTE_COLORS 9
 
 static UWORD *CopperList[2];
@@ -58,9 +57,9 @@ static UWORD *CopperWaitLine(UWORD *Copperlist, UWORD ScreenY, UBYTE *Past255)
     return Copperlist;
 }
 
-static void MakePointerWords(UBYTE *Row, UWORD *Words)
+static void MakePointerWords(const UBYTE *Row, UWORD *Words, UBYTE PlaneCount)
 {
-    for (UBYTE p = 0; p < NUMBEROFBITPLANES; ++p)
+    for (UBYTE p = 0; p < PlaneCount; ++p)
     {
         const ULONG Addr = (ULONG)(Row + (ULONG)p * COLUMN_FETCH_BYTES);
 
@@ -69,11 +68,11 @@ static void MakePointerWords(UBYTE *Row, UWORD *Words)
     }
 }
 
-static UWORD *CopperPutPointerBlock(UWORD *Copperlist, const UWORD *Words)
+static UWORD *CopperPutPointerBlock(UWORD *Copperlist, const UWORD *Words, UBYTE PlaneCount)
 {
     UWORD Reg = 0x0E0;
 
-    for (UBYTE p = 0; p < NUMBEROFBITPLANES; ++p)
+    for (UBYTE p = 0; p < PlaneCount; ++p)
     {
         *Copperlist++ = Reg;
         *Copperlist++ = Words[p << 1];
@@ -97,30 +96,60 @@ static UWORD *CopperPutPointerBlock(UWORD *Copperlist, const UWORD *Words)
 #define COLUMN_SCROLL_STEP_Q8 307
 #define COLUMN_TORSION_STEP_Q8 154
 #define COLUMN_TORSION_DEADBAND 12
-#define COLUMN_CENTER_X (SCREENWIDTH >> 1)
-#define COLUMN_LEFT (COLUMN_CENTER_X - 48)
 #define COLUMN_WIDTH 96
+#define COLUMN_LOCAL_CENTER_X (COLUMN_WIDTH >> 1)
 #define SQUARE_SCREEN_SCALE 48
 #define SQUARE_SCREEN_SCALE_DEN 91
 #define COLUMN_PHASES 256
 #define TEXT_TEXTURE_ROWS 16
 #define TEXT_ROWDATA_ROWS 9
 #define TEXT_FACE_WIDTH 64
-#define COLUMN_ROW_BYTES (COLUMN_FETCH_BYTES * NUMBEROFBITPLANES)
+#define COLUMN_ROW_BYTES (COLUMN_FETCH_BYTES * COLUMN_ACTIVE_BITPLANES)
+#define COLUMN_ROW_LONGS (COLUMN_ROW_BYTES >> 2)
+#define COLUMN_BLANK_ROW_BYTES (COLUMN_FETCH_BYTES * NUMBEROFBITPLANES)
 #define COLUMN_ROWDATA_SIZE ((ULONG)TEXT_ROWDATA_ROWS * COLUMN_PHASES * COLUMN_ROW_BYTES)
+#define COLUMN_ROWDATA_ROW_STRIDE ((ULONG)COLUMN_PHASES * COLUMN_ROW_BYTES)
 #define COLUMN_PHASE_WORDS 16
+#define COLUMN_PHASE_PTR_ROW_STRIDE ((ULONG)COLUMN_PHASES * COLUMN_PHASE_WORDS)
 #define COLUMN_PHASE_PTR_SIZE ((ULONG)TEXT_TEXTURE_ROWS * COLUMN_PHASES * COLUMN_PHASE_WORDS * sizeof(UWORD))
 #define COLUMN_SPLIT_ROW (SCREENHEIGHT - VPOS_OFFSET - COLUMN_TOP)
 #define COLUMN_SPLIT_HEIGHT (COLUMN_HEIGHT - COLUMN_SPLIT_ROW)
 #define COLUMN_MAX_SEGMENTS 2
+#define COPPER_MOVE_WORDS 2
+#define COPPER_WAIT_WORDS 2
+#define COPPER_SKIP_255_WORDS (((VPOS_OFFSET + COLUMN_TOP + COLUMN_HEIGHT) >= 256) ? 2 : 0)
+#define COPPER_END_WORDS 2
+#define COPPER_SETUP_WORDS 24
+#define COPPER_COLOR_BODY_WORDS (4 * COPPER_MOVE_WORDS)
+#define COPPER_FULL_POINTER_BLOCK_WORDS (DISPLAY_POINTER_WORDS * COPPER_MOVE_WORDS)
+#define COPPER_ACTIVE_POINTER_BLOCK_WORDS (COLUMN_POINTER_WORDS * COPPER_MOVE_WORDS)
+#define COPPER_BODY_LINE_WORDS (COPPER_WAIT_WORDS + COPPER_COLOR_BODY_WORDS + COPPER_ACTIVE_POINTER_BLOCK_WORDS)
+#define COPPER_RESERVE_WORDS 32
+#define COPPER_WORDS                                   \
+    (COPPER_SETUP_WORDS +                              \
+     COPPER_FULL_POINTER_BLOCK_WORDS +                 \
+     (COLUMN_PALETTE_COLORS * COPPER_MOVE_WORDS) +     \
+     COPPER_WAIT_WORDS +                               \
+     COPPER_FULL_POINTER_BLOCK_WORDS +                 \
+     ((ULONG)COLUMN_HEIGHT * COPPER_BODY_LINE_WORDS) + \
+     COPPER_SKIP_255_WORDS +                           \
+     COPPER_WAIT_WORDS +                               \
+     COPPER_FULL_POINTER_BLOCK_WORDS +                 \
+     COPPER_END_WORDS +                                \
+     COPPER_RESERVE_WORDS)
+#define COPPER_LIST_SIZE ((ULONG)sizeof(UWORD) * COPPER_WORDS)
 
-void UpdateTwistCopperTextRangeAsm(__reg("a0") UWORD *CopperData,
-                                   __reg("a1") const UWORD *PhaseWords,
-                                   __reg("d0") LONG AccStart,
-                                   __reg("d1") WORD PhaseDelta,
-                                   __reg("d2") UWORD PhaseAdd,
-                                   __reg("d3") UWORD TextAdd,
-                                   __reg("d4") UWORD Count);
+#if (COLUMN_SPLIT_ROW != 188) || (COLUMN_SPLIT_HEIGHT != 20)
+#error Twister_vasm.s split constants must match this screen setup.
+#endif
+
+void UpdateTwistCopperTextAsm(__reg("a0") UWORD *CopperDataLow,
+                              __reg("a1") UWORD *CopperDataHigh,
+                              __reg("a2") const UWORD *PhaseWords,
+                              __reg("d0") WORD AccStart,
+                              __reg("d1") WORD PhaseDelta,
+                              __reg("d2") UWORD PhaseAdd,
+                              __reg("d3") UWORD TextAdd);
 
 static UWORD ColumnTorsionPhase;
 static LONG ColumnScrollPhase;
@@ -130,9 +159,6 @@ static UBYTE *ColumnRowData;
 static UBYTE *ColumnBlankRow;
 static UBYTE *ColumnWorkRow;
 static UWORD *ColumnPhasePtrWords;
-static UBYTE FaceTextureColor[4][TEXT_ROWDATA_ROWS][TEXT_FACE_WIDTH];
-static UBYTE ColumnSegmentCount[COLUMN_PHASES];
-static UWORD ColumnShadeWords[COLUMN_PHASES][4];
 
 struct ColumnSegment
 {
@@ -142,8 +168,6 @@ struct ColumnSegment
     WORD Step;
     UBYTE Face;
 };
-
-static struct ColumnSegment ColumnSegmentData[COLUMN_PHASES][COLUMN_MAX_SEGMENTS];
 
 static const WORD SinTab[256] =
     {
@@ -195,37 +219,26 @@ static const char FaceText[4][9] =
         "  AMIGA ",
         "  RULES "};
 
-static void SetColumnRowPixelX(UBYTE *Row, UWORD PosX, UBYTE Color)
-{
-    const UBYTE Bit = (UBYTE)(0x80 >> (PosX & 7));
-    const UBYTE Byte = (UBYTE)(PosX >> 3);
-
-    Row[0 * COLUMN_FETCH_BYTES + Byte] &= (UBYTE)~Bit;
-    Row[1 * COLUMN_FETCH_BYTES + Byte] &= (UBYTE)~Bit;
-    Row[2 * COLUMN_FETCH_BYTES + Byte] &= (UBYTE)~Bit;
-    Row[3 * COLUMN_FETCH_BYTES + Byte] &= (UBYTE)~Bit;
-    Row[4 * COLUMN_FETCH_BYTES + Byte] &= (UBYTE)~Bit;
-
-    if (Color & 1)
-        Row[0 * COLUMN_FETCH_BYTES + Byte] |= Bit;
-    if (Color & 2)
-        Row[1 * COLUMN_FETCH_BYTES + Byte] |= Bit;
-    if (Color & 4)
-        Row[2 * COLUMN_FETCH_BYTES + Byte] |= Bit;
-    if (Color & 8)
-        Row[3 * COLUMN_FETCH_BYTES + Byte] |= Bit;
-    if (Color & 16)
-        Row[4 * COLUMN_FETCH_BYTES + Byte] |= Bit;
-}
+#if COLUMN_ROW_LONGS != 12
+#error ClearColumnWorkRow() and CopyColumnWorkRow() are unrolled for 96px x 4 active bitplanes.
+#endif
 
 static inline void ClearColumnWorkRow(void)
 {
     ULONG *Dst = (ULONG *)ColumnWorkRow;
 
-    for (UBYTE i = 0; i < (COLUMN_ROW_BYTES >> 2); ++i)
-    {
-        *Dst++ = 0;
-    }
+    Dst[0] = 0;
+    Dst[1] = 0;
+    Dst[2] = 0;
+    Dst[3] = 0;
+    Dst[4] = 0;
+    Dst[5] = 0;
+    Dst[6] = 0;
+    Dst[7] = 0;
+    Dst[8] = 0;
+    Dst[9] = 0;
+    Dst[10] = 0;
+    Dst[11] = 0;
 }
 
 static inline void CopyColumnWorkRow(UBYTE *Dst)
@@ -233,43 +246,112 @@ static inline void CopyColumnWorkRow(UBYTE *Dst)
     const ULONG *Src = (const ULONG *)ColumnWorkRow;
     ULONG *Target = (ULONG *)Dst;
 
-    for (UBYTE i = 0; i < (COLUMN_ROW_BYTES >> 2); ++i)
-    {
-        *Target++ = *Src++;
-    }
+    Target[0] = Src[0];
+    Target[1] = Src[1];
+    Target[2] = Src[2];
+    Target[3] = Src[3];
+    Target[4] = Src[4];
+    Target[5] = Src[5];
+    Target[6] = Src[6];
+    Target[7] = Src[7];
+    Target[8] = Src[8];
+    Target[9] = Src[9];
+    Target[10] = Src[10];
+    Target[11] = Src[11];
 }
 
-// Prepare four 1bpl text masks as color indices for the visible square faces.
-static void BuildFaceTextureColors(void)
+static inline UBYTE ColumnPixelBit(UWORD PosX)
 {
-    for (UBYTE Face = 0; Face < 4; ++Face)
+    return (UBYTE)(0x80 >> (PosX & 7));
+}
+
+static void OrPlaneSpanX(UBYTE *Plane, UWORD Start, UWORD End)
+{
+    const UBYTE StartByte = (UBYTE)(Start >> 3);
+    const UBYTE EndByte = (UBYTE)(End >> 3);
+    const UBYTE StartMask = (UBYTE)(0xFF >> (Start & 7));
+    const UBYTE EndMask = (UBYTE)(0xFF << (7 - (End & 7)));
+
+    if (StartByte == EndByte)
     {
-        for (UBYTE TexY = 0; TexY < TEXT_ROWDATA_ROWS; ++TexY)
+        Plane[StartByte] |= (UBYTE)(StartMask & EndMask);
+        return;
+    }
+
+    Plane[StartByte] |= StartMask;
+
+    for (UBYTE Byte = (UBYTE)(StartByte + 1); Byte < EndByte; ++Byte)
+    {
+        Plane[Byte] = 0xFF;
+    }
+
+    Plane[EndByte] |= EndMask;
+}
+
+static void DrawSegmentBase(const struct ColumnSegment *Segment)
+{
+    const UBYTE Color = Segment->Face + 1;
+
+    if (Segment->End < Segment->Start)
+    {
+        return;
+    }
+
+    if (Color & 1)
+        OrPlaneSpanX(ColumnWorkRow + 0 * COLUMN_FETCH_BYTES, (UWORD)Segment->Start, (UWORD)Segment->End);
+    if (Color & 2)
+        OrPlaneSpanX(ColumnWorkRow + 1 * COLUMN_FETCH_BYTES, (UWORD)Segment->Start, (UWORD)Segment->End);
+    if (Color & 4)
+        OrPlaneSpanX(ColumnWorkRow + 2 * COLUMN_FETCH_BYTES, (UWORD)Segment->Start, (UWORD)Segment->End);
+}
+
+static void DrawSegmentTextOverlay(UBYTE TexY, const struct ColumnSegment *Segment)
+{
+    LONG UAcc = Segment->UAcc;
+    const WORD Step = Segment->Step;
+    const UBYTE Face = Segment->Face;
+    UBYTE *Plane2 = ColumnWorkRow + 2 * COLUMN_FETCH_BYTES;
+    UBYTE *Plane3 = ColumnWorkRow + 3 * COLUMN_FETCH_BYTES;
+
+    if (TexY >= 8 || Segment->End < Segment->Start)
+    {
+        return;
+    }
+
+    for (WORD x = Segment->Start; x <= Segment->End; ++x)
+    {
+        const UBYTE U = (UBYTE)((UAcc >> 8) & (TEXT_FACE_WIDTH - 1));
+        const UBYTE Bits = ASCIIFont8x8[(UBYTE)FaceText[Face][U >> 3]][TexY];
+
+        if (Bits & (1 << (U & 7)))
         {
-            for (UWORD U = 0; U < TEXT_FACE_WIDTH; ++U)
+            const UBYTE Byte = (UBYTE)((UWORD)x >> 3);
+            const UBYTE Bit = ColumnPixelBit((UWORD)x);
+
+            if (Face == 3)
             {
-                UBYTE Color = Face + 1;
-
-                if (TexY < 8)
-                {
-                    const UBYTE CharIndex = (UBYTE)((U >> 3) & 7);
-                    const UBYTE CharX = (UBYTE)(U & 7);
-                    const UBYTE C = (UBYTE)FaceText[Face][CharIndex];
-                    const UBYTE Bits = ASCIIFont8x8[C][TexY];
-
-                    if (Bits & (1 << CharX))
-                    {
-                        Color = Face + 5;
-                    }
-                }
-
-                FaceTextureColor[Face][TexY][U] = Color;
+                Plane2[Byte] &= (UBYTE)~Bit;
+                Plane3[Byte] |= Bit;
+            }
+            else
+            {
+                Plane2[Byte] |= Bit;
             }
         }
+
+        UAcc += Step;
     }
 }
 
-static void StoreColumnSegment(UWORD Phase, UBYTE *OutCount, UBYTE Face, WORD X0, WORD X1)
+static WORD ProjectColumnVertexX(UBYTE Vertex, WORD S, WORD C)
+{
+    const LONG RotX = ((LONG)SquareVertexX[Vertex] * C) - ((LONG)SquareVertexZ[Vertex] * S);
+    const WORD X = (WORD)(RotX >> 7);
+
+    return COLUMN_LOCAL_CENTER_X + (WORD)(((LONG)X * SQUARE_SCREEN_SCALE) / SQUARE_SCREEN_SCALE_DEN);
+}
+
+static void StoreColumnSegment(struct ColumnSegment *Segments, UBYTE *OutCount, UBYTE Face, WORD X0, WORD X1)
 {
     WORD Start;
     WORD End;
@@ -314,7 +396,7 @@ static void StoreColumnSegment(UWORD Phase, UBYTE *OutCount, UBYTE Face, WORD X0
         Step = (WORD)(0 - Step);
     }
 
-    Segment = &ColumnSegmentData[Phase][*OutCount];
+    Segment = &Segments[*OutCount];
     Segment->Start = Start;
     Segment->End = End;
     Segment->UAcc = (WORD)UAcc;
@@ -322,99 +404,6 @@ static void StoreColumnSegment(UWORD Phase, UBYTE *OutCount, UBYTE Face, WORD X0
     Segment->Face = Face;
 
     ++*OutCount;
-}
-
-// Precalculate visible face spans for each rotation phase.
-static void BuildColumnGeometry(void)
-{
-    for (UWORD Phase = 0; Phase < COLUMN_PHASES; ++Phase)
-    {
-        const WORD S = SinTab[Phase];
-        const WORD C = SinTab[(Phase + 64) & 255];
-        WORD ProjectedX[4];
-        WORD SegmentStart[COLUMN_MAX_SEGMENTS];
-        WORD SegmentX0[COLUMN_MAX_SEGMENTS];
-        WORD SegmentX1[COLUMN_MAX_SEGMENTS];
-        UBYTE SegmentFace[COLUMN_MAX_SEGMENTS];
-        UBYTE SegmentCount = 0;
-        UBYTE OutCount = 0;
-
-        for (UBYTE v = 0; v < 4; ++v)
-        {
-            const LONG RotX = ((LONG)SquareVertexX[v] * C) - ((LONG)SquareVertexZ[v] * S);
-            const WORD X = (WORD)(RotX >> 7);
-
-            ProjectedX[v] = COLUMN_CENTER_X + (WORD)(((LONG)X * SQUARE_SCREEN_SCALE) / SQUARE_SCREEN_SCALE_DEN) - COLUMN_LEFT;
-        }
-
-        for (UBYTE f = 0; f < 4; ++f)
-        {
-            const WORD Nz = (WORD)((((LONG)SquareNormalX[f] * S) + ((LONG)SquareNormalZ[f] * C)) >> 7);
-
-            if (Nz < 0)
-            {
-                const WORD X0 = ProjectedX[SquareFaceA[f]];
-                const WORD X1 = ProjectedX[SquareFaceB[f]];
-
-                if (X0 != X1)
-                {
-                    SegmentX0[SegmentCount] = X0;
-                    SegmentX1[SegmentCount] = X1;
-                    SegmentFace[SegmentCount] = f;
-                    SegmentStart[SegmentCount] = (X0 < X1) ? X0 : X1;
-                    ++SegmentCount;
-                }
-            }
-        }
-
-        for (UBYTE i = 0; i < SegmentCount; ++i)
-        {
-            for (UBYTE j = (UBYTE)(i + 1); j < SegmentCount; ++j)
-            {
-                if (SegmentStart[j] < SegmentStart[i])
-                {
-                    WORD TempW;
-                    UBYTE TempB;
-
-                    TempW = SegmentStart[i];
-                    SegmentStart[i] = SegmentStart[j];
-                    SegmentStart[j] = TempW;
-                    TempW = SegmentX0[i];
-                    SegmentX0[i] = SegmentX0[j];
-                    SegmentX0[j] = TempW;
-                    TempW = SegmentX1[i];
-                    SegmentX1[i] = SegmentX1[j];
-                    SegmentX1[j] = TempW;
-                    TempB = SegmentFace[i];
-                    SegmentFace[i] = SegmentFace[j];
-                    SegmentFace[j] = TempB;
-                }
-            }
-        }
-
-        for (UBYTE i = 0; i < SegmentCount; ++i)
-        {
-            StoreColumnSegment(Phase, &OutCount, SegmentFace[i], SegmentX0[i], SegmentX1[i]);
-        }
-
-        ColumnSegmentCount[Phase] = OutCount;
-    }
-}
-
-static void DrawPreparedSegment(UBYTE TexY, const struct ColumnSegment *Segment)
-{
-    LONG UAcc = Segment->UAcc;
-    const WORD Step = Segment->Step;
-    const UBYTE Face = Segment->Face;
-
-    for (WORD x = Segment->Start; x <= Segment->End; ++x)
-    {
-        const UWORD U = (UWORD)((UAcc >> 8) & (TEXT_FACE_WIDTH - 1));
-        const UBYTE Color = FaceTextureColor[Face][TexY][U];
-
-        SetColumnRowPixelX(ColumnWorkRow, (UWORD)x, Color);
-        UAcc += Step;
-    }
 }
 
 static UWORD MakeMetalBlueColor(UWORD Shade, UBYTE Face)
@@ -445,10 +434,25 @@ static UWORD MakeMetalBlueColor(UWORD Shade, UBYTE Face)
     return (UWORD)((r << 8) | (g << 4) | b);
 }
 
-static void BuildShadeWords(UWORD Phase, UWORD *Dst)
+static void SwapColumnSegments(struct ColumnSegment *A, struct ColumnSegment *B)
+{
+    const struct ColumnSegment Temp = *A;
+
+    *A = *B;
+    *B = Temp;
+}
+
+static UBYTE BuildColumnPhase(UWORD Phase, struct ColumnSegment *Segments, UWORD *ShadeWords)
 {
     const WORD S = SinTab[Phase];
     const WORD C = SinTab[(Phase + 64) & 255];
+    WORD ProjectedX[4];
+    UBYTE Count = 0;
+
+    for (UBYTE v = 0; v < 4; ++v)
+    {
+        ProjectedX[v] = ProjectColumnVertexX(v, S, C);
+    }
 
     for (UBYTE f = 0; f < 4; ++f)
     {
@@ -484,58 +488,97 @@ static void BuildShadeWords(UWORD Phase, UWORD *Dst)
             Shade = 15;
         }
 
-        Dst[f] = MakeMetalBlueColor(Shade, f);
+        ShadeWords[f] = MakeMetalBlueColor(Shade, f);
+
+        if (Nz < 0)
+        {
+            const WORD X0 = ProjectedX[SquareFaceA[f]];
+            const WORD X1 = ProjectedX[SquareFaceB[f]];
+
+            if (X0 != X1)
+            {
+                StoreColumnSegment(Segments, &Count, f, X0, X1);
+            }
+        }
     }
+
+    if (Count == 2 && Segments[1].Start < Segments[0].Start)
+    {
+        SwapColumnSegments(&Segments[0], &Segments[1]);
+    }
+
+    // Adjacent square faces share one projected edge. Keep the later face's pixel
+    // and make the row draw non-overlapping, so span/text drawing can OR safely.
+    if (Count == 2 && Segments[0].End >= Segments[1].Start)
+    {
+        Segments[0].End = (WORD)(Segments[1].Start - 1);
+    }
+
+    return Count;
 }
 
-// Build one metallic blue shade set per rotation phase for COLOR01..04.
-static void BuildShadeTable(void)
+static void DrawPreparedSegment(UBYTE TexY, const struct ColumnSegment *Segment)
 {
+    DrawSegmentBase(Segment);
+    DrawSegmentTextOverlay(TexY, Segment);
+}
+
+static void StoreColumnPhaseData(UWORD *Dst, const UWORD *ShadeWords, const UBYTE *Row)
+{
+    ULONG Addr;
+
+    Dst[0] = ShadeWords[0];
+    Dst[1] = ShadeWords[1];
+    Dst[2] = ShadeWords[2];
+    Dst[3] = ShadeWords[3];
+
+    Addr = (ULONG)Row;
+    Dst[4] = (UWORD)(Addr >> 16);
+    Dst[5] = (UWORD)Addr;
+    Addr += COLUMN_FETCH_BYTES;
+    Dst[6] = (UWORD)(Addr >> 16);
+    Dst[7] = (UWORD)Addr;
+    Addr += COLUMN_FETCH_BYTES;
+    Dst[8] = (UWORD)(Addr >> 16);
+    Dst[9] = (UWORD)Addr;
+    Addr += COLUMN_FETCH_BYTES;
+    Dst[10] = (UWORD)(Addr >> 16);
+    Dst[11] = (UWORD)Addr;
+}
+
+// Build row graphics and the ASM lookup table in one phase-major pass.
+static void BuildColumnPrecalc(void)
+{
+    struct ColumnSegment Segments[COLUMN_MAX_SEGMENTS];
+    UWORD ShadeWords[4];
+
     for (UWORD Phase = 0; Phase < COLUMN_PHASES; ++Phase)
     {
-        BuildShadeWords(Phase, ColumnShadeWords[Phase]);
-    }
-}
+        const UBYTE Count = BuildColumnPhase(Phase, Segments, ShadeWords);
+        UBYTE *Row = ColumnRowData + (ULONG)Phase * COLUMN_ROW_BYTES;
+        UWORD *Dst = ColumnPhasePtrWords + (ULONG)Phase * COLUMN_PHASE_WORDS;
+        const UBYTE *EmptyRow = Row + (TEXT_ROWDATA_ROWS - 1) * COLUMN_ROWDATA_ROW_STRIDE;
 
-// Draw the phase rows once into Chip RAM, using the prepared geometry and text masks.
-static void BuildColumnRows(void)
-{
-    for (UBYTE TexY = 0; TexY < TEXT_ROWDATA_ROWS; ++TexY)
-    {
-        for (UWORD Phase = 0; Phase < COLUMN_PHASES; ++Phase)
+        for (UBYTE TexY = 0; TexY < TEXT_ROWDATA_ROWS; ++TexY)
         {
-            UBYTE *Row = ColumnRowData + (((ULONG)TexY << 8) + Phase) * COLUMN_ROW_BYTES;
-            const UBYTE Count = ColumnSegmentCount[Phase];
-
             ClearColumnWorkRow();
 
             for (UBYTE i = 0; i < Count; ++i)
             {
-                DrawPreparedSegment(TexY, &ColumnSegmentData[Phase][i]);
+                DrawPreparedSegment(TexY, &Segments[i]);
             }
 
             CopyColumnWorkRow(Row);
+            StoreColumnPhaseData(Dst, ShadeWords, Row);
+
+            Row += COLUMN_ROWDATA_ROW_STRIDE;
+            Dst += COLUMN_PHASE_PTR_ROW_STRIDE;
         }
-    }
-}
 
-// Combine shade words and row pointers into the table consumed by the ASM copper updater.
-static void BuildPhaseData(void)
-{
-    for (UBYTE TexY = 0; TexY < TEXT_TEXTURE_ROWS; ++TexY)
-    {
-        const UBYTE RowTexY = (TexY < 8) ? TexY : 8;
-
-        for (UWORD Phase = 0; Phase < COLUMN_PHASES; ++Phase)
+        for (UBYTE TexY = TEXT_ROWDATA_ROWS; TexY < TEXT_TEXTURE_ROWS; ++TexY)
         {
-            UWORD *Dst = ColumnPhasePtrWords + (((ULONG)TexY << 8) + Phase) * COLUMN_PHASE_WORDS;
-            UBYTE *Row = ColumnRowData + (((ULONG)RowTexY << 8) + Phase) * COLUMN_ROW_BYTES;
-
-            Dst[0] = ColumnShadeWords[Phase][0];
-            Dst[1] = ColumnShadeWords[Phase][1];
-            Dst[2] = ColumnShadeWords[Phase][2];
-            Dst[3] = ColumnShadeWords[Phase][3];
-            MakePointerWords(Row, Dst + 4);
+            StoreColumnPhaseData(Dst, ShadeWords, EmptyRow);
+            Dst += COLUMN_PHASE_PTR_ROW_STRIDE;
         }
     }
 }
@@ -543,12 +586,12 @@ static void BuildPhaseData(void)
 // Build a double-buffered copper list. The 255-line split is handled by two data ranges.
 static void BuildCopperList(UBYTE Buffer)
 {
-    UWORD BlankWords[POINTER_WORDS];
+    UWORD BlankWords[DISPLAY_POINTER_WORDS];
     UWORD Index = 0;
     UWORD *Copperlist;
     UBYTE Past255 = 0;
 
-    MakePointerWords(ColumnBlankRow, BlankWords);
+    MakePointerWords(ColumnBlankRow, BlankWords, NUMBEROFBITPLANES);
 
     // Static display setup. Register numbers are Copper MOVE addresses.
     CopperList[Buffer][Index++] = 0x8E;
@@ -579,7 +622,7 @@ static void BuildCopperList(UBYTE Buffer)
     CopperList[Buffer][Index++] = ROW_REPEAT_MOD;
 
     Copperlist = &CopperList[Buffer][Index];
-    Copperlist = CopperPutPointerBlock(Copperlist, BlankWords);
+    Copperlist = CopperPutPointerBlock(Copperlist, BlankWords, NUMBEROFBITPLANES);
 
     for (UBYTE c = 0; c < COLUMN_PALETTE_COLORS; ++c)
     {
@@ -588,9 +631,10 @@ static void BuildCopperList(UBYTE Buffer)
     }
 
     Copperlist = CopperWaitLine(Copperlist, COLUMN_TOP - 1, &Past255);
-    Copperlist = CopperPutPointerBlock(Copperlist, BlankWords);
+    Copperlist = CopperPutPointerBlock(Copperlist, BlankWords, NUMBEROFBITPLANES);
 
-    // Body lines contain dynamic color and bitplane-pointer data words, updated by ASM.
+    // Body lines contain dynamic color and BPL1..BPL4 pointer data words, updated by ASM.
+    // BPL5 stays on the blank row because the generated texture uses color 0..8 only.
     for (UWORD y = 0; y < COLUMN_HEIGHT; ++y)
     {
         UWORD *Data;
@@ -606,7 +650,7 @@ static void BuildCopperList(UBYTE Buffer)
         *Copperlist++ = ColumnPhasePtrWords[2];
         *Copperlist++ = 0x188;
         *Copperlist++ = ColumnPhasePtrWords[3];
-        Copperlist = CopperPutPointerBlock(Copperlist, ColumnPhasePtrWords + 4);
+        Copperlist = CopperPutPointerBlock(Copperlist, ColumnPhasePtrWords + 4, COLUMN_ACTIVE_BITPLANES);
 
         if (y == 0)
         {
@@ -619,7 +663,7 @@ static void BuildCopperList(UBYTE Buffer)
     }
 
     Copperlist = CopperWaitLine(Copperlist, COLUMN_TOP + COLUMN_HEIGHT, &Past255);
-    Copperlist = CopperPutPointerBlock(Copperlist, BlankWords);
+    Copperlist = CopperPutPointerBlock(Copperlist, BlankWords, NUMBEROFBITPLANES);
 
     *Copperlist++ = 0xFFFF;
     *Copperlist++ = 0xFFFE;
@@ -630,15 +674,11 @@ static void Init_TwistColumn(void)
     CopperList[0] = (UWORD *)AllocMem(COPPER_LIST_SIZE, MEMF_CHIP | MEMF_CLEAR);
     CopperList[1] = (UWORD *)AllocMem(COPPER_LIST_SIZE, MEMF_CHIP | MEMF_CLEAR);
     ColumnRowData = (UBYTE *)AllocMem(COLUMN_ROWDATA_SIZE, MEMF_CHIP | MEMF_CLEAR);
-    ColumnBlankRow = (UBYTE *)AllocMem(COLUMN_ROW_BYTES, MEMF_CHIP | MEMF_CLEAR);
+    ColumnBlankRow = (UBYTE *)AllocMem(COLUMN_BLANK_ROW_BYTES, MEMF_CHIP | MEMF_CLEAR);
     ColumnWorkRow = (UBYTE *)lwmf_AllocCpuMem(COLUMN_ROW_BYTES, MEMF_CLEAR);
     ColumnPhasePtrWords = (UWORD *)lwmf_AllocCpuMem(COLUMN_PHASE_PTR_SIZE, MEMF_CLEAR);
 
-    BuildFaceTextureColors();
-    BuildColumnGeometry();
-    BuildShadeTable();
-    BuildColumnRows();
-    BuildPhaseData();
+    BuildColumnPrecalc();
     BuildCopperList(0);
     BuildCopperList(1);
 }
@@ -649,9 +689,7 @@ static void Update_TwistColumn(UBYTE Buffer)
     const UBYTE TwistPhase = (UBYTE)(ColumnTorsionPhase >> 8);
     const WORD TorsionWave = SinTab[TwistPhase];
     const WORD Torsion = TorsionWave + (TorsionWave >> 1);
-    const WORD PhaseDelta = Torsion;
-    const LONG AccStartLow = -((LONG)COLUMN_HALF_HEIGHT * Torsion);
-    const LONG AccStartHigh = AccStartLow + (LONG)COLUMN_SPLIT_ROW * PhaseDelta;
+    const WORD AccStart = (WORD)(-((LONG)COLUMN_HALF_HEIGHT * Torsion));
     UWORD PhaseAdd;
     UWORD TextAdd;
 
@@ -670,15 +708,14 @@ static void Update_TwistColumn(UBYTE Buffer)
     PhaseAdd = (UWORD)(ColumnScrollPhase >> 8);
     TextAdd = (UWORD)(ColumnTextPhase >> 8);
 
-    UpdateTwistCopperTextRangeAsm(CopperBodyDataLow[Buffer], ColumnPhasePtrWords, AccStartLow, PhaseDelta, PhaseAdd, TextAdd, COLUMN_SPLIT_ROW);
-    UpdateTwistCopperTextRangeAsm(CopperBodyDataHigh[Buffer], ColumnPhasePtrWords, AccStartHigh, PhaseDelta, PhaseAdd, TextAdd + COLUMN_SPLIT_ROW, COLUMN_SPLIT_HEIGHT);
+    UpdateTwistCopperTextAsm(CopperBodyDataLow[Buffer], CopperBodyDataHigh[Buffer], ColumnPhasePtrWords, AccStart, Torsion, PhaseAdd, TextAdd);
 }
 
 static void Cleanup_TwistColumn(void)
 {
     FreeMem(ColumnPhasePtrWords, COLUMN_PHASE_PTR_SIZE);
     FreeMem(ColumnWorkRow, COLUMN_ROW_BYTES);
-    FreeMem(ColumnBlankRow, COLUMN_ROW_BYTES);
+    FreeMem(ColumnBlankRow, COLUMN_BLANK_ROW_BYTES);
     FreeMem(ColumnRowData, COLUMN_ROWDATA_SIZE);
     FreeMem(CopperList[1], COPPER_LIST_SIZE);
     FreeMem(CopperList[0], COPPER_LIST_SIZE);
