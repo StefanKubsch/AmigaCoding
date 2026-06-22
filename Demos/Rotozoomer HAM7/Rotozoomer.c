@@ -1,8 +1,9 @@
 //**********************************************************************
 //* 4x4 HAM7 BPLDAT Quirk Rotozoomer                                   *
 //*                                                                    *
-//* 4 DMA bitplanes carry HAM data nibbles. BPL5DAT/BPL6DAT provide    *
-//* fixed HAM control-bit patterns for a direct/red/green/blue cell.   *
+//* OCS path: 4 DMA bitplanes carry HAM data nibbles and BPL5DAT/   *
+//* BPL6DAT provide fixed HAM control-bit patterns. AGA path: normal   *
+//* 6-plane HAM6 display with two fixed control planes in Chip RAM.    *
 //* Amiga 500 OCS, 512kb Chip + 512kb Slowmem                          *
 //*                                                                    *
 //* (C) 2026 by Stefan Kubsch/Deep4                                    *
@@ -30,13 +31,18 @@
 #define TEXTURE_SOURCE_PLANES   6
 
 #define TEXTURE_CELL_BYTES      ((ULONG)TEXTURE_WIDTH * TEXTURE_EXPANDED_HEIGHT * sizeof(UWORD))
-#define PAIR_TABLE_BYTES        (4096 * 8)
+#define PAIR_TABLE_ENTRY_BYTES  8
+#define COLOR_USAGE_BYTES       (4096 >> 3)
+#define COLOR_OFFSET_TABLE_BYTES (4096 * sizeof(UWORD))
 
 #define WORD_HI(v)              ((UWORD)((ULONG)(v) >> 16))
 #define WORD_LO(v)              ((UWORD)((ULONG)(v) & 0xFFFF))
 #define BPLPTH(p)               (0x00E0 + ((p) << 2))
 #define BPLPTL(p)               (0x00E2 + ((p) << 2))
 #define PHASE8(v)               ((UBYTE)(v))
+#define BPLCON3_REG             (*(volatile UWORD*)0x00DFF106)
+#define BPLCON4_REG             (*(volatile UWORD*)0x00DFF10C)
+#define FMODE_REG               (*(volatile UWORD*)0x00DFF1FC)
 
 // ---------------------------------------------------------------------
 // Sine table
@@ -61,9 +67,13 @@ const UBYTE SinTab256[256] =
 static UWORD* TextureCells = NULL;
 static UBYTE* PairTables = NULL;
 static UBYTE* HalfFrameCacheBlock = NULL;
-static UWORD* HalfFrameCopperWords = NULL;
 static UBYTE* HamBuffer0 = NULL;
+static UBYTE* AgaControlPlanes = NULL;
 static UWORD* CopperList0 = NULL;
+static UBYTE* UsedColorBits = NULL;
+static ULONG PairTableBytes = 0;
+static UWORD UsedColorCount = 0;
+static UBYTE AgaEnabled = 0;
 
 struct HamFrameParams
 {
@@ -73,10 +83,6 @@ struct HamFrameParams
     UWORD RowV;
     WORD  RowUDelta;
     WORD  RowVDelta;
-    UWORD UpperRowU;
-    UWORD UpperRowV;
-    UWORD LowerRowU;
-    UWORD LowerRowV;
 };
 
 struct HamMainLoopContext
@@ -85,26 +91,25 @@ struct HamMainLoopContext
     const UBYTE* UOffsetMid;
     const UBYTE* PairTablesBase;
     const struct HamFrameParams* FrameParams;
-    const UWORD* HalfFrameCopperWords;
+    const UBYTE* HalfFrameCacheBase;
     UBYTE* Ham0;
     UBYTE* Ham1;
     UWORD* Copper0;
     UWORD* Copper1;
+    UWORD  HalfRateBplPtrOffsetBytes;
+    UWORD  FrameSyncEnabled;
 };
 
 static struct HamFrameParams* FrameParams = NULL;
 static UBYTE* UOffsetTable = NULL;
 static UBYTE* UOffsetTableMid = NULL;
-#define HALF_FRAME_COPPER_WORDS_PER_FRAME 8
-#define HALF_FRAME_COPPER_WORDS_BYTES ((HAM_FRAME_COUNT >> 1) * HALF_FRAME_COPPER_WORDS_PER_FRAME * sizeof(UWORD))
 #define FRAME_PARAMS_BYTES      (HAM_FRAME_COUNT * sizeof(struct HamFrameParams))
 #define UOFFSET_TABLE_BYTES     65536
-#define SLOW_BLOCK_BYTES        (TEXTURE_CELL_BYTES + PAIR_TABLE_BYTES + FRAME_PARAMS_BYTES + UOFFSET_TABLE_BYTES + HALF_FRAME_COPPER_WORDS_BYTES)
 #define DISPLAY_BLOCK_BYTES     HAM_CHIP_BLOCK_BYTES
 
-void InitHamBlitterCopyModeAsm(void);
 void RenderHamHalfRowsAsm(__reg("a0") UBYTE* Buffer, __reg("a1") const UWORD* TextureCellsMid, __reg("a2") const UBYTE* UOffsetTableMid, __reg("a3") const UBYTE* PairTables, __reg("d0") UWORD RowU, __reg("d1") UWORD RowV, __reg("d2") WORD DuDx, __reg("d3") WORD DvDx, __reg("d6") WORD RowUDelta, __reg("d7") WORD RowVDelta);
 void RunHamMainLoopAsm(__reg("a0") const struct HamMainLoopContext* Context);
+UWORD EnableAgaChipsetAsm(__reg("a0") void* GfxBasePtr);
 
 static void GetDisplayFlipState(UBYTE** HamBuffer1, UWORD** CopperList1)
 {
@@ -112,9 +117,45 @@ static void GetDisplayFlipState(UBYTE** HamBuffer1, UWORD** CopperList1)
     *CopperList1 = (UWORD*)((UBYTE*)CopperList0 + HAM_COPPER_BYTES);
 }
 
+static APTR AllocRuntimeTableMem(ULONG Size, ULONG Flags)
+{
+    APTR Ptr = NULL;
+
+    // Keep the hot CPU-side renderer tables out of Chip RAM on AGA machines
+    // with Fast RAM. Separate allocations still allow partial Fast RAM usage.
+    if (AgaEnabled)
+    {
+        Ptr = AllocMem(Size, MEMF_FAST | Flags);
+    }
+
+    if (!Ptr)
+    {
+        Ptr = lwmf_AllocCpuMem(Size, Flags);
+    }
+
+    return Ptr;
+}
+
 // ---------------------------------------------------------------------
 // Texture conversion
 // ---------------------------------------------------------------------
+
+static void MarkUsedColor(UWORD Color)
+{
+    const UWORD ByteIndex = Color >> 3;
+    const UBYTE BitMask = (UBYTE)(1 << (Color & 7));
+
+    if (!(UsedColorBits[ByteIndex] & BitMask))
+    {
+        UsedColorBits[ByteIndex] |= BitMask;
+        ++UsedColorCount;
+    }
+}
+
+static UBYTE IsUsedColor(UWORD Color)
+{
+    return (UBYTE)(UsedColorBits[Color >> 3] & (1 << (Color & 7)));
+}
 
 static void BuildTextureRGB4FromHAM(const struct lwmf_Image* Image)
 {
@@ -189,38 +230,55 @@ static void BuildTextureRGB4FromHAM(const struct lwmf_Image* Image)
                 }
 
                 CurrentRGB = OutRGB;
-                const UWORD Index = (UWORD)(OutRGB << 3);
+                MarkUsedColor(OutRGB);
 
-                *Out++ = Index;
-                *OutMirror++ = Index;
+                *Out++ = OutRGB;
+                *OutMirror++ = OutRGB;
             }
         }
     }
 }
 
-static void BuildPairTables(void)
+static void BuildPairTablesAndRemap(void)
 {
     ULONG* PairTableLongs = (ULONG*)PairTables;
+    UWORD* ColorOffsets = (UWORD*)AllocRuntimeTableMem(COLOR_OFFSET_TABLE_BYTES, 0);
+    UWORD Offset = 0;
 
+    // Build only entries referenced by the decoded texture and keep the runtime
+    // renderer unchanged by remapping texture cells to compact pair-table offsets.
     for (UWORD Color = 0; Color < 4096; ++Color)
     {
-        const UBYTE R = (Color >> 8) & 0x0F;
-        const UBYTE G = (Color >> 4) & 0x0F;
-        const UBYTE B = Color & 0x0F;
-        ULONG HighWord = 0;
-        ULONG LowWord = 0;
-
-        for (WORD Plane = 3; Plane >= 0; --Plane)
+        if (IsUsedColor(Color))
         {
-            const UBYTE Nibble = (UBYTE)((((R >> Plane) & 1) << 2) | (((G >> Plane) & 1) << 1) | ((B >> Plane) & 1));
+            const UBYTE R = (Color >> 8) & 0x0F;
+            const UBYTE G = (Color >> 4) & 0x0F;
+            const UBYTE B = Color & 0x0F;
+            ULONG HighWord = 0;
+            ULONG LowWord = 0;
 
-            HighWord = (HighWord << 8) | (UBYTE)(Nibble << 4);
-            LowWord = (LowWord << 8) | Nibble;
+            ColorOffsets[Color] = Offset;
+
+            for (WORD Plane = 3; Plane >= 0; --Plane)
+            {
+                const UBYTE Nibble = (UBYTE)((((R >> Plane) & 1) << 2) | (((G >> Plane) & 1) << 1) | ((B >> Plane) & 1));
+
+                HighWord = (HighWord << 8) | (UBYTE)(Nibble << 4);
+                LowWord = (LowWord << 8) | Nibble;
+            }
+
+            *PairTableLongs++ = HighWord;
+            *PairTableLongs++ = LowWord;
+            Offset += PAIR_TABLE_ENTRY_BYTES;
         }
-
-        *PairTableLongs++ = HighWord;
-        *PairTableLongs++ = LowWord;
     }
+
+    for (ULONG Cell = 0; Cell < (TEXTURE_CELL_BYTES / sizeof(UWORD)); ++Cell)
+    {
+        TextureCells[Cell] = ColorOffsets[TextureCells[Cell]];
+    }
+
+    FreeMem(ColorOffsets, COLOR_OFFSET_TABLE_BYTES);
 }
 
 static void BuildUOffsetTable(void)
@@ -244,25 +302,13 @@ static void BuildFrameParams(void)
         const LONG CenterV = HAM_CENTER_V + ((LONG)CosA << 8);
         const LONG OffsetU = (HAM_HALF_COLUMNS * DuDx) - (HAM_HALF_ROWS * DvDx);
         const LONG OffsetV = (HAM_HALF_COLUMNS * DvDx) + (HAM_HALF_ROWS * DuDx);
-        const WORD RowUDelta = (WORD)(-((LONG)(HAM_COLUMNS - 1) * DuDx) - DvDx);
-        const WORD RowVDelta = (WORD)(DuDx - ((LONG)(HAM_COLUMNS - 1) * DvDx));
-        const UWORD RowU = (UWORD)(CenterU - OffsetU);
-        const UWORD RowV = (UWORD)(CenterV - OffsetV);
-        const UWORD UpperRowU = (UWORD)(RowU - ((LONG)HAM_TEMPORAL_START_ROW * DvDx));
-        const UWORD UpperRowV = (UWORD)(RowV + ((LONG)HAM_TEMPORAL_START_ROW * DuDx));
-        const UWORD LowerRowU = (UWORD)(RowU - ((LONG)(HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_HALF_ROWS) * DvDx));
-        const UWORD LowerRowV = (UWORD)(RowV + ((LONG)(HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_HALF_ROWS) * DuDx));
 
         FrameParams[Frame].DuDx = DuDx;
         FrameParams[Frame].DvDx = DvDx;
-        FrameParams[Frame].RowU = RowU;
-        FrameParams[Frame].RowV = RowV;
-        FrameParams[Frame].RowUDelta = RowUDelta;
-        FrameParams[Frame].RowVDelta = RowVDelta;
-        FrameParams[Frame].UpperRowU = UpperRowU;
-        FrameParams[Frame].UpperRowV = UpperRowV;
-        FrameParams[Frame].LowerRowU = LowerRowU;
-        FrameParams[Frame].LowerRowV = LowerRowV;
+        FrameParams[Frame].RowU = (UWORD)(CenterU - OffsetU);
+        FrameParams[Frame].RowV = (UWORD)(CenterV - OffsetV);
+        FrameParams[Frame].RowUDelta = (WORD)(-((LONG)(HAM_COLUMNS - 1) * DuDx) - DvDx);
+        FrameParams[Frame].RowVDelta = (WORD)(DuDx - ((LONG)(HAM_COLUMNS - 1) * DvDx));
     }
 }
 
@@ -285,27 +331,6 @@ static void BuildHalfRowCache(void)
     }
 }
 
-static void BuildHalfFrameCopperWords(void)
-{
-    UWORD* Out = HalfFrameCopperWords;
-
-    for (UWORD CacheFrame = 0; CacheFrame < (HAM_FRAME_COUNT >> 1); ++CacheFrame)
-    {
-        ULONG Ptr = (ULONG)(HalfFrameCacheBlock + ((ULONG)CacheFrame * HAM_HALFRATE_ROW_CACHE_FRAME_BYTES));
-
-        *Out++ = WORD_HI(Ptr);
-        *Out++ = WORD_LO(Ptr);
-        Ptr += HAM_HALFRATE_ROW_CACHE_PLANE_BYTES;
-        *Out++ = WORD_HI(Ptr);
-        *Out++ = WORD_LO(Ptr);
-        Ptr += HAM_HALFRATE_ROW_CACHE_PLANE_BYTES;
-        *Out++ = WORD_HI(Ptr);
-        *Out++ = WORD_LO(Ptr);
-        Ptr += HAM_HALFRATE_ROW_CACHE_PLANE_BYTES;
-        *Out++ = WORD_HI(Ptr);
-        *Out++ = WORD_LO(Ptr);
-    }
-}
 
 static void InitTexture(void)
 {
@@ -314,18 +339,22 @@ static void InitTexture(void)
     extern UBYTE RotoImage_end[];
     struct lwmf_Image* Image = lwmf_LoadImageMem(RotoImage, (ULONG)(RotoImage_end - RotoImage));
 
-    UBYTE* Base = (UBYTE*)lwmf_AllocCpuMem(SLOW_BLOCK_BYTES, 0);
-
-    TextureCells = (UWORD*)Base;
-    PairTables = Base + TEXTURE_CELL_BYTES;
-    FrameParams = (struct HamFrameParams*)(Base + TEXTURE_CELL_BYTES + PAIR_TABLE_BYTES);
-    UOffsetTable = Base + TEXTURE_CELL_BYTES + PAIR_TABLE_BYTES + FRAME_PARAMS_BYTES;
-    HalfFrameCopperWords = (UWORD*)(Base + TEXTURE_CELL_BYTES + PAIR_TABLE_BYTES + FRAME_PARAMS_BYTES + UOFFSET_TABLE_BYTES);
+    TextureCells = (UWORD*)AllocRuntimeTableMem(TEXTURE_CELL_BYTES, 0);
+    UOffsetTable = (UBYTE*)AllocRuntimeTableMem(UOFFSET_TABLE_BYTES, 0);
     UOffsetTableMid = UOffsetTable + 32768;
+    UsedColorBits = (UBYTE*)AllocRuntimeTableMem(COLOR_USAGE_BYTES, MEMF_CLEAR);
+    UsedColorCount = 0;
     BuildTextureRGB4FromHAM(Image);
     lwmf_DeleteImage(Image);
 
-    BuildPairTables();
+    PairTableBytes = (ULONG)UsedColorCount * PAIR_TABLE_ENTRY_BYTES;
+    PairTables = (UBYTE*)AllocRuntimeTableMem(PairTableBytes, 0);
+    FrameParams = (struct HamFrameParams*)AllocRuntimeTableMem(FRAME_PARAMS_BYTES, 0);
+
+    BuildPairTablesAndRemap();
+    FreeMem(UsedColorBits, COLOR_USAGE_BYTES);
+    UsedColorBits = NULL;
+
     BuildUOffsetTable();
     BuildFrameParams();
 }
@@ -347,9 +376,9 @@ static void CopperAppendWait(UWORD* List, UWORD* Index, UWORD VPos, UBYTE* Wrapp
     List[(*Index)++] = 0xFFFE;
 }
 
-static void CopperAppendBitplanePointerSlots(UWORD* List, UWORD* Index)
+static void CopperAppendBitplanePointerSlots(UWORD* List, UWORD* Index, UWORD PlaneCount)
 {
-    for (UWORD Plane = 0; Plane < 4; ++Plane)
+    for (UWORD Plane = 0; Plane < PlaneCount; ++Plane)
     {
         List[(*Index)++] = BPLPTH(Plane);
         List[(*Index)++] = 0x0000;
@@ -366,10 +395,12 @@ static void CopperAppendModulo(UWORD* List, UWORD* Index, UWORD Modulo)
     List[(*Index)++] = Modulo;
 }
 
-static void BuildCopperList(UWORD* List)
+static void BuildCopperList(UWORD* List, UBYTE UseAga)
 {
     UWORD Index = 0;
     UBYTE WrapWaitInserted = 0;
+    const UWORD PlaneCount = UseAga ? HAM_AGA_DISPLAY_BPU : 4;
+    const UWORD DisplayBpu = UseAga ? HAM_AGA_DISPLAY_BPU : HAM_DISPLAY_BPU;
 
     // Program the display window and fetch timing for the centered HAM area.
     List[Index++] = 0x008E;
@@ -381,11 +412,22 @@ static void BuildCopperList(UWORD* List)
     List[Index++] = 0x0094;
     List[Index++] = HAM_DDFSTOP;
 
-    // Enable the 7-plane HAM display, clear both scroll registers, and start with
-    // the "repeat this fetched row" modulo that stretches one rendered cell row over
-    // HAM_PIXEL_SIZE scanlines until the Copper explicitly switches to advance mode.
+    // On AGA, force palette bank 0, disable bitplane XOR masking, and select
+    // OCS-compatible 16-bit fetches before the display DMA starts.
+    if (UseAga)
+    {
+        List[Index++] = 0x0106;
+        List[Index++] = HAM_AGA_BPLCON3_RESET;
+        List[Index++] = 0x010C;
+        List[Index++] = HAM_AGA_BPLCON4_RESET;
+        List[Index++] = 0x01FC;
+        List[Index++] = HAM_AGA_FMODE_RESET;
+    }
+
+    // OCS keeps the original HAM7/BPLDAT quirk. AGA uses normal 6-plane HAM6
+    // with two fixed control planes so Lisa never fetches undefined BPL5/6 data.
     List[Index++] = 0x0100;
-    List[Index++] = (UWORD)((HAM_DISPLAY_BPU << 12) | 0x0A00);
+    List[Index++] = (UWORD)((DisplayBpu << 12) | 0x0A00);
     List[Index++] = 0x0102;
     List[Index++] = 0x0000;
     List[Index++] = 0x0104;
@@ -395,51 +437,35 @@ static void BuildCopperList(UWORD* List)
     List[Index++] = 0x010A;
     List[Index++] = HAM_REPEAT_MOD;
 
-    // Feed BPL5DAT/BPL6DAT with the fixed HAM control-bit patterns used by the renderer:
-    // 0x3333 selects the "modify green/blue" pattern and 0x6666 the complementary control bits.
+    // Feed BPL5DAT/BPL6DAT for the OCS quirk. These writes are harmless on the
+    // AGA path because real control-plane DMA replaces them inside the window.
     List[Index++] = 0x0118;
     List[Index++] = HAM_CONTROL_WORD_P5;
     List[Index++] = 0x011A;
     List[Index++] = HAM_CONTROL_WORD_P6;
 
-    // Reserve the first 4-plane pointer block. InitDisplay() patches this block to the
-    // currently active dynamic bitmap (buffer 0 or buffer 1) before the list is used.
-    CopperAppendBitplanePointerSlots(List, &Index);
+    // Reserve the initial dynamic pointer block for rows 0-1. Later split blocks splice
+    // the temporal halves from their owning buffers, so no blitter copy is needed.
+    CopperAppendBitplanePointerSlots(List, &Index, PlaneCount);
 
-    // Clear COLOR00-COLOR15 because the texture conversion already resolves RGB4 values.
-    for (UWORD Color = 0; Color < 16; ++Color)
+    for (UWORD Row = 0; Row < (HAM_ROWS - 1); ++Row)
     {
-        List[Index++] = 0x0180 + (Color << 1);
-        List[Index++] = 0x0000;
-    }
+        const UWORD NextRow = Row + 1;
 
-    // For the dynamic top band, every cell row is shown four times vertically:
-    // at the end of the visible scanline group we set modulo 0 once to advance to the
-    // next stored row, then immediately restore HAM_REPEAT_MOD so the next three lines
-    // keep rereading that same stored row.
-    for (UWORD Row = 0; Row < (HAM_HALFRATE_START_ROW - 1); ++Row)
-    {
-        CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + (Row * HAM_PIXEL_SIZE) + (HAM_PIXEL_SIZE - 1)), &WrapWaitInserted);
-        CopperAppendModulo(List, &Index, HAM_ADVANCE_MOD);
-        CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + ((Row + 1) * HAM_PIXEL_SIZE)), &WrapWaitInserted);
-        CopperAppendModulo(List, &Index, HAM_REPEAT_MOD);
-    }
-
-    // At the split line, switch the 4-plane pointers from the live dynamic bitmap to the
-    // cached lower-band bitmap. InitDisplay() and the main loop patch this second pointer
-    // block to the current half-rate cache frame.
-    CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + (HAM_HALFRATE_START_ROW * HAM_PIXEL_SIZE)), &WrapWaitInserted);
-    CopperAppendBitplanePointerSlots(List, &Index);
-
-    // The lower cached band uses the same vertical expansion pattern: advance once per
-    // cell row, then immediately switch back to the repeat modulo so one cached source
-    // row still occupies HAM_PIXEL_SIZE scanlines on screen.
-    for (UWORD Row = HAM_HALFRATE_START_ROW; Row < (HAM_ROWS - 1); ++Row)
-    {
-        CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + (Row * HAM_PIXEL_SIZE) + (HAM_PIXEL_SIZE - 1)), &WrapWaitInserted);
-        CopperAppendModulo(List, &Index, HAM_ADVANCE_MOD);
-        CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + ((Row + 1) * HAM_PIXEL_SIZE)), &WrapWaitInserted);
-        CopperAppendModulo(List, &Index, HAM_REPEAT_MOD);
+        if (NextRow == HAM_TEMPORAL_START_ROW ||
+            NextRow == HAM_TEMPORAL_LOWER_START_ROW ||
+            NextRow == HAM_HALFRATE_START_ROW)
+        {
+            CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + (NextRow * HAM_PIXEL_SIZE)), &WrapWaitInserted);
+            CopperAppendBitplanePointerSlots(List, &Index, PlaneCount);
+        }
+        else
+        {
+            CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + (Row * HAM_PIXEL_SIZE) + (HAM_PIXEL_SIZE - 1)), &WrapWaitInserted);
+            CopperAppendModulo(List, &Index, HAM_ADVANCE_MOD);
+            CopperAppendWait(List, &Index, (UWORD)(HAM_VPOS_START + (NextRow * HAM_PIXEL_SIZE)), &WrapWaitInserted);
+            CopperAppendModulo(List, &Index, HAM_REPEAT_MOD);
+        }
     }
 
     // Finish the list with the standard Copper stop marker.
@@ -447,7 +473,7 @@ static void BuildCopperList(UWORD* List)
     List[Index++] = 0xFFFE;
 }
 
-static void CopperWriteBitplanePointers(UWORD* List, UWORD Index, const UBYTE* Row, UWORD PlaneBytes)
+static void CopperWriteFourPlanePointers(UWORD* List, UWORD Index, const UBYTE* Row, UWORD PlaneBytes)
 {
     ULONG Ptr = (ULONG)Row;
 
@@ -464,6 +490,89 @@ static void CopperWriteBitplanePointers(UWORD* List, UWORD Index, const UBYTE* R
     List[Index + 14] = WORD_LO(Ptr);
 }
 
+static void CopperWriteAgaSixPlanePointers(UWORD* List, UWORD Index, const UBYTE* Row, UWORD PlaneBytes, UWORD ControlRow)
+{
+    ULONG Ptr = (ULONG)Row;
+    ULONG ControlPtr = (ULONG)(AgaControlPlanes + ((ULONG)ControlRow * HAM_FETCH_BYTES));
+
+    List[Index +  0] = WORD_HI(Ptr);
+    List[Index +  2] = WORD_LO(Ptr);
+    Ptr += PlaneBytes;
+    List[Index +  4] = WORD_HI(Ptr);
+    List[Index +  6] = WORD_LO(Ptr);
+    Ptr += PlaneBytes;
+    List[Index +  8] = WORD_HI(Ptr);
+    List[Index + 10] = WORD_LO(Ptr);
+    Ptr += PlaneBytes;
+    List[Index + 12] = WORD_HI(Ptr);
+    List[Index + 14] = WORD_LO(Ptr);
+
+    List[Index + 16] = WORD_HI(ControlPtr);
+    List[Index + 18] = WORD_LO(ControlPtr);
+    ControlPtr += HAM_AGA_CONTROL_PLANE_BYTES;
+    List[Index + 20] = WORD_HI(ControlPtr);
+    List[Index + 22] = WORD_LO(ControlPtr);
+}
+
+static void CopperWriteDisplayPointers(UWORD* List, UWORD OcsIndex, UWORD AgaIndex, const UBYTE* Row, UWORD PlaneBytes, UWORD ControlRow)
+{
+    if (AgaEnabled)
+    {
+        CopperWriteAgaSixPlanePointers(List, AgaIndex, Row, PlaneBytes, ControlRow);
+    }
+    else
+    {
+        CopperWriteFourPlanePointers(List, OcsIndex, Row, PlaneBytes);
+    }
+}
+
+static void ResetAgaCompatibilityRegs(void)
+{
+    if (AgaEnabled)
+    {
+        BPLCON3_REG = HAM_AGA_BPLCON3_RESET;
+        BPLCON4_REG = HAM_AGA_BPLCON4_RESET;
+        FMODE_REG = HAM_AGA_FMODE_RESET;
+    }
+}
+
+static void ClearHamPaletteRegs(void)
+{
+    if (AgaEnabled)
+    {
+        ResetAgaCompatibilityRegs();
+    }
+
+    for (UWORD Color = 0; Color < 16; ++Color)
+    {
+        COLOR00[Color] = 0x0000;
+    }
+
+    if (AgaEnabled)
+    {
+        BPLCON3_REG = HAM_AGA_BPLCON3_LOCT;
+
+        for (UWORD Color = 0; Color < 16; ++Color)
+        {
+            COLOR00[Color] = 0x0000;
+        }
+
+        ResetAgaCompatibilityRegs();
+    }
+}
+
+static void BuildAgaControlPlanes(void)
+{
+    UWORD* Plane5 = (UWORD*)AgaControlPlanes;
+    UWORD* Plane6 = (UWORD*)(AgaControlPlanes + HAM_AGA_CONTROL_PLANE_BYTES);
+
+    for (UWORD Word = 0; Word < (HAM_AGA_CONTROL_PLANE_BYTES >> 1); ++Word)
+    {
+        Plane5[Word] = HAM_CONTROL_WORD_P5;
+        Plane6[Word] = HAM_CONTROL_WORD_P6;
+    }
+}
+
 static void InitDisplay(void)
 {
     UBYTE* HamBuffer1;
@@ -473,24 +582,37 @@ static void InitDisplay(void)
     HalfFrameCacheBlock = (UBYTE*)AllocMem(HAM_HALFRATE_ROW_CACHE_BYTES, MEMF_CHIP);
     HamBuffer0 = (UBYTE*)AllocMem(DISPLAY_BLOCK_BYTES, MEMF_CHIP | MEMF_CLEAR);
 
+    if (AgaEnabled)
+    {
+        AgaControlPlanes = (UBYTE*)AllocMem(HAM_AGA_CONTROL_PLANES_BYTES, MEMF_CHIP);
+        BuildAgaControlPlanes();
+    }
+
     // The chip block is packed as: dynamic buffer 0, dynamic buffer 1, copper list 0,
     // copper list 1. This keeps all flip-related display state in one contiguous allocation.
     CopperList0 = (UWORD*)(HamBuffer0 + HAM_DYNAMIC_BITMAP_BYTES + HAM_DYNAMIC_BITMAP_BYTES);
     GetDisplayFlipState(&HamBuffer1, &CopperList1);
 
-    // Build the cached lower-band bitmaps, then create two copper lists for buffer flipping.
+    // Build the cached lower-band bitmaps, clear the fixed palette registers once,
+    // then create two copper lists for buffer flipping.
     BuildHalfRowCache();
-    BuildHalfFrameCopperWords();
-    BuildCopperList(CopperList0);
-    BuildCopperList(CopperList1);
+    ClearHamPaletteRegs();
+    BuildCopperList(CopperList0, AgaEnabled);
+    BuildCopperList(CopperList1, AgaEnabled);
 
-    // Patch pointer block 0 to the live top-band buffers and pointer block 1 to the first
-    // cached lower-band frame. The main loop later rewrites only the cached pointer block
-    // when it advances to the next half-rate frame.
-    CopperWriteBitplanePointers(CopperList0, HAM_COPPER_BPLPTR_WORD, HamBuffer0, HAM_DYNAMIC_PLANE_BYTES);
-    CopperWriteBitplanePointers(CopperList1, HAM_COPPER_BPLPTR_WORD, HamBuffer1, HAM_DYNAMIC_PLANE_BYTES);
-    CopperWriteBitplanePointers(CopperList0, HAM_COPPER_HALFRATE_BPLPTR_WORD, HalfFrameCacheBlock, HAM_HALFRATE_ROW_CACHE_PLANE_BYTES);
-    CopperWriteBitplanePointers(CopperList1, HAM_COPPER_HALFRATE_BPLPTR_WORD, HalfFrameCacheBlock, HAM_HALFRATE_ROW_CACHE_PLANE_BYTES);
+    // Patch the static temporal splice: Copper list 0 displays rows 0-9 from buffer 0
+    // and rows 10-17 from buffer 1; Copper list 1 displays rows 0-1 and 10-17 from
+    // buffer 1 and rows 2-9 from buffer 0. The main loop only rewrites the half-rate
+    // cache pointer block when it advances to the next cached frame.
+    CopperWriteDisplayPointers(CopperList0, HAM_OCS_COPPER_BPLPTR_WORD, HAM_AGA_COPPER_BPLPTR_WORD, HamBuffer0, HAM_DYNAMIC_PLANE_BYTES, 0);
+    CopperWriteDisplayPointers(CopperList0, HAM_OCS_COPPER_TEMPORAL_UPPER_BPLPTR_WORD, HAM_AGA_COPPER_TEMPORAL_UPPER_BPLPTR_WORD, HamBuffer0 + HAM_TEMPORAL_UPPER_DEST_OFFSET, HAM_DYNAMIC_PLANE_BYTES, HAM_TEMPORAL_START_ROW);
+    CopperWriteDisplayPointers(CopperList0, HAM_OCS_COPPER_TEMPORAL_LOWER_BPLPTR_WORD, HAM_AGA_COPPER_TEMPORAL_LOWER_BPLPTR_WORD, HamBuffer1 + HAM_TEMPORAL_LOWER_DEST_OFFSET, HAM_DYNAMIC_PLANE_BYTES, HAM_TEMPORAL_LOWER_START_ROW);
+    CopperWriteDisplayPointers(CopperList0, HAM_OCS_COPPER_HALFRATE_BPLPTR_WORD, HAM_AGA_COPPER_HALFRATE_BPLPTR_WORD, HalfFrameCacheBlock, HAM_HALFRATE_ROW_CACHE_PLANE_BYTES, HAM_HALFRATE_START_ROW);
+
+    CopperWriteDisplayPointers(CopperList1, HAM_OCS_COPPER_BPLPTR_WORD, HAM_AGA_COPPER_BPLPTR_WORD, HamBuffer1, HAM_DYNAMIC_PLANE_BYTES, 0);
+    CopperWriteDisplayPointers(CopperList1, HAM_OCS_COPPER_TEMPORAL_UPPER_BPLPTR_WORD, HAM_AGA_COPPER_TEMPORAL_UPPER_BPLPTR_WORD, HamBuffer0 + HAM_TEMPORAL_UPPER_DEST_OFFSET, HAM_DYNAMIC_PLANE_BYTES, HAM_TEMPORAL_START_ROW);
+    CopperWriteDisplayPointers(CopperList1, HAM_OCS_COPPER_TEMPORAL_LOWER_BPLPTR_WORD, HAM_AGA_COPPER_TEMPORAL_LOWER_BPLPTR_WORD, HamBuffer1 + HAM_TEMPORAL_LOWER_DEST_OFFSET, HAM_DYNAMIC_PLANE_BYTES, HAM_TEMPORAL_LOWER_START_ROW);
+    CopperWriteDisplayPointers(CopperList1, HAM_OCS_COPPER_HALFRATE_BPLPTR_WORD, HAM_AGA_COPPER_HALFRATE_BPLPTR_WORD, HalfFrameCacheBlock, HAM_HALFRATE_ROW_CACHE_PLANE_BYTES, HAM_HALFRATE_START_ROW);
 }
 
 // ---------------------------------------------------------------------
@@ -501,9 +623,17 @@ static void Cleanup_All(void)
 {
     lwmf_ReleaseOS();
 
+    if (AgaControlPlanes)
+    {
+        FreeMem(AgaControlPlanes, HAM_AGA_CONTROL_PLANES_BYTES);
+    }
+
     FreeMem(HamBuffer0, DISPLAY_BLOCK_BYTES);
     FreeMem(HalfFrameCacheBlock, HAM_HALFRATE_ROW_CACHE_BYTES);
-    FreeMem(TextureCells, SLOW_BLOCK_BYTES);
+    FreeMem(UOffsetTable, UOFFSET_TABLE_BYTES);
+    FreeMem(FrameParams, FRAME_PARAMS_BYTES);
+    FreeMem(PairTables, PairTableBytes);
+    FreeMem(TextureCells, TEXTURE_CELL_BYTES);
 
     lwmf_CloseLibraries();
 }
@@ -518,6 +648,7 @@ int main(void)
     UWORD* CopperList1;
 
     lwmf_LoadGraphicsLib();
+    AgaEnabled = (UBYTE)EnableAgaChipsetAsm(GfxBase);
     InitTexture();
     lwmf_TakeOverOS();
     InitDisplay();
@@ -529,13 +660,14 @@ int main(void)
     MainLoopContext.UOffsetMid = UOffsetTableMid;
     MainLoopContext.PairTablesBase = PairTables;
     MainLoopContext.FrameParams = FrameParams;
-    MainLoopContext.HalfFrameCopperWords = HalfFrameCopperWords;
+    MainLoopContext.HalfFrameCacheBase = HalfFrameCacheBlock;
     MainLoopContext.Ham0 = HamBuffer0;
     MainLoopContext.Ham1 = HamBuffer1;
     MainLoopContext.Copper0 = CopperList0;
     MainLoopContext.Copper1 = CopperList1;
+    MainLoopContext.HalfRateBplPtrOffsetBytes = AgaEnabled ? HAM_AGA_COPPER_HALFRATE_BPLPTR_BYTES : HAM_OCS_COPPER_HALFRATE_BPLPTR_BYTES;
+    MainLoopContext.FrameSyncEnabled = AgaEnabled;
 
-    InitHamBlitterCopyModeAsm();
     *COP1LC = (ULONG)MainLoopContext.Copper0;
     RunHamMainLoopAsm(&MainLoopContext);
 

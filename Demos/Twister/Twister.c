@@ -1,5 +1,5 @@
 //**********************************************************************
-//* Textured Twister                                                   *
+//* Twister                                                            *
 //*                                                                    *
 //* (C) 2026 by Stefan Kubsch / Deep4                                  *
 //* Project for vbcc                                                   *

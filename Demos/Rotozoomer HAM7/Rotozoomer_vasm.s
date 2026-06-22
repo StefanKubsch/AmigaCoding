@@ -2,275 +2,285 @@
 ;* 4x4 HAM7 BPLDAT Quirk Rotozoomer ASM Renderer                         *
 ;*                                                                       *
 ;* 56x52 hybrid row cache renderer. Rows below the dynamic band use      *
-;* half-rate and direct slow-row caches according to the shared limits.  *
-;* Runtime draws rows 0-1 and the configured temporal band directly.     *
-;* BPL5DAT/BPL6DAT control words are handled by the Copperlist in C.     *
+;* a half-rate chip cache according to the shared limits.                *
+;* The Copper splices both temporal halves directly from their buffers,   *
+;* so the runtime path renders only the rows that actually change.        *
+;* OCS uses the BPLDAT quirk; AGA uses fixed real HAM control planes. *
 ;*************************************************************************
 
-        machine 68000								        ; assemble for plain 68000 code generation
+        machine 68000                                                          ; assemble for plain 68000 code generation
 
-        include	"lwmf/lwmf_hardware_regs.i"						; import custom-register and LVO constants
+        include "lwmf/lwmf_hardware_regs.i"                                   ; import custom-register and LVO constants
 
-        include	"Rotozoomer_shared.i"							; import shared effect constants
+        include "Rotozoomer_shared.i"                                         ; import shared effect constants
 
-HAM_LOOP_CTX_UOFFSET_MID             equ     4						; HamMainLoopContext.UOffsetMid offset
-HAM_LOOP_CTX_PAIR_TABLES_BASE        equ     8						; HamMainLoopContext.PairTablesBase offset
-HAM_LOOP_CTX_FRAME_PARAMS            equ     12						; HamMainLoopContext.FrameParams offset
-HAM_LOOP_CTX_HALF_COPPER_WORDS       equ     16						; HamMainLoopContext.HalfFrameCopperWords offset
-HAM_LOOP_CTX_HAM0                    equ     20						; HamMainLoopContext.Ham0 offset
-HAM_LOOP_CTX_HAM1                    equ     24						; HamMainLoopContext.Ham1 offset
-HAM_LOOP_CTX_COPPER0                 equ     28						; HamMainLoopContext.Copper0 offset
-HAM_LOOP_CTX_COPPER1                 equ     32						; HamMainLoopContext.Copper1 offset
+HAM_LOOP_CTX_UOFFSET_MID             equ     4                                 ; HamMainLoopContext.UOffsetMid offset
+HAM_LOOP_CTX_PAIR_TABLES_BASE        equ     8                                 ; HamMainLoopContext.PairTablesBase offset
+HAM_LOOP_CTX_FRAME_PARAMS            equ     12                                ; HamMainLoopContext.FrameParams offset
+HAM_LOOP_CTX_HALFRATE_CACHE_BASE     equ     16                                ; HamMainLoopContext.HalfFrameCacheBase offset
+HAM_LOOP_CTX_HAM0                    equ     20                                ; HamMainLoopContext.Ham0 offset
+HAM_LOOP_CTX_HAM1                    equ     24                                ; HamMainLoopContext.Ham1 offset
+HAM_LOOP_CTX_COPPER0                 equ     28                                ; HamMainLoopContext.Copper0 offset
+HAM_LOOP_CTX_COPPER1                 equ     32                                ; HamMainLoopContext.Copper1 offset
+HAM_LOOP_CTX_HALFRATE_BPLPTR_BYTES  equ     36                                ; HamMainLoopContext.HalfRateBplPtrOffsetBytes offset
+HAM_LOOP_CTX_FRAME_SYNC_ENABLED       equ     38                                ; HamMainLoopContext.FrameSyncEnabled offset
 
-HAM_FRAME_DUDX                       equ     0						; HamFrameParams.DuDx offset
-HAM_FRAME_DVDX                       equ     2						; HamFrameParams.DvDx offset
-HAM_FRAME_ROWU                       equ     4						; HamFrameParams.RowU offset
-HAM_FRAME_ROWV                       equ     6						; HamFrameParams.RowV offset
-HAM_FRAME_ROWUDELTA                  equ     8						; HamFrameParams.RowUDelta offset
-HAM_FRAME_ROWVDELTA                  equ     10						; HamFrameParams.RowVDelta offset
-HAM_FRAME_UPPER_ROWU                 equ     12						; HamFrameParams.UpperRowU offset
-HAM_FRAME_UPPER_ROWV                 equ     14						; HamFrameParams.UpperRowV offset
-HAM_FRAME_LOWER_ROWU                 equ     16						; HamFrameParams.LowerRowU offset
-HAM_FRAME_LOWER_ROWV                 equ     18						; HamFrameParams.LowerRowV offset
-HAM_FRAME_PHASE_STEP_BYTES           equ     HAM_ANGLE_PHASE_STEP*20			; byte distance between adjacent frame param entries
-HAM_LOOP_PHASE_STEP                  equ     HAM_ANGLE_PHASE_STEP+HAM_ANGLE_PHASE_STEP	; phase delta from one even frame to the next
-HAM_LOOP_PHASE_STEP_BYTES            equ     HAM_LOOP_PHASE_STEP*20			; byte distance between consecutive even-frame entries
+HAM_FRAME_DUDX                       equ     0                                 ; HamFrameParams.DuDx offset
+HAM_FRAME_DVDX                       equ     2                                 ; HamFrameParams.DvDx offset
+HAM_FRAME_ROWU                       equ     4                                 ; HamFrameParams.RowU offset
+HAM_FRAME_ROWV                       equ     6                                 ; HamFrameParams.RowV offset
+HAM_FRAME_ROWUDELTA                  equ     8                                 ; HamFrameParams.RowUDelta offset
+HAM_FRAME_ROWVDELTA                  equ     10                                ; HamFrameParams.RowVDelta offset
+HAM_FRAME_PHASE_STEP_BYTES           equ     HAM_ANGLE_PHASE_STEP*HAM_FRAME_PARAM_BYTES ; byte distance between adjacent frame param entries
+HAM_LOOP_PHASE_STEP                  equ     HAM_ANGLE_PHASE_STEP+HAM_ANGLE_PHASE_STEP ; phase delta from one even frame to the next
+HAM_LOOP_PHASE_STEP_BYTES            equ     HAM_LOOP_PHASE_STEP*HAM_FRAME_PARAM_BYTES ; byte distance between consecutive even-frame entries
 
-CIAA_PRA                             equ     $00BFE001					; CIA-A port A address for mouse-button polling
+CIAA_PRA                             equ     $00BFE001                         ; CIA-A port A address for mouse-button polling
+GFX_LIB_VERSION_OFFSET                  equ     20                                ; struct Library.lib_Version offset inside GfxBase
+LVO_SETCHIPREV                          equ     -$378                             ; graphics.library SetChipRev() vector, V39+
+CHIPREV_AGA                             equ     $0000000F                         ; requested AGA chipset revision mask
 
-; void InitHamBlitterCopyModeAsm(void)
-; Initializes the fixed A-to-D blitter mode and full source masks.
+; UWORD EnableAgaChipsetAsm(a0=GfxBase)
 
-_InitHamBlitterCopyModeAsm::								; export blitter copy-mode initializer to C
-.bwi:   btst.b  #DMAB_BLITTER,DMACONR							; wait before changing blitter copy state
-        bne.s   .bwi									; loop while blitter is busy
-        move.l  #(BLTCON0_COPY_A_TO_D<<16),BLTCON0					; set A-to-D copy mode and clear BLTCON1
-        move.l  #$FFFFFFFF,BLTAFWM							; use all bits in first and last source words
-        rts										; return to C
+_EnableAgaChipsetAsm::                                                         ; enable AGA features through graphics.library when V39+ is present
+        move.l  a6,-(sp)                                                       ; preserve the library base register for the C caller
+        move.l  a0,d0                                                           ; test graphics base pointer through a data register
+        beq.s   .no_aga                                                         ; skip the V39-only call on failure
+        movea.l a0,a6                                                          ; a6 = graphics.library base
+        cmp.w   #39,GFX_LIB_VERSION_OFFSET(a6)                                  ; SetChipRev exists only in graphics.library V39+
+        blo.s   .no_aga                                                         ; keep the OCS path on older systems
+        move.l  #CHIPREV_AGA,d0                                                 ; request AGA chipset features
+        jsr     LVO_SETCHIPREV(a6)                                              ; returns the chipset bits actually enabled
+        andi.l  #CHIPREV_AGA,d0                                                 ; keep only the AGA feature mask
+        cmpi.l  #CHIPREV_AGA,d0                                                 ; did the OS enable all requested AGA bits?
+        bne.s   .no_aga                                                         ; keep the OCS path if not available
+        moveq   #1,d0                                                           ; return TRUE
+        bra.s   .done                                                           ; restore a6 and leave
+.no_aga:                                                                        ; return FALSE on OCS/ECS or older graphics.library
+        moveq   #0,d0                                                           ; return FALSE
+.done:                                                                          ; common exit
+        move.l  (sp)+,a6                                                       ; restore the caller's a6
+        rts                                                                    ; return AGA availability in d0
 
 ; void RunHamMainLoopAsm(a0=Context)
 
-_RunHamMainLoopAsm::									; export the main HAM renderer loop to C
-        movem.l d2-d7/a2-a6,-(sp)							; preserve the full vbcc callee-saved register set before returning to C
-        movea.l a0,a6									; a6 = immutable main-loop context
-        move.l  (a6),d6									; d6 = invariant TextureCellsMid pointer for render calls
-        movea.l (HAM_LOOP_CTX_UOFFSET_MID,a6),a2					; a2 = invariant wrapped-U lookup table
-        movea.l (HAM_LOOP_CTX_PAIR_TABLES_BASE,a6),a3					; a3 = invariant pair table base
-        movea.l (HAM_LOOP_CTX_FRAME_PARAMS,a6),a5					; a5 = current even-frame params pointer
-        movea.l (HAM_LOOP_CTX_HALF_COPPER_WORDS,a6),a4					; a4 = current cached half-rate copper words
-        movea.l (HAM_LOOP_CTX_COPPER1,a6),a0						; a0 = next even-frame copper list kept across loop tail
-        moveq   #0,d5									; d5.b = even-frame phase with natural 8-bit wrap
-.loop:											; start the next even/odd frame pair
-        btst.b  #6,CIAA_PRA								; left mouse button exits when pressed
-        beq     .done									; leave the effect loop on click
+_RunHamMainLoopAsm::                                                           ; export the main HAM renderer loop to C
+        movem.l d2-d7/a2-a6,-(sp)                                             ; preserve the full vbcc callee-saved register set before returning to C
+        movea.l a0,a6                                                          ; a6 = immutable main-loop context
+        move.l  (a6),d6                                                        ; d6 = invariant TextureCellsMid pointer for render calls
+        movea.l (HAM_LOOP_CTX_UOFFSET_MID,a6),a2                               ; a2 = invariant wrapped-U lookup table
+        movea.l (HAM_LOOP_CTX_PAIR_TABLES_BASE,a6),a3                          ; a3 = invariant compact pair table base
+        movea.l (HAM_LOOP_CTX_FRAME_PARAMS,a6),a5                              ; a5 = current even-frame params pointer
+        movea.l (HAM_LOOP_CTX_HALFRATE_CACHE_BASE,a6),a4                       ; a4 = current cached half-rate frame bitmap
+        movea.l (HAM_LOOP_CTX_COPPER1,a6),a0                                   ; a0 = next even-frame copper list kept across loop tail
+        moveq   #0,d5                                                          ; d5.b = even-frame phase with natural 8-bit wrap
+.loop:                                                                          ; start the next even/odd frame pair
+        btst.b  #6,CIAA_PRA                                                    ; left mouse button exits when pressed
+        beq     .done                                                          ; leave the effect loop on click
 
-		bsr     WaitHamLiveDoneAndSwitchCopper					; wait until the live band is safe and arm the next copper list
+        bsr     WaitHamLiveDoneAndSwitchCopper                                 ; arm the next copper list and wait until live rows are safe
 
-        move.w  (a5),d4									; d4 = even-frame DuDx cached across both renders
-        move.w  (HAM_FRAME_DVDX,a5),d7							; d7 = even-frame DvDx cached across both renders
-        move.w  (HAM_FRAME_ROWUDELTA,a5),d1						; d1 = precomputed row U delta
-        lea     RenderHamRowsCoreRowUDelta+2(pc),a0					; patch both shared row deltas from one base slot
-                move.w  d1,(a0)								; write the even-frame row U delta into the shared renderer patch slot
-        move.w  (HAM_FRAME_ROWVDELTA,a5),d1						; d1 = precomputed row V delta
-                move.w  d1,4(a0)							; write the even-frame row V delta into the adjacent patch slot
+        movea.l a5,a1                                                          ; a1 = even-frame params for delta patching
+        move.w  (HAM_FRAME_DUDX,a1),d4                                         ; d4 = even-frame DuDx cached across both renders
+        move.w  (HAM_FRAME_DVDX,a1),d7                                         ; d7 = even-frame DvDx cached across both renders
+        bsr     StoreHamRowDeltasFromA1                                        ; store row deltas from the 12-byte frame params
 
-        movea.l (HAM_LOOP_CTX_HAM0,a6),a0						; render live rows into dynamic buffer 0
-                move.w  (HAM_FRAME_ROWU,a5),d0						; d0 = even-frame starting U for the live band
-                move.w  (HAM_FRAME_ROWV,a5),d1						; d1 = even-frame starting V for the live band
-                move.w  d4,d2								; d2 = even-frame DuDx
-                move.w  d7,d3								; d3 = even-frame DvDx
-        movea.l d6,a1									; a1 = invariant TextureCellsMid pointer
-                bsr     RenderHamLiveRowsNoPatch					; draw the top live rows for the even frame
+        movea.l (HAM_LOOP_CTX_HAM0,a6),a0                                      ; render live rows into dynamic buffer 0
+        move.w  (HAM_FRAME_ROWU,a5),d0                                         ; d0 = even-frame starting U for the live band
+        move.w  (HAM_FRAME_ROWV,a5),d1                                         ; d1 = even-frame starting V for the live band
+        move.w  d4,d2                                                          ; d2 = even-frame DuDx
+        move.w  d7,d3                                                          ; d3 = even-frame DvDx
+        movea.l d6,a1                                                          ; a1 = invariant TextureCellsMid pointer
+        bsr     RenderHamLiveRowsNoPatch                                       ; draw the top live rows for the even frame
 
-        movea.l (HAM_LOOP_CTX_HAM0,a6),a0						; copy cached lower temporal rows from buffer 1 to buffer 0
-                movea.l (HAM_LOOP_CTX_HAM1,a6),a1					; a1 = previous odd buffer as source for lower temporal rows
-                bsr     CopyHamTemporalLowerRows					; reuse the cached lower temporal half from the previous frame
+        movea.l (HAM_LOOP_CTX_HAM0,a6),a0                                      ; render upper temporal rows into buffer 0
+        move.w  (HAM_FRAME_ROWU,a5),d0                                         ; d0 = even-frame base U
+        sub.w   d7,d0                                                          ; move to temporal row 2, step 1 in U
+        sub.w   d7,d0                                                          ; move to temporal row 2, step 2 in U
+        move.w  (HAM_FRAME_ROWV,a5),d1                                         ; d1 = even-frame base V
+        add.w   d4,d1                                                          ; move to temporal row 2, step 1 in V
+        add.w   d4,d1                                                          ; move to temporal row 2, step 2 in V
+        move.w  d4,d2                                                          ; d2 = even-frame DuDx
+        move.w  d7,d3                                                          ; d3 = even-frame DvDx
+        movea.l d6,a1                                                          ; a1 = invariant TextureCellsMid pointer
+        bsr     RenderHamTemporalUpperRowsNoPatch                              ; draw rows 2-9; the Copper reuses them directly
 
-        movea.l (HAM_LOOP_CTX_HAM0,a6),a0						; render upper temporal rows for the even frame
-                move.w  (HAM_FRAME_UPPER_ROWU,a5),d0					; d0 = even-frame starting U for the upper temporal half
-                move.w  (HAM_FRAME_UPPER_ROWV,a5),d1					; d1 = even-frame starting V for the upper temporal half
-                move.w  d4,d2								; d2 = even-frame DuDx
-                move.w  d7,d3								; d3 = even-frame DvDx
-        movea.l d6,a1									; a1 = invariant TextureCellsMid pointer
-                bsr     RenderHamTemporalUpperRowsNoPatch				; draw the upper temporal rows into buffer 0
+        movea.l (HAM_LOOP_CTX_COPPER0,a6),a0                                   ; update copper list 0 for the odd frame
+        bsr     UpdateHamCachedPointers                                        ; patch copper 0 to the current cached half-rate frame
+        bsr     WaitHamLiveDoneAndSwitchCopper                                 ; arm the odd copper list and wait until live rows are safe
 
-        movea.l (HAM_LOOP_CTX_COPPER0,a6),a0						; update copper list 0 for the odd frame
-                bsr     UpdateHamCachedPointers						; patch copper 0 to the next cached half-rate frame
-                bsr     WaitHamLiveDoneAndSwitchCopper					; wait again before starting the odd-frame live render
+        lea     HAM_FRAME_PHASE_STEP_BYTES(a5),a1                              ; a1 = odd-frame params pointer
+        move.w  (HAM_FRAME_DUDX,a1),d4                                         ; d4 = odd-frame DuDx cached across both renders
+        move.w  (HAM_FRAME_DVDX,a1),d7                                         ; d7 = odd-frame DvDx cached across both renders
+        bsr     StoreHamRowDeltasFromA1                                        ; store row deltas from the 12-byte frame params
 
-        lea     HAM_FRAME_PHASE_STEP_BYTES(a5),a1					; a1 = odd-frame params pointer
-        move.w  (a1),d4									; d4 = odd-frame DuDx cached across both renders
-        move.w  (HAM_FRAME_DVDX,a1),d7							; d7 = odd-frame DvDx cached across both renders
-        move.w  (HAM_FRAME_ROWUDELTA,a1),d1						; d1 = precomputed row U delta
-        lea     RenderHamRowsCoreRowUDelta+2(pc),a0					; patch both shared row deltas from one base slot
-		move.w  d1,(a0)								; write the odd-frame row U delta into the shared renderer patch slot
-        move.w  (HAM_FRAME_ROWVDELTA,a1),d1						; d1 = precomputed row V delta
-		move.w  d1,4(a0)							; write the odd-frame row V delta into the adjacent patch slot
+        movea.l (HAM_LOOP_CTX_HAM1,a6),a0                                      ; render live rows into dynamic buffer 1
+        lea     HAM_FRAME_PHASE_STEP_BYTES(a5),a1                              ; a1 = odd-frame params pointer
+        move.w  (HAM_FRAME_ROWU,a1),d0                                         ; d0 = odd-frame starting U for the live band
+        move.w  (HAM_FRAME_ROWV,a1),d1                                         ; d1 = odd-frame starting V for the live band
+        move.w  d4,d2                                                          ; d2 = odd-frame DuDx
+        move.w  d7,d3                                                          ; d3 = odd-frame DvDx
+        movea.l d6,a1                                                          ; a1 = invariant TextureCellsMid pointer
+        bsr     RenderHamLiveRowsNoPatch                                       ; draw the top live rows for the odd frame
 
-        movea.l (HAM_LOOP_CTX_HAM1,a6),a0						; render live rows into dynamic buffer 1
-        lea     HAM_FRAME_PHASE_STEP_BYTES(a5),a1					; a1 = odd-frame params pointer
-                move.w  (HAM_FRAME_ROWU,a1),d0						; d0 = odd-frame starting U for the live band
-                move.w  (HAM_FRAME_ROWV,a1),d1						; d1 = odd-frame starting V for the live band
-                move.w  d4,d2								; d2 = odd-frame DuDx
-                move.w  d7,d3								; d3 = odd-frame DvDx
-        movea.l d6,a1									; a1 = invariant TextureCellsMid pointer
-                bsr     RenderHamLiveRowsNoPatch					; draw the top live rows for the odd frame
+        movea.l (HAM_LOOP_CTX_HAM1,a6),a0                                      ; render lower temporal rows into buffer 1
+        lea     HAM_FRAME_PHASE_STEP_BYTES(a5),a1                              ; a1 = odd-frame params pointer
+        move.w  (HAM_FRAME_ROWU,a1),d0                                         ; d0 = odd-frame base U
+        move.w  d7,d2                                                          ; d2 = DvDx for row 10 offset
+        lsl.w   #3,d2                                                          ; d2 = DvDx*8
+        add.w   d7,d2                                                          ; d2 = DvDx*9
+        add.w   d7,d2                                                          ; d2 = DvDx*10
+        sub.w   d2,d0                                                          ; d0 = lower temporal starting U
+        move.w  (HAM_FRAME_ROWV,a1),d1                                         ; d1 = odd-frame base V
+        move.w  d4,d2                                                          ; d2 = DuDx for row 10 offset
+        lsl.w   #3,d2                                                          ; d2 = DuDx*8
+        add.w   d4,d2                                                          ; d2 = DuDx*9
+        add.w   d4,d2                                                          ; d2 = DuDx*10
+        add.w   d2,d1                                                          ; d1 = lower temporal starting V
+        move.w  d4,d2                                                          ; d2 = odd-frame DuDx
+        move.w  d7,d3                                                          ; d3 = odd-frame DvDx
+        movea.l d6,a1                                                          ; a1 = invariant TextureCellsMid pointer
+        bsr     RenderHamTemporalLowerRowsNoPatch                              ; draw rows 10-17; the Copper reuses them directly
 
-        movea.l (HAM_LOOP_CTX_HAM1,a6),a0						; copy cached upper temporal rows from buffer 0 to buffer 1
-                movea.l (HAM_LOOP_CTX_HAM0,a6),a1					; a1 = previous even buffer as source for upper temporal rows
-                bsr     CopyHamTemporalUpperRows					; reuse the cached upper temporal half from the previous frame
+        movea.l (HAM_LOOP_CTX_COPPER1,a6),a0                                   ; update copper list 1 for the next even frame
+        bsr     UpdateHamCachedPointers                                        ; patch copper 1 to the current cached half-rate frame
 
-        movea.l (HAM_LOOP_CTX_HAM1,a6),a0						; render lower temporal rows for the odd frame
-        lea     HAM_FRAME_PHASE_STEP_BYTES(a5),a1					; a1 = odd-frame params pointer
-                move.w  (HAM_FRAME_LOWER_ROWU,a1),d0					; d0 = odd-frame starting U for the lower temporal half
-                move.w  (HAM_FRAME_LOWER_ROWV,a1),d1					; d1 = odd-frame starting V for the lower temporal half
-                move.w  d4,d2								; d2 = odd-frame DuDx
-                move.w  d7,d3								; d3 = odd-frame DvDx
-        movea.l d6,a1									; a1 = invariant TextureCellsMid pointer
-                bsr     RenderHamTemporalLowerRowsNoPatch				; draw the lower temporal rows into buffer 1
+        addq.b  #HAM_LOOP_PHASE_STEP,d5                                        ; advance to the next even-frame phase
+        beq.s   .wrap                                                          ; restart cyclic pointer streams on 8-bit phase wrap
+        lea     HAM_LOOP_PHASE_STEP_BYTES(a5),a5                               ; advance to the next even-frame params
+        lea     HAM_HALFRATE_ROW_CACHE_FRAME_BYTES(a4),a4                      ; advance to the next cached half-rate frame
+        bra     .loop                                                          ; continue with the next even/odd frame pair
+.wrap:                                                                          ; restart phase-dependent pointer streams after byte wraparound
+        movea.l (HAM_LOOP_CTX_FRAME_PARAMS,a6),a5                              ; restart the frame params stream on wrap
+        movea.l (HAM_LOOP_CTX_HALFRATE_CACHE_BASE,a6),a4                       ; restart the cached half-rate frame stream on wrap
+        bra     .loop                                                          ; continue rendering with the wrapped phase state
+.done:                                                                          ; begin the controlled shutdown path
+        movem.l (sp)+,d2-d7/a2-a6                                             ; restore the full vbcc callee-saved register set for the C caller
+        rts                                                                    ; return to C for cleanup
 
-        movea.l (HAM_LOOP_CTX_COPPER1,a6),a0						; update copper list 1 for the next even frame
-                bsr.s   UpdateHamCachedPointers						; patch copper 1 to the cached frame for the next loop turn
+; Internal live-safe wait and copper switch helper.
 
-        addq.b  #HAM_LOOP_PHASE_STEP,d5							; advance to the next even-frame phase
-        beq.s   .wrap									; restart cyclic pointer streams on 8-bit phase wrap
-        lea     HAM_LOOP_PHASE_STEP_BYTES(a5),a5					; advance to the next even-frame params
-        lea     16(a4),a4								; advance to the next cached half-rate copper words
-                bra     .loop								; continue with the next even/odd frame pair
-.wrap:											; restart phase-dependent pointer streams after byte wraparound
-        movea.l (HAM_LOOP_CTX_FRAME_PARAMS,a6),a5					; restart the frame params stream on wrap
-                movea.l (HAM_LOOP_CTX_HALF_COPPER_WORDS,a6),a4				; restart the cached half-rate copper stream on wrap
-                bra     .loop								; continue rendering with the wrapped phase state
-.done:											; begin the controlled shutdown path
-        lea     CUSTOMREGS,a0								; use custom base for the shutdown blitter wait
-.wait_blitter_exit:									; spin until the last asynchronous blit has finished
-        btst.b  #DMAB_BLITTER,(DMACONR-CUSTOMREGS,a0)					; ensure no tail blit still writes into soon-freed buffers
-        bne.s   .wait_blitter_exit							; stay until the last asynchronous temporal copy has finished
-        movem.l (sp)+,d2-d7/a2-a6							; restore the full vbcc callee-saved register set for the C caller
-        rts										; return to C for cleanup
+WaitHamLiveDoneAndSwitchCopper:                                                ; arm the next copper list before waiting for reusable live rows
+        lea     CUSTOMREGS,a1                                                  ; use custom base for beam and copper access
+        move.l  a0,(COP1LCH-CUSTOMREGS,a1)                                     ; write COP1LC immediately so the next restart sees it
+        tst.w   (HAM_LOOP_CTX_FRAME_SYNC_ENABLED,a6)                           ; does this machine need explicit frame pacing?
+        bne.s   .frame_sync                                                    ; AGA/fast machines are limited to one slot per PAL frame
+.live_wait:                                                                     ; OCS path: keep the original lightweight safety wait
+        btst.b  #0,(VPOSR+1-CUSTOMREGS,a1)                                     ; lower border or vblank is already safe
+        bne.s   .done                                                          ; skip the visible-area wait in line 256+
+.wait_live:                                                                     ; wait until display DMA has passed rows 0-1
+        cmp.b   #HAM_CORE_DONE_LOW,(VPOSR+2-CUSTOMREGS,a1)                     ; compare against the first safe line below the live band
+        blo.s   .wait_live                                                     ; stay while live rows may still be fetched
+.done:                                                                          ; live rows are safe to overwrite
+        rts                                                                    ; return to the renderer
+.frame_sync:                                                                    ; AGA path: one simple frame gate at the live-safe line
+        btst.b  #0,(VPOSR+1-CUSTOMREGS,a1)                                     ; are we already in the lower border/vblank?
+        bne.s   .wait_frame_low                                                ; wait for the next frame when line 256+ is active
+        cmp.b   #HAM_CORE_DONE_LOW,(VPOSR+2-CUSTOMREGS,a1)                     ; are we still before the live-safe point?
+        blo.s   .wait_sync_live                                                ; use this frame only when the beam is still early
+.wait_frame_high:                                                               ; wait until the current frame reaches the lower border
+        btst.b  #0,(VPOSR+1-CUSTOMREGS,a1)                                     ; poll PAL line bit 8
+        beq.s   .wait_frame_high                                               ; stay in this frame until line 256+
+.wait_frame_low:                                                                ; wait for the next frame to start
+        btst.b  #0,(VPOSR+1-CUSTOMREGS,a1)                                     ; poll PAL line bit 8
+        bne.s   .wait_frame_low                                                ; stay until the beam wraps back to the top
+.wait_sync_live:                                                                ; wait for the same safe point as the OCS path
+        cmp.b   #HAM_CORE_DONE_LOW,(VPOSR+2-CUSTOMREGS,a1)                     ; wait until live rows 0-1 are off-screen
+        blo.s   .wait_sync_live                                                ; stay before the protected live band has passed
+        rts                                                                    ; return once for this physical frame
 
-; Internal live-done wait and copper switch helper.
+; Internal frame-param helper.
 
-WaitHamLiveDoneAndSwitchCopper:								; wait until the beam no longer reads the live core rows
-        lea     CUSTOMREGS,a1								; use custom base for beam and copper access
-        move.l  a0,(COP1LCH-CUSTOMREGS,a1)						; prepare copper list for the next frame early
-        btst.b  #0,(VPOSR+1-CUSTOMREGS,a1)						; test PAL line bit 8
-        bne.s   .done									; rendering is safe in lower border/vblank
-.wait_live:										; poll the beam until the live rows are no longer visible
-        cmp.b   #HAM_CORE_DONE_LOW,(VPOSR+2-CUSTOMREGS,a1)				; wait for first line below core rows
-        blo.s   .wait_live								; stay while the beam still reads core rows
-.done:											; return once rendering can safely touch the live bitmap
-        rts										; return to C
+StoreHamRowDeltasFromA1:                                                        ; copy precomputed row deltas into cache-safe data storage
+        lea     HamRowDeltaVars(pc),a0                                          ; a0 = row-delta variable block
+        move.w  (HAM_FRAME_ROWUDELTA,a1),(a0)                                  ; store row U delta from frame params
+        move.w  (HAM_FRAME_ROWVDELTA,a1),2(a0)                                 ; store row V delta from frame params
+        rts                                                                    ; return with the param pointer intact
 
 ; Internal half-rate pointer update helper.
-UpdateHamCachedPointers:								; write four cached half-rate bitplane pointers into the active copper list
-	lea	HAM_COPPER_HALFRATE_BPLPTR_BYTES(a0),a1					; a1 = half-rate pointer value slot while a0 stays reusable
-        move.w  (a4),(a1)								; plane 0 high word
-        move.w  2(a4),4(a1)								; plane 0 low word
-        move.w  4(a4),8(a1)								; plane 1 high word
-        move.w  6(a4),12(a1)								; plane 1 low word
-        move.w  8(a4),16(a1)								; plane 2 high word
-        move.w  10(a4),20(a1)								; plane 2 low word
-        move.w  12(a4),24(a1)								; plane 3 high word
-        move.w  14(a4),28(a1)								; plane 3 low word
-	rts										; return without any slow-row blit
 
-; Internal temporal upper-half copy helper.
-; Uses blitter for A->D copy of the configured upper temporal half, all 4 planes.
-; Returns immediately after firing the tail chunk; the next blitter user waits as needed.
-CopyHamTemporalUpperRows:								; prepare the upper temporal-half copy parameters
-        moveq   #HAM_TEMPORAL_UPPER_DEST_OFFSET,d2					; upper rows start at the small upper offset
-        bra.s   CopyHamTemporalRowsCore							; share the same blitter sequence with the lower half
+UpdateHamCachedPointers:                                                        ; write four cached half-rate bitplane pointers into the active copper list
+        move.w  (HAM_LOOP_CTX_HALFRATE_BPLPTR_BYTES,a6),d1                     ; d1 = OCS or AGA half-rate pointer slot offset
+        lea     (a0,d1.w),a1                                                    ; a1 = half-rate pointer value slot while a0 stays reusable
+        move.l  a4,d0                                                          ; d0 = plane 0 pointer
+        swap    d0                                                             ; select high word
+        move.w  d0,(a1)                                                        ; plane 0 high word
+        swap    d0                                                             ; select low word
+        move.w  d0,4(a1)                                                       ; plane 0 low word
+        add.l   #HAM_HALFRATE_ROW_CACHE_PLANE_BYTES,d0                         ; d0 = plane 1 pointer
+        swap    d0                                                             ; select high word
+        move.w  d0,8(a1)                                                       ; plane 1 high word
+        swap    d0                                                             ; select low word
+        move.w  d0,12(a1)                                                      ; plane 1 low word
+        add.l   #HAM_HALFRATE_ROW_CACHE_PLANE_BYTES,d0                         ; d0 = plane 2 pointer
+        swap    d0                                                             ; select high word
+        move.w  d0,16(a1)                                                      ; plane 2 high word
+        swap    d0                                                             ; select low word
+        move.w  d0,20(a1)                                                      ; plane 2 low word
+        add.l   #HAM_HALFRATE_ROW_CACHE_PLANE_BYTES,d0                         ; d0 = plane 3 pointer
+        swap    d0                                                             ; select high word
+        move.w  d0,24(a1)                                                      ; plane 3 high word
+        swap    d0                                                             ; select low word
+        move.w  d0,28(a1)                                                      ; plane 3 low word
+        rts                                                                    ; return without any temporal blit
 
-; Internal temporal lower-half copy helper.
-; Uses blitter for A->D copy of the configured lower temporal half, all 4 planes.
-; Returns immediately after firing the tail chunk; the next blitter user waits as needed.
-CopyHamTemporalLowerRows:								; prepare the lower temporal-half copy parameters
-        move.w  #HAM_TEMPORAL_LOWER_DEST_OFFSET,d2					; lower rows start deeper in the dynamic buffer
+RenderHamTemporalUpperRowsNoPatch:                                             ; render the upper temporal half once the beam has passed it
+        btst.b  #0,VPOSR+1                                                     ; test PAL line bit 8 before touching temporal rows
+        bne.s   .temporal_render_safe_np                                       ; rendering is safe in lower border/vblank
+.wait_temporal_render_np:                                                       ; poll until the upper temporal rows are no longer on screen
+        cmp.b   #HAM_TEMPORAL_UPPER_DONE_LOW,VPOSR+2                           ; wait for first line below this temporal half
+        blo.s   .wait_temporal_render_np                                       ; stay while the beam still reads those rows
+.temporal_render_safe_np:                                                       ; start the upper temporal render after the visibility window
+        movem.l d4-d7/a3-a6,-(sp)                                             ; save clobbered C registers only
+        moveq   #HAM_TEMPORAL_UPPER_DEST_OFFSET,d4                             ; upper rows start at the small temporal offset
+RenderHamTemporalRowsSetupNoPatch:                                             ; common setup for both temporal-half renderers
+        movea.l a3,a6                                                          ; a6 = interleaved pair table base
+        adda.w  d4,a0                                                          ; advance base to the requested temporal half
+        moveq   #HAM_TEMPORAL_HALF_ROWS-1,d5                                   ; d5 = temporal rows remaining after current row
+        movea.l a0,a3                                                          ; a3 = temporal plane 0 write pointer
+        lea     HAM_DYNAMIC_PLANE_BYTES(a3),a4                                 ; a4 = temporal plane 1 write pointer
+        lea     HAM_DYNAMIC_PLANE_BYTES(a4),a5                                 ; a5 = temporal plane 2 write pointer
+        lea     HAM_DYNAMIC_PLANE_BYTES(a5),a0                                 ; a0 = temporal plane 3 write pointer
+        bra.s   RenderHamRowsCore                                              ; render rows without per-row subroutine calls
 
-; Shared temporal blitter copy. d2 holds the byte offset for both source and target halves.
-
-CopyHamTemporalRowsCore:								; copy one temporal half between dynamic frame buffers with the blitter
-        adda.w  d2,a0									; target will start at the requested temporal half
-        adda.w  d2,a1									; source will start at the requested temporal half
-        move.l  a0,d0									; d0 = destination chunk pointer
-        move.l  a1,d1									; d1 = source chunk pointer
-        lea     CUSTOMREGS,a0								; use custom base without a callee-saved register
-        move.w  #BLTPRI_SET,(DMACON-CUSTOMREGS,a0)					; give blitter priority while this routine waits
-.bwt0:  btst.b  #DMAB_BLITTER,(DMACONR-CUSTOMREGS,a0)					; wait for any previous blit to finish
-        bne.s   .bwt0									; loop while busy
-        move.l  #BLIT_TEMPORAL_WIDE_MOD_LONG,(BLTAMOD-CUSTOMREGS,a0)			; set source and dest wide modulos
-        move.l  d1,(BLTAPTH-CUSTOMREGS,a0)						; chunk 0: write source pointer
-        move.l  d0,(BLTDPTH-CUSTOMREGS,a0)						; chunk 0: write destination pointer
-        move.w  #BLIT_TEMPORAL_WIDE_SIZE,(BLTSIZE-CUSTOMREGS,a0)			; fire chunk 0 for all planes
-        add.l   #BLIT_TEMPORAL_WIDE_BYTES,d0						; advance dest to tail chunk
-        add.l   #BLIT_TEMPORAL_WIDE_BYTES,d1						; advance source to tail chunk
-.bwt1:  btst.b  #DMAB_BLITTER,(DMACONR-CUSTOMREGS,a0)					; wait for the wide chunk blit done
-        bne.s   .bwt1									; loop while busy
-        move.l  #BLIT_TEMPORAL_TAIL_MOD_LONG,(BLTAMOD-CUSTOMREGS,a0)			; set source and dest tail modulos
-        move.l  d1,(BLTAPTH-CUSTOMREGS,a0)						; tail chunk: write source pointer
-        move.l  d0,(BLTDPTH-CUSTOMREGS,a0)						; tail chunk: write destination pointer
-        move.w  #BLTPRI_CLR,(DMACON-CUSTOMREGS,a0)					; let final chunk overlap with CPU work
-        move.w  #BLIT_TEMPORAL_TAIL_SIZE,(BLTSIZE-CUSTOMREGS,a0)			; fire tail chunk for all planes
-        rts										; tail blit runs in parallel with CPU
-
-RenderHamTemporalUpperRowsNoPatch:							; render the upper temporal half once the beam has passed it
-        btst.b  #0,VPOSR+1								; test PAL line bit 8 before touching temporal rows
-        bne.s   .temporal_render_safe_np						; rendering is safe in lower border/vblank
-.wait_temporal_render_np:								; poll until the upper temporal rows are no longer on screen
-        cmp.b   #HAM_TEMPORAL_UPPER_DONE_LOW,VPOSR+2					; wait for first line below this temporal half
-        blo.s   .wait_temporal_render_np						; stay while the beam still reads those rows
-.temporal_render_safe_np:								; start the upper temporal render after the visibility window
-        movem.l d4-d7/a3-a6,-(sp)							; save clobbered C registers only
-        moveq   #HAM_TEMPORAL_UPPER_DEST_OFFSET,d4					; upper rows start at the small temporal offset
-RenderHamTemporalRowsSetupNoPatch:							; common setup for both temporal-half renderers
-        movea.l a3,a6									; a6 = interleaved pair table base
-        adda.w  d4,a0									; advance base to the requested temporal half
-        moveq   #HAM_TEMPORAL_HALF_ROWS-1,d5						; d5 = temporal rows remaining after current row
-        movea.l a0,a3									; a3 = temporal plane 0 write pointer
-        lea     HAM_DYNAMIC_PLANE_BYTES(a3),a4						; a4 = temporal plane 1 write pointer
-        lea     HAM_DYNAMIC_PLANE_BYTES(a4),a5						; a5 = temporal plane 2 write pointer
-        lea     HAM_DYNAMIC_PLANE_BYTES(a5),a0						; a0 = temporal plane 3 write pointer
-        bra.s   RenderHamRowsCore							; render rows without per-row subroutine calls
-
-RenderHamLiveRowsNoPatch:								; set up the direct live-row renderer without re-patching deltas
-        movem.l d4-d7/a3-a6,-(sp)							; save clobbered C registers only
-        moveq   #HAM_LIVE_ROWS-1,d5							; d5 = live rows remaining after current row
-        movea.l a3,a6									; a6 = interleaved pair table base
-        movea.l a0,a3									; a3 = plane 0 write pointer
-        lea     HAM_DYNAMIC_PLANE_BYTES(a3),a4						; a4 = plane 1 write pointer
-        lea     HAM_DYNAMIC_PLANE_BYTES(a4),a5						; a5 = plane 2 write pointer
-        lea     HAM_DYNAMIC_PLANE_BYTES(a5),a0						; a0 = plane 3 write pointer
-        bra.s   RenderHamRowsCore							; render rows through the shared inline core
+RenderHamLiveRowsNoPatch:                                                       ; set up the direct live-row renderer without re-patching deltas
+        movem.l d4-d7/a3-a6,-(sp)                                             ; save clobbered C registers only
+        moveq   #HAM_LIVE_ROWS-1,d5                                           ; d5 = live rows remaining after current row
+        movea.l a3,a6                                                          ; a6 = interleaved pair table base
+        movea.l a0,a3                                                          ; a3 = plane 0 write pointer
+        lea     HAM_DYNAMIC_PLANE_BYTES(a3),a4                                 ; a4 = plane 1 write pointer
+        lea     HAM_DYNAMIC_PLANE_BYTES(a4),a5                                 ; a5 = plane 2 write pointer
+        lea     HAM_DYNAMIC_PLANE_BYTES(a5),a0                                 ; a0 = plane 3 write pointer
+        bra.s   RenderHamRowsCore                                              ; render rows through the shared inline core
 
 ; void RenderHamHalfRowsAsm(a0=Base, a1=TextureCellsMid, a2=UOffsetTableMid,
 ;                             a3=PairTables, d0=RowU, d1=RowV,
 ;                             d2=DuDx, d3=DvDx, d6=RowUDelta, d7=RowVDelta)
 
-_RenderHamHalfRowsAsm::									; export the half-rate row-cache renderer to C
-        movem.l d4-d7/a3-a6,-(sp)							; save clobbered C registers only
-        moveq   #HAM_HALFRATE_ROWS-1,d5							; d5 = half-rate rows remaining after current row
-RenderHamRowsSetup:									; common setup for the half-rate cache renderer
-        lea     RenderHamRowsCoreRowUDelta+2(pc),a5					; get shared row U delta immediate
-        move.w  d6,(a5)									; patch row U delta from frame params
-        move.w  d7,4(a5)								; patch row V delta from the adjacent immediate slot
-        movea.l a3,a6									; a6 = interleaved pair table base
-        movea.l a0,a3									; a3 = plane 0 write pointer
-        lea     HAM_HALFRATE_ROW_CACHE_PLANE_BYTES(a3),a4				; a4 = plane 1 write pointer
-        lea     HAM_HALFRATE_ROW_CACHE_PLANE_BYTES(a4),a5				; a5 = plane 2 write pointer
-        lea     HAM_HALFRATE_ROW_CACHE_PLANE_BYTES(a5),a0				; a0 = plane 3 write pointer
-        bra.s   RenderHamRowsCore							; render rows through the shared inline core
+_RenderHamHalfRowsAsm::                                                        ; export the half-rate row-cache renderer to C
+        movem.l d4-d7/a3-a6,-(sp)                                             ; save clobbered C registers only
+        moveq   #HAM_HALFRATE_ROWS-1,d5                                       ; d5 = half-rate rows remaining after current row
+RenderHamRowsSetup:                                                            ; common setup for the half-rate cache renderer
+        lea     HamRowDeltaVars(pc),a5                                          ; a5 = row-delta variable block
+        move.w  d6,(a5)                                                        ; store row U delta as data
+        move.w  d7,2(a5)                                                       ; store row V delta as data
+        movea.l a3,a6                                                          ; a6 = interleaved pair table base
+        movea.l a0,a3                                                          ; a3 = plane 0 write pointer
+        lea     HAM_HALFRATE_ROW_CACHE_PLANE_BYTES(a3),a4                      ; a4 = plane 1 write pointer
+        lea     HAM_HALFRATE_ROW_CACHE_PLANE_BYTES(a4),a5                      ; a5 = plane 2 write pointer
+        lea     HAM_HALFRATE_ROW_CACHE_PLANE_BYTES(a5),a0                      ; a0 = plane 3 write pointer
+        bra.s   RenderHamRowsCore                                              ; render rows through the shared inline core
 
-RenderHamTemporalLowerRowsNoPatch:							; render the lower temporal half once the beam has passed it
-        btst.b  #0,VPOSR+1								; test PAL line bit 8 before touching temporal rows
-        bne.s   .temporal_render_safe_np2						; rendering is safe in lower border/vblank
-.wait_temporal_render_np2:								; poll until the lower temporal rows are no longer on screen
-        cmp.b   #HAM_TEMPORAL_DONE_LOW,VPOSR+2						; wait for first line below this temporal half
-        blo.s   .wait_temporal_render_np2						; stay while the beam still reads those rows
-.temporal_render_safe_np2:								; start the lower temporal render after the visibility window
-        movem.l d4-d7/a3-a6,-(sp)							; save clobbered C registers only
-        move.w  #HAM_TEMPORAL_LOWER_DEST_OFFSET,d4					; lower rows start deeper in the dynamic buffer
-        bra.s   RenderHamTemporalRowsSetupNoPatch					; main loop already patched row deltas
+RenderHamTemporalLowerRowsNoPatch:                                              ; render the lower temporal half once the beam has passed it
+        btst.b  #0,VPOSR+1                                                      ; test PAL line bit 8 before touching temporal rows
+        bne.s   .temporal_render_safe_np2                                       ; rendering is safe in lower border/vblank
+.wait_temporal_render_np2:                                                      ; poll until the lower temporal rows are no longer on screen
+        cmp.b   #HAM_TEMPORAL_DONE_LOW,VPOSR+2                                  ; wait for first line below this temporal half
+        blo.s   .wait_temporal_render_np2                                       ; stay while the beam still reads those rows
+.temporal_render_safe_np2:                                                      ; start the lower temporal render after the visibility window
+        movem.l d4-d7/a3-a6,-(sp)                                               ; save clobbered C registers only
+        move.w  #HAM_TEMPORAL_LOWER_DEST_OFFSET,d4                              ; lower rows start deeper in the dynamic buffer
+        bra.s   RenderHamTemporalRowsSetupNoPatch                               ; main loop already patched row deltas
 
 ; Shared multi-row renderer. It keeps the row body inline and uses d5 as row counter.
 
@@ -836,8 +846,13 @@ RenderHamRowsCore:									; inline 28-pair row renderer shared by live, tempora
         movem.l (sp)+,d4-d7/a3-a6							; restore clobbered C registers only
         rts										; return to C
 RenderHamRowsCoreDelta:									; branch target after the current row finished
-RenderHamRowsCoreRowUDelta:								; self-modified immediate for the row-to-row U advance
-        add.w   #0,d0									; advance U to next rendered row
-RenderHamRowsCoreRowVDelta:								; self-modified immediate for the row-to-row V advance
-        add.w   #0,d1									; advance V to next rendered row
+        add.w   HamRowUDeltaValue(pc),d0					        ; advance U to next rendered row from data storage
+        add.w   HamRowVDeltaValue(pc),d1					        ; advance V to next rendered row from data storage
         bra.w   RenderHamRowsCore							; render next row inline
+
+        even										; keep the row-delta data word-aligned
+HamRowDeltaVars:									; cache-safe row-delta storage for 68020+ instruction caches
+HamRowUDeltaValue:								        ; row-to-row U advance value
+        dc.w    0									; updated as data before each render band
+HamRowVDeltaValue:								        ; row-to-row V advance value
+        dc.w    0									; updated as data before each render band
