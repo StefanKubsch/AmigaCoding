@@ -1,4 +1,4 @@
-# Generates constants shared by the C and vasm parts of the Rotozoomer.
+# Generates constants shared by the C and vasm parts of the Rotozoomer AGA build.
 
 from pathlib import Path
 
@@ -34,17 +34,18 @@ HAM_HALFRATE_ROW_CACHE_FRAME_BYTES = HAM_HALFRATE_ROW_CACHE_PLANE_BYTES * 4
 HAM_HALFRATE_ROW_CACHE_BYTES = HAM_HALFRATE_ROW_CACHE_FRAME_BYTES * (HAM_FRAME_COUNT // 2)
 HAM_TEMPORAL_UPPER_DEST_OFFSET = HAM_TEMPORAL_START_ROW * HAM_FETCH_BYTES
 HAM_TEMPORAL_LOWER_DEST_OFFSET = HAM_TEMPORAL_LOWER_START_ROW * HAM_FETCH_BYTES
+
+HAM_COPPER_PTR_PLANES = 6
+HAM_DISPLAY_BPU = 6
+HAM_COPPER_SLOT_WORDS = HAM_COPPER_PTR_PLANES * 4
 HAM_AGA_CONTROL_PLANE_BYTES = HAM_FETCH_BYTES * HAM_ROWS
 HAM_AGA_CONTROL_PLANES_BYTES = HAM_AGA_CONTROL_PLANE_BYTES * 2
-
 HAM_AGA_BPLCON3_RESET = 0x0000
 HAM_AGA_BPLCON4_RESET = 0x0000
 HAM_AGA_FMODE_RESET = 0x0000
 HAM_AGA_BPLCON3_LOCT = 0x0200
-HAM_AGA_DISPLAY_BPU = 6
 
-
-def copper_layout(slot_words, aga_prefix_words):
+def copper_layout(slot_words):
     index = 0
     wrapped = False
     split_rows = {
@@ -71,9 +72,8 @@ def copper_layout(slot_words, aga_prefix_words):
         index += slot_words
 
     index += 8                         # DIW/DDF registers
-    index += aga_prefix_words          # optional AGA compatibility registers
+    index += 6                         # BPLCON3, BPLCON4, FMODE register/value pairs
     index += 10                        # BPLCON and modulo registers
-    index += 4                         # BPL5DAT/BPL6DAT control words for OCS quirk / harmless on AGA
 
     append_bplptr_slots("initial")
 
@@ -93,21 +93,13 @@ def copper_layout(slot_words, aga_prefix_words):
     return slots, index
 
 
-OCS_COPPER_SLOTS, HAM_OCS_COPPER_WORDS = copper_layout(16, 0)
-AGA_COPPER_SLOTS, HAM_AGA_COPPER_WORDS = copper_layout(24, 6)
+COPPER_SLOTS, HAM_COPPER_WORDS = copper_layout(HAM_COPPER_SLOT_WORDS)
 
-HAM_OCS_COPPER_BPLPTR_WORD = OCS_COPPER_SLOTS["initial"]
-HAM_OCS_COPPER_TEMPORAL_UPPER_BPLPTR_WORD = OCS_COPPER_SLOTS["temporal_upper"]
-HAM_OCS_COPPER_TEMPORAL_LOWER_BPLPTR_WORD = OCS_COPPER_SLOTS["temporal_lower"]
-HAM_OCS_COPPER_HALFRATE_BPLPTR_WORD = OCS_COPPER_SLOTS["halfrate"]
-HAM_AGA_COPPER_BPLPTR_WORD = AGA_COPPER_SLOTS["initial"]
-HAM_AGA_COPPER_TEMPORAL_UPPER_BPLPTR_WORD = AGA_COPPER_SLOTS["temporal_upper"]
-HAM_AGA_COPPER_TEMPORAL_LOWER_BPLPTR_WORD = AGA_COPPER_SLOTS["temporal_lower"]
-HAM_AGA_COPPER_HALFRATE_BPLPTR_WORD = AGA_COPPER_SLOTS["halfrate"]
-
-HAM_OCS_COPPER_BYTES = HAM_OCS_COPPER_WORDS * 2
-HAM_AGA_COPPER_BYTES = HAM_AGA_COPPER_WORDS * 2
-HAM_COPPER_WORDS = max(HAM_OCS_COPPER_WORDS, HAM_AGA_COPPER_WORDS)
+HAM_COPPER_BPLPTR_WORD = COPPER_SLOTS["initial"]
+HAM_COPPER_TEMPORAL_UPPER_BPLPTR_WORD = COPPER_SLOTS["temporal_upper"]
+HAM_COPPER_TEMPORAL_LOWER_BPLPTR_WORD = COPPER_SLOTS["temporal_lower"]
+HAM_COPPER_HALFRATE_BPLPTR_WORD = COPPER_SLOTS["halfrate"]
+HAM_COPPER_HALFRATE_BPLPTR_BYTES = HAM_COPPER_HALFRATE_BPLPTR_WORD * 2
 HAM_COPPER_BYTES = HAM_COPPER_WORDS * 2
 HAM_CHIP_BLOCK_BYTES = (HAM_DYNAMIC_BITMAP_BYTES * 2) + (HAM_COPPER_BYTES * 2)
 
@@ -115,18 +107,13 @@ DEFS = [
     ("HAM_COLUMNS", HAM_COLUMNS, "number of HAM cells per row", "dec"),
     ("HAM_ROWS", HAM_ROWS, "number of displayed HAM cell rows", "dec"),
     ("HAM_PIXEL_SIZE", HAM_PIXEL_SIZE, "cell size in display pixels", "dec"),
-    ("HAM_DISPLAY_WIDTH", HAM_DISPLAY_WIDTH, "visible HAM width in pixels", "dec"),
-    ("HAM_DISPLAY_HEIGHT", HAM_DISPLAY_HEIGHT, "visible HAM height in pixels", "dec"),
-    ("HAM_FETCH_BYTES", HAM_FETCH_BYTES, "bytes per rendered bitplane row", "dec"),
     ("HAM_FRAME_COUNT", HAM_FRAME_COUNT, "number of animation frames", "dec"),
     ("HAM_FRAME_PARAM_BYTES", HAM_FRAME_PARAM_BYTES, "bytes per frame-parameter entry", "dec"),
     ("HAM_LIVE_ROWS", HAM_LIVE_ROWS, "number of runtime-rendered core cell rows", "dec"),
     ("HAM_TEMPORAL_START_ROW", HAM_TEMPORAL_START_ROW, "first temporal dynamic row", "dec"),
-    ("HAM_TEMPORAL_ROWS", HAM_TEMPORAL_ROWS, "number of temporal dynamic rows", "dec"),
     ("HAM_TEMPORAL_HALF_ROWS", HAM_TEMPORAL_HALF_ROWS, "number of rows in one temporal half", "dec"),
     ("HAM_TEMPORAL_LOWER_START_ROW", HAM_TEMPORAL_LOWER_START_ROW, "first row of the lower temporal half", "dec"),
     ("HAM_HALFRATE_START_ROW", HAM_HALFRATE_START_ROW, "first half-rate cached row", "dec"),
-    ("HAM_DYNAMIC_ROWS", HAM_DYNAMIC_ROWS, "compact live and temporal rows per frame", "dec"),
     ("HAM_DYNAMIC_PLANE_BYTES", HAM_DYNAMIC_PLANE_BYTES, "bytes per compact dynamic bitplane", "dec"),
     ("HAM_DYNAMIC_BITMAP_BYTES", HAM_DYNAMIC_BITMAP_BYTES, "bytes per compact dynamic bitmap", "dec"),
     ("HAM_HALFRATE_ROWS", HAM_HALFRATE_ROWS, "number of half-rate rows per cached frame", "dec"),
@@ -135,33 +122,26 @@ DEFS = [
     ("HAM_HALFRATE_ROW_CACHE_BYTES", HAM_HALFRATE_ROW_CACHE_BYTES, "bytes for all half-rate cache frames", "dec"),
     ("HAM_TEMPORAL_UPPER_DEST_OFFSET", HAM_TEMPORAL_UPPER_DEST_OFFSET, "compact row 2 byte offset in dynamic planes", "dec"),
     ("HAM_TEMPORAL_LOWER_DEST_OFFSET", HAM_TEMPORAL_LOWER_DEST_OFFSET, "compact lower temporal-half byte offset in dynamic planes", "dec"),
-    ("HAM_AGA_CONTROL_PLANE_BYTES", HAM_AGA_CONTROL_PLANE_BYTES, "bytes per AGA fixed HAM-control plane", "dec"),
-    ("HAM_AGA_CONTROL_PLANES_BYTES", HAM_AGA_CONTROL_PLANES_BYTES, "bytes for both AGA fixed HAM-control planes", "dec"),
-    ("HAM_AGA_BPLCON3_RESET", HAM_AGA_BPLCON3_RESET, "AGA BPLCON3 palette-bank and LOCT reset", "hex4"),
-    ("HAM_AGA_BPLCON4_RESET", HAM_AGA_BPLCON4_RESET, "AGA BPLCON4 bitplane XOR reset", "hex4"),
-    ("HAM_AGA_FMODE_RESET", HAM_AGA_FMODE_RESET, "AGA 16-bit compatible fetch mode", "hex4"),
-    ("HAM_AGA_BPLCON3_LOCT", HAM_AGA_BPLCON3_LOCT, "AGA low-order color-table write select", "hex4"),
-    ("HAM_AGA_DISPLAY_BPU", HAM_AGA_DISPLAY_BPU, "AGA normal HAM6 bitplane count", "dec"),
-    ("HAM_OCS_COPPER_BPLPTR_WORD", HAM_OCS_COPPER_BPLPTR_WORD, "OCS value slot for initial dynamic row pointers", "dec"),
-    ("HAM_OCS_COPPER_TEMPORAL_UPPER_BPLPTR_WORD", HAM_OCS_COPPER_TEMPORAL_UPPER_BPLPTR_WORD, "OCS value slot for upper temporal row pointers", "dec"),
-    ("HAM_OCS_COPPER_TEMPORAL_UPPER_BPLPTR_BYTES", HAM_OCS_COPPER_TEMPORAL_UPPER_BPLPTR_WORD * 2, "OCS byte slot for upper temporal row pointers", "dec"),
-    ("HAM_OCS_COPPER_TEMPORAL_LOWER_BPLPTR_WORD", HAM_OCS_COPPER_TEMPORAL_LOWER_BPLPTR_WORD, "OCS value slot for lower temporal row pointers", "dec"),
-    ("HAM_OCS_COPPER_TEMPORAL_LOWER_BPLPTR_BYTES", HAM_OCS_COPPER_TEMPORAL_LOWER_BPLPTR_WORD * 2, "OCS byte slot for lower temporal row pointers", "dec"),
-    ("HAM_OCS_COPPER_HALFRATE_BPLPTR_WORD", HAM_OCS_COPPER_HALFRATE_BPLPTR_WORD, "OCS value slot for half-rate row pointers", "dec"),
-    ("HAM_OCS_COPPER_HALFRATE_BPLPTR_BYTES", HAM_OCS_COPPER_HALFRATE_BPLPTR_WORD * 2, "OCS byte slot for half-rate row pointers", "dec"),
-    ("HAM_OCS_COPPER_WORDS", HAM_OCS_COPPER_WORDS, "OCS copper list words", "dec"),
-    ("HAM_OCS_COPPER_BYTES", HAM_OCS_COPPER_BYTES, "OCS copper list bytes", "dec"),
-    ("HAM_AGA_COPPER_BPLPTR_WORD", HAM_AGA_COPPER_BPLPTR_WORD, "AGA value slot for initial dynamic row pointers", "dec"),
-    ("HAM_AGA_COPPER_TEMPORAL_UPPER_BPLPTR_WORD", HAM_AGA_COPPER_TEMPORAL_UPPER_BPLPTR_WORD, "AGA value slot for upper temporal row pointers", "dec"),
-    ("HAM_AGA_COPPER_TEMPORAL_UPPER_BPLPTR_BYTES", HAM_AGA_COPPER_TEMPORAL_UPPER_BPLPTR_WORD * 2, "AGA byte slot for upper temporal row pointers", "dec"),
-    ("HAM_AGA_COPPER_TEMPORAL_LOWER_BPLPTR_WORD", HAM_AGA_COPPER_TEMPORAL_LOWER_BPLPTR_WORD, "AGA value slot for lower temporal row pointers", "dec"),
-    ("HAM_AGA_COPPER_TEMPORAL_LOWER_BPLPTR_BYTES", HAM_AGA_COPPER_TEMPORAL_LOWER_BPLPTR_WORD * 2, "AGA byte slot for lower temporal row pointers", "dec"),
-    ("HAM_AGA_COPPER_HALFRATE_BPLPTR_WORD", HAM_AGA_COPPER_HALFRATE_BPLPTR_WORD, "AGA value slot for half-rate row pointers", "dec"),
-    ("HAM_AGA_COPPER_HALFRATE_BPLPTR_BYTES", HAM_AGA_COPPER_HALFRATE_BPLPTR_WORD * 2, "AGA byte slot for half-rate row pointers", "dec"),
-    ("HAM_AGA_COPPER_WORDS", HAM_AGA_COPPER_WORDS, "AGA copper list words", "dec"),
-    ("HAM_AGA_COPPER_BYTES", HAM_AGA_COPPER_BYTES, "AGA copper list bytes", "dec"),
-    ("HAM_COPPER_WORDS", HAM_COPPER_WORDS, "maximum copper list words per buffer", "dec"),
-    ("HAM_COPPER_BYTES", HAM_COPPER_BYTES, "maximum copper list bytes per buffer", "dec"),
+    ("HAM_COPPER_PTR_PLANES", HAM_COPPER_PTR_PLANES, "bitplane pointer slots emitted into the Copper list", "dec"),
+    ("HAM_DISPLAY_BPU", HAM_DISPLAY_BPU, "bitplane count programmed into BPLCON0", "dec"),
+]
+
+DEFS.extend([
+    ("HAM_AGA_CONTROL_PLANE_BYTES", HAM_AGA_CONTROL_PLANE_BYTES, "bytes per fixed HAM-control plane", "dec"),
+    ("HAM_AGA_CONTROL_PLANES_BYTES", HAM_AGA_CONTROL_PLANES_BYTES, "bytes for both fixed HAM-control planes", "dec"),
+    ("HAM_AGA_BPLCON3_RESET", HAM_AGA_BPLCON3_RESET, "BPLCON3 palette-bank and LOCT reset", "hex4"),
+    ("HAM_AGA_BPLCON4_RESET", HAM_AGA_BPLCON4_RESET, "BPLCON4 bitplane XOR reset", "hex4"),
+    ("HAM_AGA_FMODE_RESET", HAM_AGA_FMODE_RESET, "16-bit fetch mode", "hex4"),
+    ("HAM_AGA_BPLCON3_LOCT", HAM_AGA_BPLCON3_LOCT, "low-order color-table write select", "hex4"),
+])
+
+DEFS.extend([
+    ("HAM_COPPER_BPLPTR_WORD", HAM_COPPER_BPLPTR_WORD, "value slot for initial dynamic row pointers", "dec"),
+    ("HAM_COPPER_TEMPORAL_UPPER_BPLPTR_WORD", HAM_COPPER_TEMPORAL_UPPER_BPLPTR_WORD, "value slot for upper temporal row pointers", "dec"),
+    ("HAM_COPPER_TEMPORAL_LOWER_BPLPTR_WORD", HAM_COPPER_TEMPORAL_LOWER_BPLPTR_WORD, "value slot for lower temporal row pointers", "dec"),
+    ("HAM_COPPER_HALFRATE_BPLPTR_WORD", HAM_COPPER_HALFRATE_BPLPTR_WORD, "value slot for half-rate row pointers", "dec"),
+    ("HAM_COPPER_HALFRATE_BPLPTR_BYTES", HAM_COPPER_HALFRATE_BPLPTR_BYTES, "byte slot for half-rate row pointers", "dec"),
+    ("HAM_COPPER_BYTES", HAM_COPPER_BYTES, "copper list bytes", "dec"),
     ("HAM_CHIP_BLOCK_BYTES", HAM_CHIP_BLOCK_BYTES, "dynamic buffers plus double copper list block bytes", "dec"),
     ("HAM_HALF_COLUMNS", HAM_COLUMNS // 2, "half of the HAM cell columns", "dec"),
     ("HAM_HALF_ROWS", HAM_ROWS // 2, "half of the HAM cell rows", "dec"),
@@ -172,9 +152,8 @@ DEFS = [
     ("HAM_DDFSTOP", 0x00D0 - (ddf_shift_bytes * 4), "data fetch stop register value", "hex4"),
     ("HAM_REPEAT_MOD", (-HAM_FETCH_BYTES) & 0xFFFF, "modulo for repeating a 4-line cell row", "hex4"),
     ("HAM_ADVANCE_MOD", 0, "modulo for advancing to the next cell row", "dec"),
-    ("HAM_DISPLAY_BPU", 7, "OCS BPLDAT-quirk bitplane count", "dec"),
-    ("HAM_CONTROL_WORD_P5", 0x3333, "BPL5DAT/HAM control plane 5 pattern", "hex4"),
-    ("HAM_CONTROL_WORD_P6", 0x6666, "BPL6DAT/HAM control plane 6 pattern", "hex4"),
+    ("HAM_CONTROL_PLANE5_WORD", 0x3333, "fixed HAM control-plane 5 pattern", "hex4"),
+    ("HAM_CONTROL_PLANE6_WORD", 0x6666, "fixed HAM control-plane 6 pattern", "hex4"),
     ("HAM_CORE_DONE_LOW", (HAM_VPOS_START + (HAM_LIVE_ROWS * HAM_PIXEL_SIZE)) & 0xFF, "low byte after dynamic rows 0-1 are off-screen", "hex2"),
     ("HAM_TEMPORAL_UPPER_DONE_LOW", (HAM_VPOS_START + ((HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_HALF_ROWS) * HAM_PIXEL_SIZE)) & 0xFF, "low byte after upper temporal rows are off-screen", "hex2"),
     ("HAM_TEMPORAL_DONE_LOW", (HAM_VPOS_START + ((HAM_TEMPORAL_START_ROW + HAM_TEMPORAL_ROWS) * HAM_PIXEL_SIZE)) & 0xFF, "low byte after temporal rows are off-screen", "hex2"),
@@ -183,7 +162,7 @@ DEFS = [
     ("HAM_ANGLE_PHASE_STEP", HAM_ANGLE_PHASE_STEP, "phase step per frame", "dec"),
     ("HAM_CENTER_U", 0x4000, "texture center U", "hex4"),
     ("HAM_CENTER_V", 0x4000, "texture center V", "hex4"),
-]
+])
 
 
 def fmt_c(value, kind):
@@ -209,7 +188,7 @@ def fmt_asm(value, kind):
 def write_c(path):
     with open(path, "w", newline="\n") as f:
         f.write("// Generated from Rotozoomer_shared_defs.py.\n")
-        f.write("// Shared constants for Rotozoomer.c and Rotozoomer_vasm.s.\n\n")
+        f.write("// Shared constants for the Rotozoomer AGA build.\n\n")
         for name, value, comment, kind in DEFS:
             f.write("#define %-48s %s\n" % (name, fmt_c(value, kind)))
 
@@ -217,7 +196,7 @@ def write_c(path):
 def write_asm(path):
     with open(path, "w", newline="\n") as f:
         f.write("; Generated from Rotozoomer_shared_defs.py.\n")
-        f.write("; Shared constants for Rotozoomer.c and Rotozoomer_vasm.s.\n\n")
+        f.write("; Shared constants for the Rotozoomer AGA build.\n\n")
         for name, value, comment, kind in DEFS:
             f.write("%-48s equ\t%-10s ; %s\n" % (name, fmt_asm(value, kind), comment))
 
